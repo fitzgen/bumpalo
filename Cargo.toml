@@ -1,0 +1,16 @@
+[package]
+name = "bumpalo"
+version = "0.1.0"
+authors = ["Nick Fitzgerald <fitzgen@gmail.com>"]
+
+[dev-dependencies]
+quickcheck = "0.7.1"
+criterion = "0.2.5"
+
+[[bench]]
+name = "benches"
+path = "benches/benches.rs"
+harness = false
+
+# [profile.bench]
+# debug = true
