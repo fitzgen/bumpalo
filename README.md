@@ -3,7 +3,7 @@
 
 > A fast bump allocation arena for Rust.
 
-![](./bumpalo.png)
+![](https://github.com/fitzgen/bumpalo/raw/master/bumpalo.png)
 
 ### Bump Allocation
 
