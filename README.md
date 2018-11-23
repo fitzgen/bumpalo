@@ -32,5 +32,26 @@ See [the `BumpAllocSafe` marker trait](./trait.BumpAllocSafe.html) for details.
 
 ### Example
 
-TODO
+```rust
+use bumpalo::{BumpSet, BumpAllocSafe};
+use std::u64;
+
+struct Doggo {
+    cuteness: u64,
+    age: u8,
+    scritches_required: bool,
+}
+
+impl BumpAllocSafe for Doggo {}
+
+let set = BumpSet::new();
+
+let bump = set.new_bump();
+
+let scooter = bump.alloc(Doggo {
+    cuteness: u64::max_value(),
+    age: 8,
+    scritches_required: true,
+});
+```
 

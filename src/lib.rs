@@ -31,7 +31,29 @@ See [the `BumpAllocSafe` marker trait](./trait.BumpAllocSafe.html) for details.
 
 ## Example
 
-TODO
+```
+use bumpalo::{BumpSet, BumpAllocSafe};
+use std::u64;
+
+struct Doggo {
+    cuteness: u64,
+    age: u8,
+    scritches_required: bool,
+}
+
+impl BumpAllocSafe for Doggo {}
+
+let set = BumpSet::new();
+
+let bump = set.new_bump();
+
+let scooter = bump.alloc(Doggo {
+    cuteness: u64::max_value(),
+    age: 8,
+    scritches_required: true,
+});
+# let _ = scooter;
+```
 
  */
 
@@ -46,7 +68,13 @@ use std::slice;
 /// A marker trait for types that are "safe" to bump alloc.
 ///
 /// Objects that are bump-allocated will not have their `Drop` implementation
-/// called, which makes it easy to leak memory or other resources.
+/// called, which makes it easy to leak memory or other resources. If you put
+/// anything which heap allocates or manages open file descriptors or other
+/// resources into a `Bump`, and that thing relies on its `Drop` implementation
+/// to clean up after itself, then you need to find a new way to clean up after
+/// it yourself. This could be calling
+/// [`drop_in_place`](https://doc.rust-lang.org/stable/std/ptr/fn.drop_in_place.html),
+/// or simply avoiding using such types in a `Bump`.
 ///
 /// This is memory safe! Since destructors are never guaranteed to run in Rust,
 /// you can't rely on them for memory safety. Therefore, implementing this trait
