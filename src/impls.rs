@@ -1,7 +1,7 @@
 use super::BumpAllocSafe;
 
-impl<'a, T> BumpAllocSafe for &'a T {}
-impl<'a, T> BumpAllocSafe for &'a mut T {}
+impl<'a, T: ?Sized> BumpAllocSafe for &'a T {}
+impl<'a, T: ?Sized> BumpAllocSafe for &'a mut T {}
 
 macro_rules! impl_bump_alloc_safe {
     ( $( $t:ty ),* $(,)* ) => {

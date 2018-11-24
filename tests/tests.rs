@@ -1,13 +1,12 @@
 extern crate bumpalo;
 
-use bumpalo::BumpSet;
+use bumpalo::Bump;
 use std::mem;
 use std::slice;
 
 #[test]
 fn can_iterate_over_allocated_things() {
-    let set = BumpSet::new();
-    let mut bump = set.new_bump();
+    let mut bump = Bump::new();
 
     const MAX: u64 = 131072;
 

@@ -1,7 +1,7 @@
 extern crate bumpalo;
 extern crate quickcheck;
 
-use bumpalo::{BumpAllocSafe, BumpSet};
+use bumpalo::{BumpAllocSafe, Bump};
 use quickcheck::{quickcheck, Arbitrary, Gen};
 use std::mem;
 
@@ -115,8 +115,7 @@ fn range<T>(t: &T) -> (usize, usize) {
 
 quickcheck! {
     fn can_allocate_big_values(values: Vec<BigValue>) -> () {
-        let set = BumpSet::new();
-        let bump = set.new_bump();
+        let bump = Bump::new();
         let mut alloced = vec![];
 
         for vals in values.iter().cloned() {
@@ -129,8 +128,7 @@ quickcheck! {
     }
 
     fn big_allocations_never_overlap(values: Vec<BigValue>) -> () {
-        let set = BumpSet::new();
-        let bump = set.new_bump();
+        let bump = Bump::new();
         let mut alloced = vec![];
 
         for v in values {
@@ -148,8 +146,7 @@ quickcheck! {
     }
 
     fn can_allocate_heterogeneous_things_and_they_dont_overlap(things: Vec<Elems<u8, u64>>) -> () {
-        let set = BumpSet::new();
-        let bump = set.new_bump();
+        let bump = Bump::new();
         let mut ranges = vec![];
 
         for t in things {

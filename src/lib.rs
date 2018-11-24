@@ -29,10 +29,15 @@ not invoked.
 
 See [the `BumpAllocSafe` marker trait](./trait.BumpAllocSafe.html) for details.
 
+## What happens when the memory chunk is full?
+
+This implementation will allocate a new memory chunk from the global allocator
+and then start bump allocating into this new memory chunk.
+
 ## Example
 
 ```
-use bumpalo::{BumpSet, BumpAllocSafe};
+use bumpalo::{Bump, BumpAllocSafe};
 use std::u64;
 
 struct Doggo {
@@ -41,26 +46,32 @@ struct Doggo {
     scritches_required: bool,
 }
 
+// Mark `Doggo` as safe to put into bump allocation arenas.
 impl BumpAllocSafe for Doggo {}
 
-let set = BumpSet::new();
+// Create a new arena to bump allocate into.
+let bump = Bump::new();
 
-let bump = set.new_bump();
-
+// Allocate values into the arena.
 let scooter = bump.alloc(Doggo {
     cuteness: u64::max_value(),
     age: 8,
     scritches_required: true,
 });
-# let _ = scooter;
+
+assert!(scooter.scritches_required);
 ```
 
  */
+
+#![deny(missing_debug_implementations)]
+#![deny(missing_docs)]
 
 mod impls;
 
 use std::alloc::{alloc, dealloc, Layout};
 use std::cell::{Cell, UnsafeCell};
+use std::fmt;
 use std::mem;
 use std::ptr::{self, NonNull};
 use std::slice;
@@ -77,11 +88,13 @@ use std::slice;
 /// or simply avoiding using such types in a `Bump`.
 ///
 /// This is memory safe! Since destructors are never guaranteed to run in Rust,
-/// you can't rely on them for memory safety. Therefore, implementing this trait
-/// is **not** `unsafe` in the Rust sense (which is only about memory
+/// you can't rely on them for enforcing memory safety. Therefore, implementing
+/// this trait is **not** `unsafe` in the Rust sense (which is only about memory
 /// safety). But instead of taking any `T`, bump allocation requires that you
 /// implement this marker trait for `T` just so that you know what you're
 /// getting into.
+///
+/// ## Example
 ///
 /// ```
 /// struct Point {
@@ -95,15 +108,26 @@ use std::slice;
 /// ```
 pub trait BumpAllocSafe {}
 
-/// A set of bump allocators with a shared pool of memory chunks.
-pub struct BumpSet {
-    free: Cell<Option<NonNull<Chunk>>>,
-}
-
-unsafe impl Sync for BumpSet {}
-
-pub struct Bump<'a> {
-    set: &'a BumpSet,
+/// An arena to bump allocate into.
+///
+/// ## Example
+///
+/// ```
+/// use bumpalo::Bump;
+///
+/// // Create a new bump arena.
+/// let bump = Bump::new();
+///
+/// // Allocate values into the arena.
+/// let forty_two = bump.alloc(42);
+/// assert_eq!(*forty_two, 42);
+///
+/// // Mutable references are returned from allocation.
+/// let mut s = bump.alloc("bumpalo");
+/// *s = "the bump allocator; and also is a buffalo";
+/// ```
+#[derive(Debug)]
+pub struct Bump {
     current_chunk: Cell<NonNull<Chunk>>,
     all_chunks: Cell<NonNull<Chunk>>,
 }
@@ -114,47 +138,27 @@ struct Chunk {
     footer: ChunkFooter,
 }
 
+impl fmt::Debug for Chunk {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let p = &self._data as *const _;
+        f.debug_struct("Chunk")
+            .field("_data", &p)
+            .field("footer", &self.footer)
+            .finish()
+    }
+}
+
 #[repr(C)]
+#[derive(Debug)]
 struct ChunkFooter {
     next: Cell<Option<NonNull<Chunk>>>,
     ptr: Cell<NonNull<u8>>,
 }
 
-impl BumpSet {
-    pub fn new() -> BumpSet {
-        BumpSet {
-            free: Cell::new(None),
-        }
-    }
-
-    pub fn new_bump(&self) -> Bump {
-        let chunk = self.chunk();
-        Bump {
-            set: self,
-            current_chunk: Cell::new(chunk),
-            all_chunks: Cell::new(chunk),
-        }
-    }
-
-    fn chunk(&self) -> NonNull<Chunk> {
-        unsafe {
-            let chunk = alloc(Chunk::layout());
-            assert!(!chunk.is_null());
-
-            let next = Cell::new(None);
-            let ptr = Cell::new(NonNull::new_unchecked(chunk));
-            let footer_ptr = chunk as usize + Chunk::SIZE;
-            ptr::write(footer_ptr as *mut ChunkFooter, ChunkFooter { next, ptr });
-
-            NonNull::new_unchecked(chunk as *mut Chunk)
-        }
-    }
-}
-
-impl Drop for BumpSet {
+impl Drop for Bump {
     fn drop(&mut self) {
         unsafe {
-            let mut chunk = self.free.get();
+            let mut chunk = Some(self.all_chunks.get());
             while let Some(ch) = chunk {
                 chunk = ch.as_ref().footer.next.get();
                 dealloc(ch.as_ptr() as *mut u8, Chunk::layout());
@@ -169,12 +173,72 @@ pub(crate) fn round_up_to(n: usize, divisor: usize) -> usize {
     (n + divisor - 1) & !(divisor - 1)
 }
 
-impl<'a> Bump<'a> {
+impl Bump {
+    /// Construct a new arena to bump allocate into.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// # let _ = bump;
+    /// ```
+    pub fn new() -> Bump {
+        let chunk = Self::chunk();
+        Bump {
+            current_chunk: Cell::new(chunk),
+            all_chunks: Cell::new(chunk),
+        }
+    }
+
+    fn chunk() -> NonNull<Chunk> {
+        unsafe {
+            let chunk = alloc(Chunk::layout());
+            assert!(!chunk.is_null());
+
+            let next = Cell::new(None);
+            let ptr = Cell::new(NonNull::new_unchecked(chunk));
+            let footer_ptr = chunk as usize + Chunk::SIZE;
+            ptr::write(footer_ptr as *mut ChunkFooter, ChunkFooter { next, ptr });
+
+            NonNull::new_unchecked(chunk as *mut Chunk)
+        }
+    }
+
     /// Reset this bump allocator.
     ///
-    /// Takes `&mut self` so `self` must be unique and there can't be any
-    /// borrows active that would get invalidated by resetting.
+    /// Performs mass deallocation on everything allocated in this arena by
+    /// resetting the pointer into the underlying chunk of memory to the start
+    /// of the chunk. Does not run any `Drop` implementations on deallocated
+    /// objects; see [the `BumpAllocSafe` marker
+    /// trait](./trait.BumpAllocSafe.html) for details.
+    ///
+    /// If this arena has allocated multiple chunks to bump allocate into, then
+    /// the excess chunks are returned to the global allocator.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let mut bump = bumpalo::Bump::new();
+    ///
+    /// // Allocate a bunch of things.
+    /// {
+    ///     for i in 0..100 {
+    ///         bump.alloc(i);
+    ///     }
+    /// }
+    ///
+    /// // Reset the arena.
+    /// bump.reset();
+    ///
+    /// // Allocate some new things in the space previously occupied by the
+    /// // original things.
+    /// for j in 200..400 {
+    ///     bump.alloc(j);
+    /// }
+    ///```
     pub fn reset(&mut self) {
+        // Takes `&mut self` so `self` must be unique and there can't be any
+        // borrows active that would get invalidated by resetting.
         unsafe {
             let mut chunk = Some(self.all_chunks.get());
 
@@ -186,10 +250,9 @@ impl<'a> Bump<'a> {
                     .set(NonNull::new_unchecked(ch.as_ptr() as *mut u8));
                 chunk = footer.next.get();
 
-                // If this is not the current chunk, push it back to the parent set.
+                // If this is not the current chunk, deallocate it.
                 if ch != self.current_chunk.get() {
-                    footer.next.set(self.set.free.get());
-                    self.set.free.set(Some(ch));
+                    dealloc(ch.as_ptr() as *mut u8, Chunk::layout());
                 }
             }
 
@@ -200,6 +263,14 @@ impl<'a> Bump<'a> {
     }
 
     /// Allocate an object.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.alloc("hello");
+    /// assert_eq!(*x, "hello");
+    /// ```
     ///
     /// ## Panics
     ///
@@ -242,8 +313,8 @@ impl<'a> Bump<'a> {
         debug_assert!(align <= Chunk::ALIGN, "we already check this in `alloc`");
 
         unsafe {
-            // Get a new chunk from the parent bump set.
-            let chunk = self.set.chunk();
+            // Get a new chunk from the global allocator.
+            let chunk = Self::chunk();
 
             // Set our current chunk's next link to this new chunk.
             self.current_chunk
@@ -271,12 +342,29 @@ impl<'a> Bump<'a> {
         }
     }
 
-    /// Call `f` on each chunk of allocated memory.
+    /// Call `f` on each chunk of allocated memory that this arena has bump
+    /// allocated into.
     ///
-    /// `f` is invoked in order of allocation.
+    /// `f` is invoked in order of allocation: oldest chunks first, newest
+    /// chunks last.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let mut bump = bumpalo::Bump::new();
+    ///
+    /// // Allocate a bunch of things in this bump arena, potentially causing
+    /// // additional memory chunks to be reserved.
+    /// for i in 0..1000 {
+    ///     bump.alloc((i, i + 1, i + 2, i + 3));
+    /// }
+    ///
+    /// // Iterate over each chunk we've bump allocated into.
+    /// bump.each_allocated_chunk(|ch| println!("chunk: {:?}", ch));
+    /// ```
     pub fn each_allocated_chunk<F>(&mut self, mut f: F)
     where
-        F: for<'b> FnMut(&'b [u8]),
+        F: for<'a> FnMut(&'a [u8]),
     {
         // Because this method takes `&mut self` we know that there can be no
         // aliasing with references to allocated objects.
@@ -301,23 +389,6 @@ impl<'a> Bump<'a> {
     }
 }
 
-impl<'a> Drop for Bump<'a> {
-    fn drop(&mut self) {
-        unsafe {
-            // Reset all the bump pointers in our chunks and give all but the
-            // current chunk back to the parent set.
-            self.reset();
-
-            // Give the current chunk back to the parent set.
-            let last_chunk = self.current_chunk.get();
-            let footer = &last_chunk.as_ref().footer;
-            let next = self.set.free.get();
-            footer.next.set(next);
-            self.set.free.set(Some(last_chunk));
-        }
-    }
-}
-
 // Maximum typical overhead per allocation imposed by allocators for
 // wasm32-unknown-unknown.
 const MALLOC_OVERHEAD: usize = 16;
@@ -329,7 +400,7 @@ impl Chunk {
 
     #[inline]
     fn layout() -> Layout {
-        Layout::from_size_align(Chunk::SIZE_WITH_FOOTER, Chunk::ALIGN).unwrap()
+        Layout::new::<Self>()
     }
 }
 

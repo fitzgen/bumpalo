@@ -13,9 +13,7 @@ struct Big([usize; 32]);
 impl bumpalo::BumpAllocSafe for Big {}
 
 fn allocate<T: Default + bumpalo::BumpAllocSafe>(n: usize) {
-    let set = bumpalo::BumpSet::new();
-    let arena = set.new_bump();
-
+    let arena = bumpalo::Bump::new();
     for _ in 0..n {
         let val: &mut T = arena.alloc(Default::default());
         criterion::black_box(val);

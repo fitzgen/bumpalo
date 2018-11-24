@@ -30,10 +30,15 @@ not invoked.
 
 See [the `BumpAllocSafe` marker trait](./trait.BumpAllocSafe.html) for details.
 
+### What happens when the memory chunk is full?
+
+This implementation will allocate a new memory chunk from the global allocator
+and then start bump allocating into this new memory chunk.
+
 ### Example
 
 ```rust
-use bumpalo::{BumpSet, BumpAllocSafe};
+use bumpalo::{Bump, BumpAllocSafe};
 use std::u64;
 
 struct Doggo {
@@ -42,16 +47,19 @@ struct Doggo {
     scritches_required: bool,
 }
 
+// Mark `Doggo` as safe to put into bump allocation arenas.
 impl BumpAllocSafe for Doggo {}
 
-let set = BumpSet::new();
+// Create a new arena to bump allocate into.
+let bump = Bump::new();
 
-let bump = set.new_bump();
-
+// Allocate values into the arena.
 let scooter = bump.alloc(Doggo {
     cuteness: u64::max_value(),
     age: 8,
     scritches_required: true,
 });
+
+assert!(scooter.scritches_required);
 ```
 
