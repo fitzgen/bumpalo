@@ -1,7 +1,12 @@
 # `bumpalo`
 
 
-> A fast bump allocation arena for Rust.
+**A fast bump allocation arena for Rust.**
+
+[![](https://docs.rs/bumpalo/badge.svg)](https://docs.rs/bumpalo/)
+[![](https://img.shields.io/crates/v/bumpalo.svg)](https://crates.io/crates/bumpalo)
+[![](https://img.shields.io/crates/d/bumpalo.svg)](https://crates.io/crates/bumpalo)
+[![Travis CI Build Status](https://travis-ci.org/fitzgen/bumpalo.svg?branch=master)](https://travis-ci.org/fitzgen/bumpalo)
 
 ![](https://github.com/fitzgen/bumpalo/raw/master/bumpalo.png)
 
