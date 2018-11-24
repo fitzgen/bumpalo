@@ -62,19 +62,49 @@ let scooter = bump.alloc(Doggo {
 assert!(scooter.scritches_required);
 ```
 
+## `#![no_std]` Support
+
+Requires the `alloc` nightly feature. Disable the on-by-default `"std"` feature:
+
+```toml
+[dependencies.bumpalo]
+version = "1"
+default-features = false
+```
+
  */
 
 #![deny(missing_debug_implementations)]
 #![deny(missing_docs)]
 
+// In no-std mode, use the alloc crate to get `Vec`.
+#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(not(feature = "std"), feature(alloc))]
+
 mod impls;
 
-use std::alloc::{alloc, dealloc, Layout};
-use std::cell::{Cell, UnsafeCell};
-use std::fmt;
-use std::mem;
-use std::ptr::{self, NonNull};
-use std::slice;
+#[cfg(feature = "std")]
+mod imports {
+    pub use std::alloc::{alloc, dealloc, Layout};
+    pub use std::cell::{Cell, UnsafeCell};
+    pub use std::fmt;
+    pub use std::mem;
+    pub use std::ptr::{self, NonNull};
+    pub use std::slice;
+}
+
+#[cfg(not(feature = "std"))]
+mod imports {
+    extern crate alloc;
+    pub use self::alloc::alloc::{alloc, dealloc, Layout};
+    pub use core::cell::{Cell, UnsafeCell};
+    pub use core::fmt;
+    pub use core::mem;
+    pub use core::ptr::{self, NonNull};
+    pub use core::slice;
+}
+
+use imports::*;
 
 /// A marker trait for types that are "safe" to bump alloc.
 ///

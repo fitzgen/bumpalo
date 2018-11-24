@@ -63,3 +63,13 @@ let scooter = bump.alloc(Doggo {
 assert!(scooter.scritches_required);
 ```
 
+### `#![no_std]` Support
+
+Requires the `alloc` nightly feature. Disable the on-by-default `"std"` feature:
+
+```toml
+[dependencies.bumpalo]
+version = "1"
+default-features = false
+```
+
