@@ -1,7 +1,12 @@
 [package]
-name = "bumpalo"
-version = "0.1.0"
 authors = ["Nick Fitzgerald <fitzgen@gmail.com>"]
+categories = ["memory-management", "rust-patterns", "no-std"]
+description = "A fast bump allocation arena for Rust."
+documentation = "https://docs.rs/id-arena"
+license = "MIT/Apache-2.0"
+name = "bumpalo"
+repository = "https://github.com/fitzgen/bumpalo"
+version = "1.0.0"
 
 [dev-dependencies]
 quickcheck = "0.7.1"
