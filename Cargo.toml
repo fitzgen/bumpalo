@@ -6,7 +6,7 @@ documentation = "https://docs.rs/id-arena"
 license = "MIT/Apache-2.0"
 name = "bumpalo"
 repository = "https://github.com/fitzgen/bumpalo"
-version = "1.0.0"
+version = "1.0.1"
 
 [dev-dependencies]
 quickcheck = "0.7.1"

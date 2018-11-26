@@ -81,7 +81,6 @@ default-features = false
 
 #![deny(missing_debug_implementations)]
 #![deny(missing_docs)]
-
 // In no-std mode, use the alloc crate to get `Vec`.
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(not(feature = "std"), feature(alloc))]
@@ -383,6 +382,30 @@ impl Bump {
     /// `f` is invoked in order of allocation: oldest chunks first, newest
     /// chunks last.
     ///
+    /// ## Safety
+    ///
+    /// Because this method takes `&mut self`, we know that the bump arena
+    /// reference is unique and therefore there aren't any active references to
+    /// any of the objects we've allocated in it either. This potential aliasing
+    /// of exclusive references is one common footgun for unsafe code that we
+    /// don't need to worry about here.
+    ///
+    /// However, there could be regions of uninitilized memory used as padding
+    /// between allocations. Reading uninitialized memory is big time undefined
+    /// behavior!
+    ///
+    /// The only way to guarantee that there is no padding between allocations
+    /// is if both of these properties hold:
+    ///
+    /// 1. Every object allocated in this arena has the same alignment.
+    /// 2. Every object's size is a multiple of its alignment.
+    ///
+    /// A simple way to fulfill these requirements is by allocating only objects
+    /// of the same type.
+    ///
+    /// If you want to use this `each_allocated_chunk` method, it is *your*
+    /// responsibility to ensure that these properties hold!
+    ///
     /// ## Example
     ///
     /// ```
@@ -390,36 +413,37 @@ impl Bump {
     ///
     /// // Allocate a bunch of things in this bump arena, potentially causing
     /// // additional memory chunks to be reserved.
-    /// for i in 0..1000 {
-    ///     bump.alloc((i, i + 1, i + 2, i + 3));
+    /// for i in 0..10000 {
+    ///     bump.alloc(i);
     /// }
     ///
-    /// // Iterate over each chunk we've bump allocated into.
-    /// bump.each_allocated_chunk(|ch| println!("chunk: {:?}", ch));
+    /// // Iterate over each chunk we've bump allocated into. This is safe
+    /// // because we have only allocated `usize` objects in this arena.
+    /// unsafe {
+    ///     bump.each_allocated_chunk(|ch| {
+    ///         println!("Used a chunk that is {} bytes long", ch.len());
+    ///     });
+    /// }
     /// ```
-    pub fn each_allocated_chunk<F>(&mut self, mut f: F)
+    pub unsafe fn each_allocated_chunk<F>(&mut self, mut f: F)
     where
         F: for<'a> FnMut(&'a [u8]),
     {
-        // Because this method takes `&mut self` we know that there can be no
-        // aliasing with references to allocated objects.
-        unsafe {
-            let mut chunk = Some(self.all_chunks.get());
-            while let Some(ch) = chunk {
-                let footer = &ch.as_ref().footer;
+        let mut chunk = Some(self.all_chunks.get());
+        while let Some(ch) = chunk {
+            let footer = &ch.as_ref().footer;
 
-                let start = ch.as_ptr() as usize;
-                let end_of_allocated_region = footer.ptr.get().as_ptr() as usize;
-                debug_assert!(end_of_allocated_region <= footer as *const _ as usize);
-                debug_assert!(end_of_allocated_region > start);
+            let start = ch.as_ptr() as usize;
+            let end_of_allocated_region = footer.ptr.get().as_ptr() as usize;
+            debug_assert!(end_of_allocated_region <= footer as *const _ as usize);
+            debug_assert!(end_of_allocated_region > start);
 
-                let len = end_of_allocated_region - start;
-                debug_assert!(len <= Chunk::SIZE);
-                let slice = slice::from_raw_parts(start as *const u8, len);
-                f(slice);
+            let len = end_of_allocated_region - start;
+            debug_assert!(len <= Chunk::SIZE);
+            let slice = slice::from_raw_parts(start as *const u8, len);
+            f(slice);
 
-                chunk = footer.next.get();
-            }
+            chunk = footer.next.get();
         }
     }
 }
