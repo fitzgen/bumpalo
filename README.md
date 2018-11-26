@@ -33,7 +33,9 @@ pointer back to the start of the arena's memory chunk. This makes mass
 deallocation *extremely* fast, but allocated objects' `Drop` implementations are
 not invoked.
 
-See [the `BumpAllocSafe` marker trait](./trait.BumpAllocSafe.html) for details.
+See [the `BumpAllocSafe` marker
+trait](https://docs.rs/bumpalo/1.0.2/bumpalo/trait.BumpAllocSafe.html) for
+details.
 
 ### What happens when the memory chunk is full?
 
