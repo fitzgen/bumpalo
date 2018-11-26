@@ -395,13 +395,12 @@ impl Bump {
     /// behavior!
     ///
     /// The only way to guarantee that there is no padding between allocations
-    /// is if both of these properties hold:
+    /// or within allocated objects is if all of these properties hold:
     ///
     /// 1. Every object allocated in this arena has the same alignment.
     /// 2. Every object's size is a multiple of its alignment.
-    ///
-    /// A simple way to fulfill these requirements is by allocating only objects
-    /// of the same type.
+    /// 3. None of the objects allocated in this arena contain any internal
+    ///    padding.
     ///
     /// If you want to use this `each_allocated_chunk` method, it is *your*
     /// responsibility to ensure that these properties hold!
