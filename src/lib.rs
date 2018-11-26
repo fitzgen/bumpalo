@@ -328,8 +328,6 @@ impl Bump {
 
     #[inline(always)]
     fn alloc_layout(&self, layout: Layout) -> NonNull<u8> {
-        debug_assert!(layout.size() <= Chunk::SIZE, "{} <= {}", layout.size(), Chunk::SIZE);
-        debug_assert!(layout.align() <= Chunk::ALIGN, "{} <= {}", layout.align(), Chunk::ALIGN);
         assert!(layout.size() <= Chunk::SIZE);
         assert!(layout.align() <= Chunk::ALIGN);
 
@@ -357,8 +355,14 @@ impl Bump {
     // parent bump set because there isn't enough room in our current chunk.
     #[inline(never)]
     fn alloc_layout_slow(&self, layout: Layout) -> NonNull<u8> {
-        debug_assert!(layout.size() <= Chunk::SIZE, "we already check this in `alloc`");
-        debug_assert!(layout.align() <= Chunk::ALIGN, "we already check this in `alloc`");
+        debug_assert!(
+            layout.size() <= Chunk::SIZE,
+            "we already check this in `alloc`"
+        );
+        debug_assert!(
+            layout.align() <= Chunk::ALIGN,
+            "we already check this in `alloc`"
+        );
 
         unsafe {
             // Get a new chunk from the global allocator.
@@ -455,6 +459,16 @@ impl Bump {
             chunk = footer.next.get();
         }
     }
+}
+
+unsafe impl<'a> alloc::Alloc for &'a Bump {
+    #[inline(always)]
+    unsafe fn alloc(&mut self, layout: Layout) -> Result<NonNull<u8>, alloc::AllocErr> {
+        Ok(self.alloc_layout(layout))
+    }
+
+    #[inline(always)]
+    unsafe fn dealloc(&mut self, _ptr: NonNull<u8>, _layout: Layout) {}
 }
 
 // Maximum typical overhead per allocation imposed by allocators for
