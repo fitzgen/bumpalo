@@ -1,7 +1,7 @@
 extern crate bumpalo;
 extern crate quickcheck;
 
-use bumpalo::{BumpAllocSafe, Bump};
+use bumpalo::{Bump, BumpAllocSafe};
 use quickcheck::{quickcheck, Arbitrary, Gen};
 use std::mem;
 

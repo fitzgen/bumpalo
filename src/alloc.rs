@@ -63,9 +63,7 @@ impl UnstableLayoutMethods for Layout {
             .size()
             .checked_add(self.padding_needed_for(self.align()))
             .ok_or(new_layout_err())?;
-        let alloc_size = padded_size
-            .checked_mul(n)
-            .ok_or(new_layout_err())?;
+        let alloc_size = padded_size.checked_mul(n).ok_or(new_layout_err())?;
 
         unsafe {
             // self.align is already known to be valid and alloc_size has been
