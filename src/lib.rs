@@ -311,42 +311,51 @@ impl Bump {
     /// ## Panics
     ///
     /// Panics if `size_of::<T>() > 65520` or if `align_of::<T>() > 8`.
-    #[inline]
+    #[inline(always)]
     pub fn alloc<T: BumpAllocSafe>(&self, val: T) -> &mut T {
-        let size = mem::size_of::<T>();
-        let align = mem::align_of::<T>();
-        assert!(size <= Chunk::SIZE);
-        assert!(align <= Chunk::ALIGN);
+        let layout = Layout::new::<T>();
+
+        unsafe {
+            let p = self.alloc_layout(layout);
+            let p = p.as_ptr() as *mut T;
+            ptr::write(p, val);
+            &mut *p
+        }
+    }
+
+    #[inline(always)]
+    fn alloc_layout(&self, layout: Layout) -> NonNull<u8> {
+        debug_assert!(layout.size() <= Chunk::SIZE, "{} <= {}", layout.size(), Chunk::SIZE);
+        debug_assert!(layout.align() <= Chunk::ALIGN, "{} <= {}", layout.align(), Chunk::ALIGN);
+        assert!(layout.size() <= Chunk::SIZE);
+        assert!(layout.align() <= Chunk::ALIGN);
 
         unsafe {
             let current_chunk = self.current_chunk.get();
             let footer = &current_chunk.as_ref().footer;
             let ptr = footer.ptr.get().as_ptr() as usize;
-            let ptr = round_up_to(ptr, align);
+            let ptr = round_up_to(ptr, layout.align());
             let end = footer as *const _ as usize;
             debug_assert!(ptr <= end);
 
-            if size < (end - ptr) {
-                let p = ptr as *mut T;
-                ptr::write(p, val);
-                let new_ptr = ptr + size;
+            if layout.size() < (end - ptr) {
+                let p = ptr as *mut u8;
+                let new_ptr = ptr + layout.size();
                 debug_assert!(new_ptr <= footer as *const _ as usize);
                 footer.ptr.set(NonNull::new_unchecked(new_ptr as *mut u8));
-                return &mut *p;
+                return NonNull::new_unchecked(p);
             }
         }
 
-        self.alloc_slow(val)
+        self.alloc_layout_slow(layout)
     }
 
     // Slow path allocation for when we need to allocate a new chunk from the
     // parent bump set because there isn't enough room in our current chunk.
     #[inline(never)]
-    fn alloc_slow<T: BumpAllocSafe>(&self, val: T) -> &mut T {
-        let size = mem::size_of::<T>();
-        let align = mem::align_of::<T>();
-        debug_assert!(size <= Chunk::SIZE, "we already check this in `alloc`");
-        debug_assert!(align <= Chunk::ALIGN, "we already check this in `alloc`");
+    fn alloc_layout_slow(&self, layout: Layout) -> NonNull<u8> {
+        debug_assert!(layout.size() <= Chunk::SIZE, "we already check this in `alloc`");
+        debug_assert!(layout.align() <= Chunk::ALIGN, "we already check this in `alloc`");
 
         unsafe {
             // Get a new chunk from the global allocator.
@@ -366,15 +375,11 @@ impl Bump {
 
             // Move the bump ptr finger ahead to allocate room for `val`.
             let footer = &chunk.as_ref().footer;
-            let ptr = footer.ptr.get().as_ptr() as usize + size;
+            let ptr = footer.ptr.get().as_ptr() as usize + layout.size();
             debug_assert!(ptr <= footer as *const _ as usize);
             footer.ptr.set(NonNull::new_unchecked(ptr as *mut u8));
 
-            // Write `val` into the allocated space at the start of the new
-            // chunk and return a reference to it.
-            let p = chunk.cast::<T>().as_ptr();
-            ptr::write(p, val);
-            &mut *p
+            chunk.cast::<u8>()
         }
     }
 
