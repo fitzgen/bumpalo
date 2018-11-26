@@ -87,6 +87,9 @@ default-features = false
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(not(feature = "std"), feature(alloc))]
 
+extern crate core;
+
+mod alloc;
 mod impls;
 
 #[cfg(feature = "std")]
