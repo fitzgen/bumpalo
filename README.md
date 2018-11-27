@@ -70,6 +70,34 @@ let scooter = bump.alloc(Doggo {
 assert!(scooter.scritches_required);
 ```
 
+### Collections
+
+When the on-by-default `"collections"` feature is enabled, a fork of some of the
+`std` library's collections are available in the `collections` module. These
+collection types are modified to allocate their space inside `bumpalo::Bump`
+arenas.
+
+```rust
+use bumpalo::{Bump, collections::Vec};
+
+// Create a new bump arena.
+let bump = Bump::new();
+
+// Create a vector of integers whose storage is backed by the bump arena. The
+// vector cannot outlive its backing arena, and this property is enforced with
+// Rust's lifetime rules.
+let mut v = Vec::new_in(&bump);
+
+// Push a bunch of integers onto `v`!
+for i in 0..100 {
+    v.push(i);
+}
+```
+
+Eventually [all `std` collection types will be parameterized by an
+allocator](https://github.com/rust-lang/rust/issues/42774) and we can remove
+this `collections` module and use the `std` versions.
+
 ### `#![no_std]` Support
 
 Requires the `alloc` nightly feature. Disable the on-by-default `"std"` feature:

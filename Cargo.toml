@@ -18,7 +18,8 @@ path = "benches/benches.rs"
 harness = false
 
 [features]
-default = ["std"]
+default = ["collections", "std"]
+collections = ["std"]
 std = []
 
 # [profile.bench]
