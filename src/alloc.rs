@@ -25,7 +25,11 @@ fn new_layout_err() -> LayoutErr {
     Layout::from_size_align(1, 3).unwrap_err()
 }
 
-trait UnstableLayoutMethods {
+pub fn handle_alloc_error(layout: Layout) -> ! {
+    panic!("encountered allocation error: {:?}", layout)
+}
+
+pub trait UnstableLayoutMethods {
     fn padding_needed_for(&self, align: usize) -> usize;
     fn repeat(&self, n: usize) -> Result<(Layout, usize), LayoutErr>;
     fn array<T>(n: usize) -> Result<Layout, LayoutErr>;

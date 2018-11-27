@@ -89,6 +89,8 @@ default-features = false
 
 extern crate core;
 
+pub mod collections;
+
 mod alloc;
 mod impls;
 
