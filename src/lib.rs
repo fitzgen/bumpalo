@@ -169,40 +169,35 @@ pub trait BumpAllocSafe {}
 /// ```
 #[derive(Debug)]
 pub struct Bump {
-    current_chunk: Cell<NonNull<Chunk>>,
-    all_chunks: Cell<NonNull<Chunk>>,
-}
+    // The current chunk we are bump allocating within.
+    current_chunk_footer: Cell<NonNull<ChunkFooter>>,
 
-#[repr(C)]
-struct Chunk {
-    _data: [UnsafeCell<u8>; Chunk::SIZE],
-    footer: ChunkFooter,
-}
-
-impl fmt::Debug for Chunk {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let p = &self._data as *const _;
-        f.debug_struct("Chunk")
-            .field("_data", &p)
-            .field("footer", &self.footer)
-            .finish()
-    }
+    // The first chunk we were ever given, which is the head of the intrusive
+    // linked list of all chunks this arena has been bump allocating within.
+    all_chunk_footers: Cell<NonNull<ChunkFooter>>,
 }
 
 #[repr(C)]
 #[derive(Debug)]
 struct ChunkFooter {
-    next: Cell<Option<NonNull<Chunk>>>,
+    // Pointer to the start of this chunk allocation. This footer is always at
+    // the end of the chunk.
+    data: NonNull<u8>,
+
+    // Link to the next chunk, if any.
+    next: Cell<Option<NonNull<ChunkFooter>>>,
+
+    // Bump allocation finger that is always in the range `self.data..=self`.
     ptr: Cell<NonNull<u8>>,
 }
 
 impl Drop for Bump {
     fn drop(&mut self) {
         unsafe {
-            let mut chunk = Some(self.all_chunks.get());
-            while let Some(ch) = chunk {
-                chunk = ch.as_ref().footer.next.get();
-                dealloc(ch.as_ptr() as *mut u8, Chunk::layout());
+            let mut footer = Some(self.all_chunk_footers.get());
+            while let Some(f) = footer {
+                footer = f.as_ref().next.get();
+                dealloc(f.as_ref().data.as_ptr(), Bump::chunk_layout());
             }
         }
     }
@@ -214,7 +209,24 @@ pub(crate) fn round_up_to(n: usize, divisor: usize) -> usize {
     (n + divisor - 1) & !(divisor - 1)
 }
 
+// Maximum typical overhead per allocation imposed by allocators for
+// wasm32-unknown-unknown.
+const MALLOC_OVERHEAD: usize = 16;
+
+const CHUNK_SIZE_WITH_FOOTER: usize = (1 << 16) - MALLOC_OVERHEAD;
+const CHUNK_SIZE: usize = CHUNK_SIZE_WITH_FOOTER - mem::size_of::<ChunkFooter>();
+const CHUNK_ALIGN: usize = 8;
+
 impl Bump {
+    #[inline]
+    fn chunk_layout() -> Layout {
+        if cfg!(debug_assertions) {
+            Layout::from_size_align(CHUNK_SIZE_WITH_FOOTER, CHUNK_ALIGN).unwrap()
+        } else {
+            unsafe { Layout::from_size_align_unchecked(CHUNK_SIZE_WITH_FOOTER, CHUNK_ALIGN) }
+        }
+    }
+
     /// Construct a new arena to bump allocate into.
     ///
     /// ## Example
@@ -224,24 +236,25 @@ impl Bump {
     /// # let _ = bump;
     /// ```
     pub fn new() -> Bump {
-        let chunk = Self::chunk();
+        let chunk_footer = Self::new_chunk();
         Bump {
-            current_chunk: Cell::new(chunk),
-            all_chunks: Cell::new(chunk),
+            current_chunk_footer: Cell::new(chunk_footer),
+            all_chunk_footers: Cell::new(chunk_footer),
         }
     }
 
-    fn chunk() -> NonNull<Chunk> {
+    fn new_chunk() -> NonNull<ChunkFooter> {
         unsafe {
-            let chunk = alloc(Chunk::layout());
-            assert!(!chunk.is_null());
+            let data = alloc(Bump::chunk_layout());
+            assert!(!data.is_null());
+            let data = NonNull::new_unchecked(data);
 
             let next = Cell::new(None);
-            let ptr = Cell::new(NonNull::new_unchecked(chunk));
-            let footer_ptr = chunk as usize + Chunk::SIZE;
-            ptr::write(footer_ptr as *mut ChunkFooter, ChunkFooter { next, ptr });
-
-            NonNull::new_unchecked(chunk as *mut Chunk)
+            let ptr = Cell::new(data);
+            let footer_ptr = data.as_ptr() as usize + CHUNK_SIZE;
+            let footer_ptr = footer_ptr as *mut ChunkFooter;
+            ptr::write(footer_ptr, ChunkFooter { data, next, ptr });
+            NonNull::new_unchecked(footer_ptr)
         }
     }
 
@@ -281,25 +294,46 @@ impl Bump {
         // Takes `&mut self` so `self` must be unique and there can't be any
         // borrows active that would get invalidated by resetting.
         unsafe {
-            let mut chunk = Some(self.all_chunks.get());
+            let mut footer = Some(self.all_chunk_footers.get());
 
             // Reset the pointer in each of our chunks.
-            while let Some(ch) = chunk {
-                let footer = &ch.as_ref().footer;
-                footer
-                    .ptr
-                    .set(NonNull::new_unchecked(ch.as_ptr() as *mut u8));
-                chunk = footer.next.get();
+            while let Some(f) = footer {
+                footer = f.as_ref().next.get();
 
-                // If this is not the current chunk, deallocate it.
-                if ch != self.current_chunk.get() {
-                    dealloc(ch.as_ptr() as *mut u8, Chunk::layout());
+                if f == self.current_chunk_footer.get() {
+                    // If this is the current chunk, then reset the bump finger
+                    // to the start of the chunk.
+                    f.as_ref()
+                        .ptr
+                        .set(NonNull::new_unchecked(f.as_ref().data.as_ptr() as *mut u8));
+                    f.as_ref().next.set(None);
+                    self.all_chunk_footers.set(f);
+                } else {
+                    // If this is not the current chunk, return it to the global
+                    // allocator.
+                    dealloc(f.as_ref().data.as_ptr(), Bump::chunk_layout());
                 }
             }
 
-            // And reset this bump allocator's only chunk to the current chunk.
-            self.current_chunk.get().as_ref().footer.next.set(None);
-            self.all_chunks.set(self.current_chunk.get());
+            debug_assert_eq!(
+                self.all_chunk_footers.get(),
+                self.current_chunk_footer.get(),
+                "The current chunk should be the list head of all of our chunks"
+            );
+            debug_assert!(
+                self.current_chunk_footer
+                    .get()
+                    .as_ref()
+                    .next
+                    .get()
+                    .is_none(),
+                "We should only have a single chunk"
+            );
+            debug_assert_eq!(
+                self.current_chunk_footer.get().as_ref().ptr.get(),
+                self.current_chunk_footer.get().as_ref().data,
+                "Our chunk's bump finger should be reset to the start of its allocation"
+            );
         }
     }
 
@@ -330,12 +364,12 @@ impl Bump {
 
     #[inline(always)]
     fn alloc_layout(&self, layout: Layout) -> NonNull<u8> {
-        assert!(layout.size() <= Chunk::SIZE);
-        assert!(layout.align() <= Chunk::ALIGN);
+        assert!(layout.size() <= CHUNK_SIZE);
+        assert!(layout.align() <= CHUNK_ALIGN);
 
         unsafe {
-            let current_chunk = self.current_chunk.get();
-            let footer = &current_chunk.as_ref().footer;
+            let footer = self.current_chunk_footer.get();
+            let footer = footer.as_ref();
             let ptr = footer.ptr.get().as_ptr() as usize;
             let ptr = round_up_to(ptr, layout.align());
             let end = footer as *const _ as usize;
@@ -358,37 +392,36 @@ impl Bump {
     #[inline(never)]
     fn alloc_layout_slow(&self, layout: Layout) -> NonNull<u8> {
         debug_assert!(
-            layout.size() <= Chunk::SIZE,
+            layout.size() <= CHUNK_SIZE,
             "we already check this in `alloc`"
         );
         debug_assert!(
-            layout.align() <= Chunk::ALIGN,
+            layout.align() <= CHUNK_ALIGN,
             "we already check this in `alloc`"
         );
 
         unsafe {
             // Get a new chunk from the global allocator.
-            let chunk = Self::chunk();
+            let footer = Bump::new_chunk();
 
             // Set our current chunk's next link to this new chunk.
-            self.current_chunk
+            self.current_chunk_footer
                 .get()
                 .as_ref()
-                .footer
                 .next
-                .set(Some(chunk));
+                .set(Some(footer));
 
             // Set the new chunk as our new current chunk.
-            self.current_chunk
-                .set(NonNull::new_unchecked(chunk.as_ptr()));
+            self.current_chunk_footer.set(footer);
 
             // Move the bump ptr finger ahead to allocate room for `val`.
-            let footer = &chunk.as_ref().footer;
+            let footer = footer.as_ref();
             let ptr = footer.ptr.get().as_ptr() as usize + layout.size();
             debug_assert!(ptr <= footer as *const _ as usize);
             footer.ptr.set(NonNull::new_unchecked(ptr as *mut u8));
 
-            chunk.cast::<u8>()
+            // Return a pointer to the start of this chunk.
+            footer.data.cast::<u8>()
         }
     }
 
@@ -444,21 +477,21 @@ impl Bump {
     where
         F: for<'a> FnMut(&'a [u8]),
     {
-        let mut chunk = Some(self.all_chunks.get());
-        while let Some(ch) = chunk {
-            let footer = &ch.as_ref().footer;
+        let mut footer = Some(self.all_chunk_footers.get());
+        while let Some(foot) = footer {
+            let foot = foot.as_ref();
 
-            let start = ch.as_ptr() as usize;
-            let end_of_allocated_region = footer.ptr.get().as_ptr() as usize;
-            debug_assert!(end_of_allocated_region <= footer as *const _ as usize);
+            let start = foot.data.as_ptr() as usize;
+            let end_of_allocated_region = foot.ptr.get().as_ptr() as usize;
+            debug_assert!(end_of_allocated_region <= foot as *const _ as usize);
             debug_assert!(end_of_allocated_region > start);
 
             let len = end_of_allocated_region - start;
-            debug_assert!(len <= Chunk::SIZE);
+            debug_assert!(len <= CHUNK_SIZE);
             let slice = slice::from_raw_parts(start as *const u8, len);
             f(slice);
 
-            chunk = footer.next.get();
+            footer = foot.next.get();
         }
     }
 }
@@ -473,22 +506,7 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
     unsafe fn dealloc(&mut self, _ptr: NonNull<u8>, _layout: Layout) {}
 }
 
-// Maximum typical overhead per allocation imposed by allocators for
-// wasm32-unknown-unknown.
-const MALLOC_OVERHEAD: usize = 16;
-
-impl Chunk {
-    const SIZE_WITH_FOOTER: usize = (1 << 16) - MALLOC_OVERHEAD;
-    const SIZE: usize = Chunk::SIZE_WITH_FOOTER - mem::size_of::<ChunkFooter>();
-    const ALIGN: usize = 8;
-
-    #[inline]
-    fn layout() -> Layout {
-        Layout::new::<Self>()
-    }
-}
-
 #[test]
-fn chunk_footer_is_two_words() {
-    assert_eq!(mem::size_of::<ChunkFooter>(), mem::size_of::<usize>() * 2);
+fn chunk_footer_is_three_words() {
+    assert_eq!(mem::size_of::<ChunkFooter>(), mem::size_of::<usize>() * 3);
 }
