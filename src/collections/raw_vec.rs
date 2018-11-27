@@ -200,7 +200,7 @@ impl<'a, T> RawVec<'a, T> {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// # #![feature(alloc, raw_vec_internals)]
     /// # extern crate alloc;
     /// # use std::ptr;
@@ -415,7 +415,7 @@ impl<'a, T> RawVec<'a, T> {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// # #![feature(alloc, raw_vec_internals)]
     /// # extern crate alloc;
     /// # use std::ptr;

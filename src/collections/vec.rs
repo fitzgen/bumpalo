@@ -2074,7 +2074,7 @@ impl<'bump, T: 'bump> FusedIterator for IntoIter<T> {}
 ///
 /// [`drain`]: struct.Vec.html#method.drain
 /// [`Vec`]: struct.Vec.html
-pub struct Drain<'a, 'bump, T: 'a> {
+pub struct Drain<'a, 'bump, T: 'a + 'bump> {
     /// Index of tail to preserve
     tail_start: usize,
     /// Length of tail
@@ -2084,7 +2084,7 @@ pub struct Drain<'a, 'bump, T: 'a> {
     vec: NonNull<Vec<'bump, T>>,
 }
 
-impl<'a, 'bump, T: 'a + fmt::Debug> fmt::Debug for Drain<'a, 'bump, T> {
+impl<'a, 'bump, T: 'a + 'bump + fmt::Debug> fmt::Debug for Drain<'a, 'bump, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_tuple("Drain").field(&self.iter.as_slice()).finish()
     }
@@ -2151,7 +2151,7 @@ impl<'a, 'bump, T> FusedIterator for Drain<'a, 'bump, T> {}
 /// [`splice()`]: struct.Vec.html#method.splice
 /// [`Vec`]: struct.Vec.html
 #[derive(Debug)]
-pub struct Splice<'a, 'bump, I: Iterator + 'a> {
+pub struct Splice<'a, 'bump, I: Iterator + 'a + 'bump> {
     drain: Drain<'a, 'bump, I::Item>,
     replace_with: I,
 }
@@ -2258,7 +2258,7 @@ impl<'a, 'bump, T> Drain<'a, 'bump, T> {
 
 /// An iterator produced by calling `drain_filter` on Vec.
 #[derive(Debug)]
-pub struct DrainFilter<'a, 'bump, T: 'a + 'bump, F>
+pub struct DrainFilter<'a, 'bump: 'a, T: 'a + 'bump, F>
 where
     F: FnMut(&mut T) -> bool,
 {
