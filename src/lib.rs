@@ -98,6 +98,7 @@ mod impls;
 mod imports {
     pub use std::alloc::{alloc, dealloc, Layout};
     pub use std::cell::{Cell, UnsafeCell};
+    pub use std::cmp;
     pub use std::fmt;
     pub use std::mem;
     pub use std::ptr::{self, NonNull};
@@ -109,6 +110,7 @@ mod imports {
     extern crate alloc;
     pub use self::alloc::alloc::{alloc, dealloc, Layout};
     pub use core::cell::{Cell, UnsafeCell};
+    pub use core::cmp;
     pub use core::fmt;
     pub use core::mem;
     pub use core::ptr::{self, NonNull};
@@ -184,6 +186,9 @@ struct ChunkFooter {
     // the end of the chunk.
     data: NonNull<u8>,
 
+    // The layout of this chunk's allocation.
+    layout: Layout,
+
     // Link to the next chunk, if any.
     next: Cell<Option<NonNull<ChunkFooter>>>,
 
@@ -197,7 +202,7 @@ impl Drop for Bump {
             let mut footer = Some(self.all_chunk_footers.get());
             while let Some(f) = footer {
                 footer = f.as_ref().next.get();
-                dealloc(f.as_ref().data.as_ptr(), Bump::chunk_layout());
+                dealloc(f.as_ref().data.as_ptr(), Bump::default_chunk_layout());
             }
         }
     }
@@ -210,20 +215,27 @@ pub(crate) fn round_up_to(n: usize, divisor: usize) -> usize {
 }
 
 // Maximum typical overhead per allocation imposed by allocators for
-// wasm32-unknown-unknown.
+// wasm32-unknown-unknown (dlmalloc and wee_alloc).
 const MALLOC_OVERHEAD: usize = 16;
 
-const CHUNK_SIZE_WITH_FOOTER: usize = (1 << 16) - MALLOC_OVERHEAD;
-const CHUNK_SIZE: usize = CHUNK_SIZE_WITH_FOOTER - mem::size_of::<ChunkFooter>();
-const CHUNK_ALIGN: usize = 8;
+// A wasm page minus the typical malloc overhead. The goal is to allocate a
+// single wasm page for a chunk and use as much of it as possible without
+// triggering the underlying malloc to grow memory for another page.
+const DEFAULT_CHUNK_SIZE_WITH_FOOTER: usize = (1 << 16) - MALLOC_OVERHEAD;
+const DEFAULT_CHUNK_SIZE: usize = DEFAULT_CHUNK_SIZE_WITH_FOOTER - mem::size_of::<ChunkFooter>();
+const DEFAULT_CHUNK_ALIGN: usize = mem::align_of::<ChunkFooter>();
 
 impl Bump {
-    #[inline]
-    fn chunk_layout() -> Layout {
+    fn default_chunk_layout() -> Layout {
         if cfg!(debug_assertions) {
-            Layout::from_size_align(CHUNK_SIZE_WITH_FOOTER, CHUNK_ALIGN).unwrap()
+            Layout::from_size_align(DEFAULT_CHUNK_SIZE_WITH_FOOTER, DEFAULT_CHUNK_ALIGN).unwrap()
         } else {
-            unsafe { Layout::from_size_align_unchecked(CHUNK_SIZE_WITH_FOOTER, CHUNK_ALIGN) }
+            unsafe {
+                Layout::from_size_align_unchecked(
+                    DEFAULT_CHUNK_SIZE_WITH_FOOTER,
+                    DEFAULT_CHUNK_ALIGN,
+                )
+            }
         }
     }
 
@@ -236,24 +248,56 @@ impl Bump {
     /// # let _ = bump;
     /// ```
     pub fn new() -> Bump {
-        let chunk_footer = Self::new_chunk();
+        let chunk_footer = Self::new_chunk(None);
         Bump {
             current_chunk_footer: Cell::new(chunk_footer),
             all_chunk_footers: Cell::new(chunk_footer),
         }
     }
 
-    fn new_chunk() -> NonNull<ChunkFooter> {
+    /// Allocate a new chunk and return its initialized footer.
+    ///
+    /// If given, `alloc_layout` is the layout of the allocation request that
+    /// triggered us to fall back to allocating a new chunk of memory.
+    fn new_chunk(alloc_layout: Option<Layout>) -> NonNull<ChunkFooter> {
+        let layout = alloc_layout.map_or_else(Bump::default_chunk_layout, |l| {
+            let align = cmp::max(l.align(), mem::align_of::<ChunkFooter>());
+            if l.size() < DEFAULT_CHUNK_SIZE {
+                // If it is a small allocation, just use our default chunk size,
+                // but make sure it is aligned for the requested allocation.
+                Layout::from_size_align(DEFAULT_CHUNK_SIZE_WITH_FOOTER, align).unwrap()
+            } else {
+                // If the requested allocation is bigger than we can fit in one
+                // of our default chunks, make a special chunk just for this
+                // allocation.
+                //
+                // Round the size up to a multiple of our footer's alignment so
+                // that we can be sure that our footer is properly aligned.
+                let size = round_up_to(l.size(), mem::align_of::<ChunkFooter>());
+                Layout::from_size_align(size + mem::size_of::<ChunkFooter>(), align).unwrap()
+            }
+        });
+
+        let size = layout.size();
+
         unsafe {
-            let data = alloc(Bump::chunk_layout());
+            let data = alloc(layout);
             assert!(!data.is_null());
             let data = NonNull::new_unchecked(data);
 
             let next = Cell::new(None);
             let ptr = Cell::new(data);
-            let footer_ptr = data.as_ptr() as usize + CHUNK_SIZE;
+            let footer_ptr = data.as_ptr() as usize + size - mem::size_of::<ChunkFooter>();
             let footer_ptr = footer_ptr as *mut ChunkFooter;
-            ptr::write(footer_ptr, ChunkFooter { data, next, ptr });
+            ptr::write(
+                footer_ptr,
+                ChunkFooter {
+                    data,
+                    layout,
+                    next,
+                    ptr,
+                },
+            );
             NonNull::new_unchecked(footer_ptr)
         }
     }
@@ -311,7 +355,7 @@ impl Bump {
                 } else {
                     // If this is not the current chunk, return it to the global
                     // allocator.
-                    dealloc(f.as_ref().data.as_ptr(), Bump::chunk_layout());
+                    dealloc(f.as_ref().data.as_ptr(), f.as_ref().layout.clone());
                 }
             }
 
@@ -346,10 +390,6 @@ impl Bump {
     /// let x = bump.alloc("hello");
     /// assert_eq!(*x, "hello");
     /// ```
-    ///
-    /// ## Panics
-    ///
-    /// Panics if `size_of::<T>() > 65520` or if `align_of::<T>() > 8`.
     #[inline(always)]
     pub fn alloc<T: BumpAllocSafe>(&self, val: T) -> &mut T {
         let layout = Layout::new::<T>();
@@ -364,9 +404,6 @@ impl Bump {
 
     #[inline(always)]
     fn alloc_layout(&self, layout: Layout) -> NonNull<u8> {
-        assert!(layout.size() <= CHUNK_SIZE);
-        assert!(layout.align() <= CHUNK_ALIGN);
-
         unsafe {
             let footer = self.current_chunk_footer.get();
             let footer = footer.as_ref();
@@ -391,18 +428,10 @@ impl Bump {
     // parent bump set because there isn't enough room in our current chunk.
     #[inline(never)]
     fn alloc_layout_slow(&self, layout: Layout) -> NonNull<u8> {
-        debug_assert!(
-            layout.size() <= CHUNK_SIZE,
-            "we already check this in `alloc`"
-        );
-        debug_assert!(
-            layout.align() <= CHUNK_ALIGN,
-            "we already check this in `alloc`"
-        );
-
         unsafe {
             // Get a new chunk from the global allocator.
-            let footer = Bump::new_chunk();
+            let size = layout.size();
+            let footer = Bump::new_chunk(Some(layout));
 
             // Set our current chunk's next link to this new chunk.
             self.current_chunk_footer
@@ -416,8 +445,13 @@ impl Bump {
 
             // Move the bump ptr finger ahead to allocate room for `val`.
             let footer = footer.as_ref();
-            let ptr = footer.ptr.get().as_ptr() as usize + layout.size();
-            debug_assert!(ptr <= footer as *const _ as usize);
+            let ptr = footer.ptr.get().as_ptr() as usize + size;
+            debug_assert!(
+                ptr <= footer as *const _ as usize,
+                "{} <= {}",
+                ptr,
+                footer as *const _ as usize
+            );
             footer.ptr.set(NonNull::new_unchecked(ptr as *mut u8));
 
             // Return a pointer to the start of this chunk.
@@ -487,7 +521,7 @@ impl Bump {
             debug_assert!(end_of_allocated_region > start);
 
             let len = end_of_allocated_region - start;
-            debug_assert!(len <= CHUNK_SIZE);
+            debug_assert!(len <= DEFAULT_CHUNK_SIZE);
             let slice = slice::from_raw_parts(start as *const u8, len);
             f(slice);
 
@@ -508,5 +542,5 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
 
 #[test]
 fn chunk_footer_is_three_words() {
-    assert_eq!(mem::size_of::<ChunkFooter>(), mem::size_of::<usize>() * 3);
+    assert_eq!(mem::size_of::<ChunkFooter>(), mem::size_of::<usize>() * 5);
 }
