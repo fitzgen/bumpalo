@@ -2270,7 +2270,8 @@ where
 }
 
 impl<'a, 'bump, T, F> Iterator for DrainFilter<'a, 'bump, T, F>
-    where F: FnMut(&mut T) -> bool,
+where
+    F: FnMut(&mut T) -> bool,
 {
     type Item = T;
 
@@ -2303,7 +2304,8 @@ impl<'a, 'bump, T, F> Iterator for DrainFilter<'a, 'bump, T, F>
 }
 
 impl<'a, 'bump, T, F> Drop for DrainFilter<'a, 'bump, T, F>
-    where F: FnMut(&mut T) -> bool,
+where
+    F: FnMut(&mut T) -> bool,
 {
     fn drop(&mut self) {
         self.for_each(drop);
