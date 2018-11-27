@@ -412,9 +412,9 @@ impl Bump {
             let end = footer as *const _ as usize;
             debug_assert!(ptr <= end);
 
-            if layout.size() < (end - ptr) {
+            let new_ptr = ptr + layout.size();
+            if new_ptr <= end {
                 let p = ptr as *mut u8;
-                let new_ptr = ptr + layout.size();
                 debug_assert!(new_ptr <= footer as *const _ as usize);
                 footer.ptr.set(NonNull::new_unchecked(new_ptr as *mut u8));
                 return NonNull::new_unchecked(p);
