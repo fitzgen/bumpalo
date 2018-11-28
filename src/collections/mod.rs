@@ -15,6 +15,10 @@ mod raw_vec;
 pub mod vec;
 pub use self::vec::Vec;
 
+mod str;
+pub mod string;
+pub use self::string::String;
+
 // pub mod binary_heap;
 // mod btree;
 // pub mod linked_list;
