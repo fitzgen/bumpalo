@@ -530,7 +530,7 @@ impl Bump {
     /// }
     ///
     /// // Iterate over each chunk we've bump allocated into. This is safe
-    /// // because we have only allocated `usize` objects in this arena.
+    /// // because we have only allocated `i32` objects in this arena.
     /// unsafe {
     ///     bump.each_allocated_chunk(|ch| {
     ///         println!("Used a chunk that is {} bytes long", ch.len());
