@@ -43,11 +43,11 @@
 //! it. You can do the reverse too.
 //!
 //! ```
-//! use bumpalo::{Bump, vec, collections::String};
+//! use bumpalo::{Bump, collections::String};
 //!
 //! let b = Bump::new();
 //!
-//! let sparkle_heart = vec![&b, 240, 159, 146, 150];
+//! let sparkle_heart = bumpalo::vec![in &b; 240, 159, 146, 150];
 //!
 //! // We know these bytes are valid, so we'll use `unwrap()`.
 //! let sparkle_heart = String::from_utf8(sparkle_heart).unwrap();
@@ -116,12 +116,12 @@ use std::str::{self, Chars, Utf8Error};
 /// the [`from_utf8`] method:
 ///
 /// ```
-/// use bumpalo::{Bump, vec, collections::String};
+/// use bumpalo::{Bump, collections::String};
 ///
 /// let b = Bump::new();
 ///
 /// // some bytes, in a vector
-/// let sparkle_heart = vec![&b, 240, 159, 146, 150];
+/// let sparkle_heart = bumpalo::vec![in &b; 240, 159, 146, 150];
 ///
 /// // We know these bytes are valid, so we'll use `unwrap()`.
 /// let sparkle_heart = String::from_utf8(sparkle_heart).unwrap();
@@ -352,17 +352,17 @@ pub struct String<'bump> {
 /// Basic usage:
 ///
 /// ```
-/// use bumpalo::{Bump, vec, collections::String};
+/// use bumpalo::{Bump, collections::String};
 ///
 /// let b = Bump::new();
 ///
 /// // some invalid bytes, in a vector
-/// let bytes = vec![&b, 0, 159];
+/// let bytes = bumpalo::vec![in &b; 0, 159];
 ///
 /// let value = String::from_utf8(bytes);
 ///
 /// assert!(value.is_err());
-/// assert_eq!(vec![&b, 0, 159], value.unwrap_err().into_bytes());
+/// assert_eq!(bumpalo::vec![in &b; 0, 159], value.unwrap_err().into_bytes());
 /// ```
 #[derive(Debug)]
 pub struct FromUtf8Error<'bump> {
@@ -504,12 +504,12 @@ impl<'bump> String<'bump> {
     /// Basic usage:
     ///
     /// ```
-    /// use bumpalo::{Bump, vec, collections::String};
+    /// use bumpalo::{Bump, collections::String};
     ///
     /// let b = Bump::new();
     ///
     /// // some bytes, in a vector
-    /// let sparkle_heart = vec![&b, 240, 159, 146, 150];
+    /// let sparkle_heart = bumpalo::vec![in &b; 240, 159, 146, 150];
     ///
     /// // We know these bytes are valid, so we'll use `unwrap()`.
     /// let sparkle_heart = String::from_utf8(sparkle_heart).unwrap();
@@ -520,12 +520,12 @@ impl<'bump> String<'bump> {
     /// Incorrect bytes:
     ///
     /// ```
-    /// use bumpalo::{Bump, vec, collections::String};
+    /// use bumpalo::{Bump, collections::String};
     ///
     /// let b = Bump::new();
     ///
     /// // some invalid bytes, in a vector
-    /// let sparkle_heart = vec![&b, 0, 159, 146, 150];
+    /// let sparkle_heart = bumpalo::vec![in &b; 0, 159, 146, 150];
     ///
     /// assert!(String::from_utf8(sparkle_heart).is_err());
     /// ```
@@ -582,7 +582,7 @@ impl<'bump> String<'bump> {
     /// let b = Bump::new();
     ///
     /// // some bytes, in a vector
-    /// let sparkle_heart = vec![&b, 240, 159, 146, 150];
+    /// let sparkle_heart = bumpalo::vec![in &b; 240, 159, 146, 150];
     ///
     /// let sparkle_heart = String::from_utf8_lossy_in(&sparkle_heart, &b);
     ///
@@ -786,12 +786,12 @@ impl<'bump> String<'bump> {
     /// Basic usage:
     ///
     /// ```
-    /// use bumpalo::{Bump, vec, collections::String};
+    /// use bumpalo::{Bump, collections::String};
     ///
     /// let b = Bump::new();
     ///
     /// // some bytes, in a vector
-    /// let sparkle_heart = vec![&b, 240, 159, 146, 150];
+    /// let sparkle_heart = bumpalo::vec![in &b; 240, 159, 146, 150];
     ///
     /// let sparkle_heart = unsafe {
     ///     String::from_utf8_unchecked(sparkle_heart)
@@ -1633,12 +1633,12 @@ impl<'bump> FromUtf8Error<'bump> {
     /// Basic usage:
     ///
     /// ```
-    /// use bumpalo::{Bump, vec, collections::String};
+    /// use bumpalo::{Bump, collections::String};
     ///
     /// let b = Bump::new();
     ///
     /// // some invalid bytes, in a vector
-    /// let bytes = vec![&b, 0, 159];
+    /// let bytes = bumpalo::vec![in &b; 0, 159];
     ///
     /// let value = String::from_utf8(bytes);
     ///
@@ -1659,16 +1659,16 @@ impl<'bump> FromUtf8Error<'bump> {
     /// Basic usage:
     ///
     /// ```
-    /// use bumpalo::{Bump, vec, collections::String};
+    /// use bumpalo::{Bump, collections::String};
     ///
     /// let b = Bump::new();
     ///
     /// // some invalid bytes, in a vector
-    /// let bytes = vec![&b, 0, 159];
+    /// let bytes = bumpalo::vec![in &b; 0, 159];
     ///
     /// let value = String::from_utf8(bytes);
     ///
-    /// assert_eq!(vec![&b, 0, 159], value.unwrap_err().into_bytes());
+    /// assert_eq!(bumpalo::vec![in &b; 0, 159], value.unwrap_err().into_bytes());
     /// ```
     pub fn into_bytes(self) -> Vec<'bump, u8> {
         self.bytes
@@ -1691,12 +1691,12 @@ impl<'bump> FromUtf8Error<'bump> {
     /// Basic usage:
     ///
     /// ```
-    /// use bumpalo::{Bump, vec, collections::String};
+    /// use bumpalo::{Bump, collections::String};
     ///
     /// let b = Bump::new();
     ///
     /// // some invalid bytes, in a vector
-    /// let bytes = vec![&b, 0, 159];
+    /// let bytes = bumpalo::vec![in &b; 0, 159];
     ///
     /// let error = String::from_utf8(bytes).unwrap_err().utf8_error();
     ///
