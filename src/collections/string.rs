@@ -64,6 +64,7 @@ use core::char::decode_utf16;
 use core::fmt;
 use core::hash;
 use core::iter::FusedIterator;
+use core::mem;
 use core::ops::Bound::{Excluded, Included, Unbounded};
 use core::ops::{self, Add, AddAssign, Index, IndexMut, RangeBounds};
 use core::ptr;
@@ -850,6 +851,29 @@ impl<'bump> String<'bump> {
     #[inline]
     pub fn into_bytes(self) -> Vec<'bump, u8> {
         self.vec
+    }
+
+    /// Convert this `String<'bump>` into a `&'bump str`. This is analagous to
+    /// `std::string::String::into_boxed_str`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use bumpalo::{Bump, collections::String};
+    ///
+    /// let b = Bump::new();
+    ///
+    /// let s = String::from_str_in("foo", &b);
+    /// let t = s.into_bump_str();
+    /// assert_eq!("foo", t);
+    /// ```
+    pub fn into_bump_str(self) -> &'bump str {
+        let s = unsafe {
+            let s = self.as_str();
+            mem::transmute(s)
+        };
+        mem::forget(self);
+        s
     }
 
     /// Extracts a string slice containing the entire `String`.
