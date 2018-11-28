@@ -73,6 +73,31 @@ use collections::vec::Vec;
 use std::borrow::Cow;
 use std::str::{self, Chars, Utf8Error};
 
+/// Like the `format!` macro for creating `std::string::String`s but for
+/// `bumpalo::collections::String`.
+///
+/// # Examples
+///
+/// ```
+/// use bumpalo::Bump;
+///
+/// let b = Bump::new();
+///
+/// let who = "World";
+/// let s = bumpalo::format!(in &b, "Hello, {}!", who);
+/// assert_eq!(s, "Hello, World!")
+/// ```
+#[macro_export]
+macro_rules! format {
+    ( in $bump:expr, $fmt:expr, $($args:expr),* ) => {{
+        use std::fmt::Write;
+        let bump = $bump;
+        let mut s = $crate::collections::String::new_in(bump);
+        let _ = write!(&mut s, $fmt, $($args),*);
+        s
+    }}
+}
+
 /// A UTF-8 encoded, growable string.
 ///
 /// The `String` type is the most common string type that has ownership over the
