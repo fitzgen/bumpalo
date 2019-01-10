@@ -3,19 +3,20 @@ authors = ["Nick Fitzgerald <fitzgen@gmail.com>"]
 categories = ["memory-management", "rust-patterns", "no-std"]
 description = "A fast bump allocation arena for Rust."
 documentation = "https://docs.rs/id-arena"
+edition = "2018"
 license = "MIT/Apache-2.0"
 name = "bumpalo"
 repository = "https://github.com/fitzgen/bumpalo"
 version = "1.1.0"
 
-[dev-dependencies]
-quickcheck = "0.7.1"
-criterion = "0.2.5"
-
 [[bench]]
 name = "benches"
 path = "benches/benches.rs"
 harness = false
+
+[dev-dependencies]
+quickcheck = "0.7.1"
+criterion = "0.2.5"
 
 [features]
 default = ["collections", "std"]
