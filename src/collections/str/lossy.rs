@@ -10,7 +10,7 @@
 
 use core::char;
 use core::str;
-use collections::str as core_str;
+use crate::collections::str as core_str;
 use core::fmt;
 use core::fmt::Write;
 use core::mem;

@@ -68,9 +68,9 @@ use core::mem;
 use core::ops::Bound::{Excluded, Included, Unbounded};
 use core::ops::{self, Add, AddAssign, Index, IndexMut, RangeBounds};
 use core::ptr;
-use Bump;
+use crate::Bump;
 
-use collections::vec::Vec;
+use crate::collections::vec::Vec;
 use std::borrow::Cow;
 use std::str::{self, Chars, Utf8Error};
 

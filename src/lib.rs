@@ -147,7 +147,7 @@ mod imports {
     pub use core::slice;
 }
 
-use imports::*;
+use crate::imports::*;
 
 /// A marker trait for types that are "safe" to bump alloc.
 ///

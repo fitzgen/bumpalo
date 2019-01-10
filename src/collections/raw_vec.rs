@@ -11,15 +11,15 @@
 #![allow(unstable_name_collisions)]
 #![allow(dead_code)]
 
-use Bump;
+use crate::Bump;
 
 use core::cmp;
 use core::mem;
 use core::ptr::{self, NonNull};
 
-use alloc::{handle_alloc_error, Alloc, Layout, UnstableLayoutMethods};
-use collections::CollectionAllocErr;
-use collections::CollectionAllocErr::*;
+use crate::alloc::{handle_alloc_error, Alloc, Layout, UnstableLayoutMethods};
+use crate::collections::CollectionAllocErr;
+use crate::collections::CollectionAllocErr::*;
 // use boxed::Box;
 
 /// A low-level utility for more ergonomically allocating, reallocating, and deallocating
@@ -596,7 +596,7 @@ impl<'a, T> RawVec<'a, T> {
         strategy: ReserveStrategy,
     ) -> Result<(), CollectionAllocErr> {
         unsafe {
-            use alloc::AllocErr;
+            use crate::alloc::AllocErr;
 
             // NOTE: we don't early branch on ZSTs here because we want this
             // to actually catch "asking for more than usize::MAX" in that case.
