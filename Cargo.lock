@@ -52,7 +52,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "bumpalo"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "criterion 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "quickcheck 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",

@@ -1,3 +1,10 @@
+# 1.2.0
+
+Released 2019-01-15.
+
+* Fixed an overly-aggressive `debug_assert!` that had false positives.
+* Ported to Rust 2018 edition.
+
 # 1.1.0
 
 Released 2018-11-28.
