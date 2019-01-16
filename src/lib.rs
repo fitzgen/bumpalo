@@ -548,7 +548,12 @@ impl Bump {
             let start = foot.data.as_ptr() as usize;
             let end_of_allocated_region = foot.ptr.get().as_ptr() as usize;
             debug_assert!(end_of_allocated_region <= foot as *const _ as usize);
-            debug_assert!(end_of_allocated_region > start);
+            debug_assert!(
+                end_of_allocated_region >= start,
+                "end_of_allocated_region (0x{:x}) >= start (0x{:x})",
+                end_of_allocated_region,
+                start
+            );
 
             let len = end_of_allocated_region - start;
             debug_assert!(len <= DEFAULT_CHUNK_SIZE);
