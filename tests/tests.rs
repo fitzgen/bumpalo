@@ -1,8 +1,10 @@
 extern crate bumpalo;
 
 use bumpalo::Bump;
+use std::alloc::Layout;
 use std::mem;
 use std::slice;
+use std::usize;
 
 #[test]
 fn can_iterate_over_allocated_things() {
@@ -58,4 +60,27 @@ fn can_iterate_over_allocated_things() {
     }
 
     assert!(seen.iter().all(|s| *s));
+}
+
+#[test]
+#[should_panic(expected = "allocation too large, caused overflow")]
+fn alloc_overflow() {
+    let bump = Bump::new();
+    let x = bump.alloc(0_u8);
+    let p = x as *mut u8 as usize;
+
+    // A size guaranteed to overflow.
+    let size = usize::MAX - p + 1;
+    let align = 1;
+    let layout = match Layout::from_size_align(size, align) {
+        Err(e) => {
+            // Return on error so that we don't panic and the test fails.
+            eprintln!("Layout::from_size_align errored: {}", e);
+            return;
+        }
+        Ok(l) => l,
+    };
+
+    // This should panic.
+    bump.alloc_layout(layout);
 }

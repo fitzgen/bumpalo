@@ -404,6 +404,10 @@ impl Bump {
     /// Allocate an object in this `Bump` and return an exclusive reference to
     /// it.
     ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for `T` would cause an overflow.
+    ///
     /// ## Example
     ///
     /// ```
@@ -423,8 +427,17 @@ impl Bump {
         }
     }
 
+    /// Allocate space for an object with the given `Layout`.
+    ///
+    /// The returned pointer points at uninitialized memory, and should be
+    /// initialized with
+    /// [`std::ptr::write`](https://doc.rust-lang.org/stable/std/ptr/fn.write.html).
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for `T` would cause an overflow.
     #[inline(always)]
-    fn alloc_layout(&self, layout: Layout) -> NonNull<u8> {
+    pub fn alloc_layout(&self, layout: Layout) -> NonNull<u8> {
         unsafe {
             let footer = self.current_chunk_footer.get();
             let footer = footer.as_ref();
@@ -433,7 +446,11 @@ impl Bump {
             let end = footer as *const _ as usize;
             debug_assert!(ptr <= end);
 
-            let new_ptr = ptr + layout.size();
+            let new_ptr = match ptr.checked_add(layout.size()) {
+                Some(p) => p,
+                None => self.overflow(),
+            };
+
             if new_ptr <= end {
                 let p = ptr as *mut u8;
                 debug_assert!(new_ptr <= footer as *const _ as usize);
@@ -443,6 +460,12 @@ impl Bump {
         }
 
         self.alloc_layout_slow(layout)
+    }
+
+    #[inline(never)]
+    #[cold]
+    fn overflow(&self) -> ! {
+        panic!("allocation too large, caused overflow")
     }
 
     // Slow path allocation for when we need to allocate a new chunk from the
