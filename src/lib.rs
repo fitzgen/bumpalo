@@ -32,10 +32,6 @@ pointer back to the start of the arena's memory chunk. This makes mass
 deallocation *extremely* fast, but allocated objects' `Drop` implementations are
 not invoked.
 
-See [the `BumpAllocSafe` marker
-trait](https://docs.rs/bumpalo/1.0.2/bumpalo/trait.BumpAllocSafe.html) for
-details.
-
 ## What happens when the memory chunk is full?
 
 This implementation will allocate a new memory chunk from the global allocator
@@ -44,7 +40,7 @@ and then start bump allocating into this new memory chunk.
 ## Example
 
 ```
-use bumpalo::{Bump, BumpAllocSafe};
+use bumpalo::Bump;
 use std::u64;
 
 struct Doggo {
@@ -52,9 +48,6 @@ struct Doggo {
     age: u8,
     scritches_required: bool,
 }
-
-// Mark `Doggo` as safe to put into bump allocation arenas.
-impl BumpAllocSafe for Doggo {}
 
 // Create a new arena to bump allocate into.
 let bump = Bump::new();
@@ -122,7 +115,6 @@ extern crate core;
 pub mod collections;
 
 mod alloc;
-mod impls;
 
 #[cfg(feature = "std")]
 mod imports {
@@ -149,39 +141,37 @@ mod imports {
 
 use crate::imports::*;
 
-/// A marker trait for types that are "safe" to bump alloc.
-///
-/// Objects that are bump-allocated will not have their `Drop` implementation
-/// called, which makes it easy to leak memory or other resources. If you put
-/// anything which heap allocates or manages open file descriptors or other
-/// resources into a `Bump`, and that thing relies on its `Drop` implementation
-/// to clean up after itself, then you need to find a new way to clean up after
-/// it yourself. This could be calling
-/// [`drop_in_place`](https://doc.rust-lang.org/stable/std/ptr/fn.drop_in_place.html),
-/// or simply avoiding using such types in a `Bump`.
-///
-/// This is memory safe! Since destructors are never guaranteed to run in Rust,
-/// you can't rely on them for enforcing memory safety. Therefore, implementing
-/// this trait is **not** `unsafe` in the Rust sense (which is only about memory
-/// safety). But instead of taking any `T`, bump allocation requires that you
-/// implement this marker trait for `T` just so that you know what you're
-/// getting into.
-///
-/// ## Example
-///
-/// ```
-/// struct Point {
-///     x: u64,
-///     y: u64,
-/// }
-///
-/// // We want to bump allocate `Point`s, so we implement
-/// // `BumpAllocSafe` for them.
-/// impl bumpalo::BumpAllocSafe for Point {}
-/// ```
-pub trait BumpAllocSafe {}
-
 /// An arena to bump allocate into.
+///
+/// ## No `Drop`s
+///
+/// Objects that are bump-allocated will never have their `Drop` implementation
+/// called &mdash; unless you do it manually yourself. This makes it relatively
+/// easy to leak memory or other resources.
+///
+/// If you have a type which internally manages
+///
+/// * an allocation from the global heap (e.g. `Vec<T>`),
+/// * open file descriptors (e.g. `std::fs::File`), or
+/// * any other resource that must be cleaned up (e.g. an `mmap`)
+///
+/// and relies on its `Drop` implementation to clean up the internal resource,
+/// then if you allocate that type with a `Bump`, you need to find a new way to
+/// clean up after it yourself.
+///
+/// Potential solutions are
+///
+/// * calling [`drop_in_place`][drop_in_place] or using
+///   [`std::mem::ManuallyDrop`][manuallydrop] to manually drop these types,
+/// * using `bumpalo::collections::Vec` instead of `std::vec::Vec`, or
+/// * simply avoiding allocating these problematic types within a `Bump`.
+///
+/// Note that not calling `Drop` is memory safe! Destructors are never
+/// guaranteed to run in Rust, you can't rely on them for enforcing memory
+/// safety.
+///
+/// [drop_in_place]: https://doc.rust-lang.org/stable/std/ptr/fn.drop_in_place.html
+/// [manuallydrop]: https://doc.rust-lang.org/stable/std/mem/struct.ManuallyDrop.html
 ///
 /// ## Example
 ///
@@ -337,8 +327,8 @@ impl Bump {
     /// Performs mass deallocation on everything allocated in this arena by
     /// resetting the pointer into the underlying chunk of memory to the start
     /// of the chunk. Does not run any `Drop` implementations on deallocated
-    /// objects; see [the `BumpAllocSafe` marker
-    /// trait](./trait.BumpAllocSafe.html) for details.
+    /// objects; see [the `Bump` type's top-level
+    /// documentation](./struct.Bump.html) for details.
     ///
     /// If this arena has allocated multiple chunks to bump allocate into, then
     /// the excess chunks are returned to the global allocator.
@@ -411,7 +401,8 @@ impl Bump {
         }
     }
 
-    /// Allocate an object.
+    /// Allocate an object in this `Bump` and return an exclusive reference to
+    /// it.
     ///
     /// ## Example
     ///
@@ -421,7 +412,7 @@ impl Bump {
     /// assert_eq!(*x, "hello");
     /// ```
     #[inline(always)]
-    pub fn alloc<T: BumpAllocSafe>(&self, val: T) -> &mut T {
+    pub fn alloc<T>(&self, val: T) -> &mut T {
         let layout = Layout::new::<T>();
 
         unsafe {

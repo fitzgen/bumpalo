@@ -5,14 +5,10 @@ use criterion::{criterion_group, criterion_main, Criterion, ParameterizedBenchma
 #[derive(Default)]
 struct Small(u8);
 
-impl bumpalo::BumpAllocSafe for Small {}
-
 #[derive(Default)]
 struct Big([usize; 32]);
 
-impl bumpalo::BumpAllocSafe for Big {}
-
-fn allocate<T: Default + bumpalo::BumpAllocSafe>(n: usize) {
+fn allocate<T: Default>(n: usize) {
     let arena = bumpalo::Bump::new();
     for _ in 0..n {
         let val: &mut T = arena.alloc(Default::default());

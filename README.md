@@ -33,10 +33,6 @@ pointer back to the start of the arena's memory chunk. This makes mass
 deallocation *extremely* fast, but allocated objects' `Drop` implementations are
 not invoked.
 
-See [the `BumpAllocSafe` marker
-trait](https://docs.rs/bumpalo/1.0.2/bumpalo/trait.BumpAllocSafe.html) for
-details.
-
 ### What happens when the memory chunk is full?
 
 This implementation will allocate a new memory chunk from the global allocator
@@ -45,7 +41,7 @@ and then start bump allocating into this new memory chunk.
 ### Example
 
 ```rust
-use bumpalo::{Bump, BumpAllocSafe};
+use bumpalo::Bump;
 use std::u64;
 
 struct Doggo {
@@ -53,9 +49,6 @@ struct Doggo {
     age: u8,
     scritches_required: bool,
 }
-
-// Mark `Doggo` as safe to put into bump allocation arenas.
-impl BumpAllocSafe for Doggo {}
 
 // Create a new arena to bump allocate into.
 let bump = Bump::new();

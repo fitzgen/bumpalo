@@ -1,7 +1,7 @@
 extern crate bumpalo;
 extern crate quickcheck;
 
-use bumpalo::{Bump, BumpAllocSafe};
+use bumpalo::Bump;
 use quickcheck::{quickcheck, Arbitrary, Gen};
 use std::mem;
 
@@ -9,8 +9,6 @@ use std::mem;
 struct BigValue {
     data: [u64; 32],
 }
-
-impl BumpAllocSafe for BigValue {}
 
 impl BigValue {
     fn new(x: u64) -> BigValue {
