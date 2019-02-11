@@ -1,3 +1,10 @@
+# 2.0.0
+
+Releaseed 2019-02-11.
+
+* Removed the `BumpAllocSafe` trait.
+* Correctly detect overflows from large allocations and panic.
+
 # 1.2.0
 
 Released 2019-01-15.
