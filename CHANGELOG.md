@@ -1,6 +1,12 @@
+# 2.1.0
+
+Released 2019-02-12.
+
+* Added the `into_bump_slice` method on `bumpalo::collections::Vec<T>`.
+
 # 2.0.0
 
-Releaseed 2019-02-11.
+Released 2019-02-11.
 
 * Removed the `BumpAllocSafe` trait.
 * Correctly detect overflows from large allocations and panic.
