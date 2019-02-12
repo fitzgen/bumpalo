@@ -764,6 +764,28 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
         }
     }
 
+    /// Converts the vector into `&'bump [T]`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bumpalo::{Bump, collections::Vec};
+    ///
+    /// let b = Bump::new();
+    /// let v = bumpalo::vec![in &b; 1, 2, 3];
+    ///
+    /// let slice = v.into_bump_slice();
+    /// assert_eq!(slice, [1, 2, 3]);
+    /// ```
+    pub fn into_bump_slice(mut self) -> &'bump [T] {
+        unsafe {
+            let ptr = self.as_mut_ptr();
+            let len = self.len();
+            mem::forget(self);
+            slice::from_raw_parts(ptr, len)
+        }
+    }
+
     /// Shortens the vector, keeping the first `len` elements and dropping
     /// the rest.
     ///
