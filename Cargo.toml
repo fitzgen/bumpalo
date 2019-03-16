@@ -9,6 +9,10 @@ name = "bumpalo"
 repository = "https://github.com/fitzgen/bumpalo"
 version = "2.1.0"
 
+[lib]
+path = "src/lib.rs"
+bench = false
+
 [[bench]]
 name = "benches"
 path = "benches/benches.rs"
