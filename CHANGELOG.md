@@ -1,3 +1,10 @@
+# 2.2.0
+
+Released 2019-03-15.
+
+* Chunks in an arena now start out small, and double in size as more chunks are
+  requested.
+
 # 2.1.0
 
 Released 2019-02-12.
