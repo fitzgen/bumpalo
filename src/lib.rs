@@ -234,29 +234,28 @@ pub(crate) fn round_up_to(n: usize, divisor: usize) -> usize {
     (n + divisor - 1) & !(divisor - 1)
 }
 
-// Maximum typical overhead per allocation imposed by allocators for
-// wasm32-unknown-unknown (dlmalloc and wee_alloc).
+// Maximum typical overhead per allocation imposed by allocators.
 const MALLOC_OVERHEAD: usize = 16;
 
-// A wasm page minus the typical malloc overhead. The goal is to allocate a
-// single wasm page for a chunk and use as much of it as possible without
-// triggering the underlying malloc to grow memory for another page.
-const DEFAULT_CHUNK_SIZE_WITH_FOOTER: usize = (1 << 16) - MALLOC_OVERHEAD;
-const DEFAULT_CHUNK_SIZE: usize = DEFAULT_CHUNK_SIZE_WITH_FOOTER - mem::size_of::<ChunkFooter>();
+// Choose a relatively small default initial chunk size, since we double chunk
+// sizes as we grow bump arenas to amortize costs of hitting the global
+// allocator.
+const DEFAULT_CHUNK_SIZE_WITH_FOOTER: usize = (1 << 9) - MALLOC_OVERHEAD;
 const DEFAULT_CHUNK_ALIGN: usize = mem::align_of::<ChunkFooter>();
+
+/// Wrapper around `Layout::from_size_align` that adds debug assertions.
+#[inline]
+unsafe fn layout_from_size_align(size: usize, align: usize) -> Layout {
+    if cfg!(debug_assertions) {
+        Layout::from_size_align(size, align).unwrap()
+    } else {
+        Layout::from_size_align_unchecked(size, align)
+    }
+}
 
 impl Bump {
     fn default_chunk_layout() -> Layout {
-        if cfg!(debug_assertions) {
-            Layout::from_size_align(DEFAULT_CHUNK_SIZE_WITH_FOOTER, DEFAULT_CHUNK_ALIGN).unwrap()
-        } else {
-            unsafe {
-                Layout::from_size_align_unchecked(
-                    DEFAULT_CHUNK_SIZE_WITH_FOOTER,
-                    DEFAULT_CHUNK_ALIGN,
-                )
-            }
-        }
+        unsafe { layout_from_size_align(DEFAULT_CHUNK_SIZE_WITH_FOOTER, DEFAULT_CHUNK_ALIGN) }
     }
 
     /// Construct a new arena to bump allocate into.
@@ -277,30 +276,33 @@ impl Bump {
 
     /// Allocate a new chunk and return its initialized footer.
     ///
-    /// If given, `alloc_layout` is the layout of the allocation request that
-    /// triggered us to fall back to allocating a new chunk of memory.
-    fn new_chunk(alloc_layout: Option<Layout>) -> NonNull<ChunkFooter> {
-        let layout = alloc_layout.map_or_else(Bump::default_chunk_layout, |l| {
-            let align = cmp::max(l.align(), mem::align_of::<ChunkFooter>());
-            if l.size() < DEFAULT_CHUNK_SIZE {
-                // If it is a small allocation, just use our default chunk size,
-                // but make sure it is aligned for the requested allocation.
-                Layout::from_size_align(DEFAULT_CHUNK_SIZE_WITH_FOOTER, align).unwrap()
-            } else {
-                // If the requested allocation is bigger than we can fit in one
-                // of our default chunks, make a special chunk just for this
-                // allocation.
-                //
-                // Round the size up to a multiple of our footer's alignment so
-                // that we can be sure that our footer is properly aligned.
-                let size = round_up_to(l.size(), mem::align_of::<ChunkFooter>());
-                Layout::from_size_align(size + mem::size_of::<ChunkFooter>(), align).unwrap()
-            }
-        });
-
-        let size = layout.size();
-
+    /// If given, `layouts` is a tuple of the current chunk layout and the
+    /// layout of the allocation request that triggered us to fall back to
+    /// allocating a new chunk of memory.
+    fn new_chunk(layouts: Option<(Layout, Layout)>) -> NonNull<ChunkFooter> {
         unsafe {
+            let layout: Layout =
+                layouts.map_or_else(Bump::default_chunk_layout, |(old, requested)| {
+                    let old_doubled = old.size().checked_mul(2).unwrap();
+                    debug_assert_eq!(
+                        old_doubled,
+                        round_up_to(old_doubled, mem::align_of::<ChunkFooter>()),
+                        "The old size was already a multiple of our chunk footer alignment, so no \
+                         need to round it up again."
+                    );
+
+                    // Round the size up to a multiple of our footer's alignment so that
+                    // we can be sure that our footer is properly aligned.
+                    let requested_size =
+                        round_up_to(requested.size(), mem::align_of::<ChunkFooter>());
+
+                    let size = cmp::max(old_doubled, requested_size);
+                    let align = cmp::max(old.align(), requested.align());
+                    layout_from_size_align(size, align)
+                });
+
+            let size = layout.size();
+
             let data = alloc(layout);
             assert!(!data.is_null());
             let data = NonNull::new_unchecked(data);
@@ -473,9 +475,11 @@ impl Bump {
     #[inline(never)]
     fn alloc_layout_slow(&self, layout: Layout) -> NonNull<u8> {
         unsafe {
-            // Get a new chunk from the global allocator.
             let size = layout.size();
-            let footer = Bump::new_chunk(Some(layout));
+
+            // Get a new chunk from the global allocator.
+            let current_layout = self.current_chunk_footer.get().as_ref().layout.clone();
+            let footer = Bump::new_chunk(Some((current_layout, layout)));
 
             // Set our current chunk's next link to this new chunk.
             self.current_chunk_footer
@@ -570,7 +574,6 @@ impl Bump {
             );
 
             let len = end_of_allocated_region - start;
-            debug_assert!(len <= DEFAULT_CHUNK_SIZE);
             let slice = slice::from_raw_parts(start as *const u8, len);
             f(slice);
 
