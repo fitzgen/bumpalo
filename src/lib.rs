@@ -521,7 +521,7 @@ impl Bump {
     /// of exclusive references is one common footgun for unsafe code that we
     /// don't need to worry about here.
     ///
-    /// However, there could be regions of uninitilized memory used as padding
+    /// However, there could be regions of uninitialized memory used as padding
     /// between allocations. Reading uninitialized memory is big time undefined
     /// behavior!
     ///
