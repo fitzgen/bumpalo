@@ -1,3 +1,10 @@
+# 2.2.1
+
+Released 2019-03-18.
+
+* Fix a regression in 2.2.0 where newly allocated bump chunks could fail to have
+  capacity for a large requested bump allocation in some corner cases.
+
 # 2.2.0
 
 Released 2019-03-15.
