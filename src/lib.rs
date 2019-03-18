@@ -284,9 +284,10 @@ impl Bump {
             let layout: Layout =
                 layouts.map_or_else(Bump::default_chunk_layout, |(old_size, requested)| {
                     let old_doubled = old_size.checked_mul(2).unwrap();
+                    let footer_align = mem::align_of::<ChunkFooter>();
                     debug_assert_eq!(
                         old_doubled,
-                        round_up_to(old_doubled, mem::align_of::<ChunkFooter>()),
+                        round_up_to(old_doubled, footer_align),
                         "The old size was already a multiple of our chunk footer alignment, so no \
                          need to round it up again."
                     );
@@ -304,7 +305,8 @@ impl Bump {
                         size_to_allocate,
                         requested.size() + mem::size_of::<ChunkFooter>(),
                     );
-                    let align = cmp::max(mem::align_of::<ChunkFooter>(), requested.align());
+                    let size = round_up_to(size, footer_align);
+                    let align = cmp::max(footer_align, requested.align());
 
                     layout_from_size_align(size, align)
                 });
