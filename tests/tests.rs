@@ -92,6 +92,7 @@ fn force_new_chunk_fits_well() {
     // Use the first chunk for something
     b.alloc_layout(Layout::from_size_align(1, 1).unwrap());
 
-    // Next force allocation of a new chunk with a very large request
-    b.alloc_layout(Layout::from_size_align(100_000, 1).unwrap());
+    // Next force allocation of some new chunks.
+    b.alloc_layout(Layout::from_size_align(100_001, 1).unwrap());
+    b.alloc_layout(Layout::from_size_align(100_003, 1).unwrap());
 }
