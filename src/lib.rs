@@ -276,14 +276,14 @@ impl Bump {
 
     /// Allocate a new chunk and return its initialized footer.
     ///
-    /// If given, `layouts` is a tuple of the current chunk layout and the
+    /// If given, `layouts` is a tuple of the current chunk size and the
     /// layout of the allocation request that triggered us to fall back to
     /// allocating a new chunk of memory.
-    fn new_chunk(layouts: Option<(Layout, Layout)>) -> NonNull<ChunkFooter> {
+    fn new_chunk(layouts: Option<(usize, Layout)>) -> NonNull<ChunkFooter> {
         unsafe {
             let layout: Layout =
-                layouts.map_or_else(Bump::default_chunk_layout, |(old, requested)| {
-                    let old_doubled = old.size().checked_mul(2).unwrap();
+                layouts.map_or_else(Bump::default_chunk_layout, |(old_size, requested)| {
+                    let old_doubled = old_size.checked_mul(2).unwrap();
                     debug_assert_eq!(
                         old_doubled,
                         round_up_to(old_doubled, mem::align_of::<ChunkFooter>()),
@@ -291,17 +291,26 @@ impl Bump {
                          need to round it up again."
                     );
 
-                    // Round the size up to a multiple of our footer's alignment so that
-                    // we can be sure that our footer is properly aligned.
-                    let requested_size =
-                        round_up_to(requested.size(), mem::align_of::<ChunkFooter>());
+                    // Have a reasonable "doubling behavior" but ensure that if
+                    // a very large size is requested we round up to that.
+                    let size_to_allocate = cmp::max(old_doubled, requested.size());
 
-                    let size = cmp::max(old_doubled, requested_size);
-                    let align = cmp::max(old.align(), requested.align());
+                    // Handle size/alignment of our allocated chunk, taking into
+                    // account an overaligned allocation if one is required.
+                    // Note that we also add to the size a `ChunkFooter` because
+                    // we'll be placing one at the end, and we need to at least
+                    // satisfy `requested.size()` bytes.
+                    let size = cmp::max(
+                        size_to_allocate,
+                        requested.size() + mem::size_of::<ChunkFooter>(),
+                    );
+                    let align = cmp::max(mem::align_of::<ChunkFooter>(), requested.align());
+
                     layout_from_size_align(size, align)
                 });
 
             let size = layout.size();
+            debug_assert!(layout.align() % mem::align_of::<ChunkFooter>() == 0);
 
             let data = alloc(layout);
             assert!(!data.is_null());
@@ -479,7 +488,7 @@ impl Bump {
 
             // Get a new chunk from the global allocator.
             let current_layout = self.current_chunk_footer.get().as_ref().layout.clone();
-            let footer = Bump::new_chunk(Some((current_layout, layout)));
+            let footer = Bump::new_chunk(Some((current_layout.size(), layout)));
 
             // Set our current chunk's next link to this new chunk.
             self.current_chunk_footer

@@ -84,3 +84,14 @@ fn alloc_overflow() {
     // This should panic.
     bump.alloc_layout(layout);
 }
+
+#[test]
+fn force_new_chunk_fits_well() {
+    let b = Bump::new();
+
+    // Use the first chunk for something
+    b.alloc_layout(Layout::from_size_align(1, 1).unwrap());
+
+    // Next force allocation of a new chunk with a very large request
+    b.alloc_layout(Layout::from_size_align(100_000, 1).unwrap());
+}
