@@ -1,3 +1,10 @@
+# 2.2.2
+
+Released 2019-03-18.
+
+* Fix a regression from 2.2.1 where chunks were not always aligned to the chunk
+  footer's alignment.
+
 # 2.2.1
 
 Released 2019-03-18.
