@@ -604,6 +604,6 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
 }
 
 #[test]
-fn chunk_footer_is_three_words() {
+fn chunk_footer_is_five_words() {
     assert_eq!(mem::size_of::<ChunkFooter>(), mem::size_of::<usize>() * 5);
 }
