@@ -430,12 +430,78 @@ impl Bump {
     /// ```
     #[inline(always)]
     pub fn alloc<T>(&self, val: T) -> &mut T {
+        self.alloc_with(|| val)
+    }
+
+    /// Pre-allocate space for an object in this `Bump`, initializes it using
+    /// the closure, then returns an exclusive reference to it.
+    ///
+    /// Calling `bump.alloc(x)` is essentially equivalent to calling
+    /// `bump.alloc_with(|| x)`. However if you use `alloc_with`, then the
+    /// closure will not be invoked until after allocating space for storing
+    /// `x` on the heap.
+    ///
+    /// This can be useful in certain edge-cases related to compiler
+    /// optimizations. When evaluating `bump.alloc(x)`, semantically `x` is
+    /// first put on the stack and then moved onto the heap. In some cases,
+    /// the compiler is able to optimize this into constructing `x` directly
+    /// on the heap, however in many cases it does not.
+    ///
+    /// The function `alloc_with` tries to help the compiler be smarter. In
+    /// most cases doing `bump.alloc_with(|| x)` on release mode will be
+    /// enough to help the compiler to realize this optimization is valid
+    /// and construct `x` directly onto the heap.
+    ///
+    /// ## Warning
+    ///
+    /// This function critically depends on compiler optimizations to achieve
+    /// its desired effect. This means that it is not an effective tool when
+    /// compiling without optimizations on.
+    ///
+    /// Even when optimizations are on, this function does not **guarantee**
+    /// that the value is constructed on the heap. To the best of our
+    /// knowledge no such guarantee can be made in stable Rust as of 1.33.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for `T` would cause an overflow.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.alloc_with(|| "hello");
+    /// assert_eq!(*x, "hello");
+    /// ```
+    #[inline(always)]
+    pub fn alloc_with<F, T>(&self, f: F) -> &mut T
+    where
+        F: FnOnce() -> T,
+    {
+        #[inline(always)]
+        unsafe fn inner_writer<T, F>(ptr: *mut T, f: F)
+        where
+            F: FnOnce() -> T,
+        {
+            // This function is translated as:
+            // - allocate space for a T on the stack
+            // - call f() with the return value being put onto this stack space
+            // - memcpy from the stack to the heap
+            //
+            // Ideally we want LLVM to always realize that doing a stack
+            // allocation is unnecessary and optimize the code so it writes
+            // directly into the heap instead. It seems we get it to realize
+            // this most consistently if we put this critical line into it's
+            // own function instead of inlining it into the surrounding code.
+            ptr::write(ptr, f())
+        }
+
         let layout = Layout::new::<T>();
 
         unsafe {
             let p = self.alloc_layout(layout);
             let p = p.as_ptr() as *mut T;
-            ptr::write(p, val);
+            inner_writer(p, f);
             &mut *p
         }
     }
