@@ -18,6 +18,11 @@ name = "benches"
 path = "benches/benches.rs"
 harness = false
 
+[[bench]]
+name = "benches_alloc_with"
+path = "benches/benches_alloc_with.rs"
+harness = false
+
 [dev-dependencies]
 quickcheck = "0.8.2"
 criterion = "0.2.10"
