@@ -1,5 +1,5 @@
 extern crate bumpalo;
-use bumpalo::{Bump, collections::Vec};
+use bumpalo::{collections::Vec, Bump};
 
 #[test]
 fn push_a_bunch_of_items() {
