@@ -1,3 +1,17 @@
+# 2.3.0
+
+Released 2019-03-26.
+
+* Add the `alloc_with` method, that (usually) avoids stack-allocating the
+  allocated value and then moving it into the bump arena. This avoids potential
+  stack overflows in release mode when allocating very large objects, and also
+  some `memcpy` calls. This is similar to the `copyless` crate. Read [the
+  `alloc_with` doc comments][alloc-with-doc-comments] and [the original issue
+  proposing this API][issue-proposing-alloc-with] for more.
+
+[alloc-with-doc-comments]: https://github.com/fitzgen/bumpalo/blob/9f47aee8a6839ba65c073b9ad5372aacbbd02352/src/lib.rs#L436-L475
+[issue-proposing-alloc-with]: https://github.com/fitzgen/bumpalo/issues/10
+
 # 2.2.2
 
 Released 2019-03-18.
