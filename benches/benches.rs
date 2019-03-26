@@ -16,7 +16,7 @@ impl Default for Huge {
     }
 }
 
-fn allocate<T: Default>(n: usize) {
+fn alloc<T: Default>(n: usize) {
     let arena = bumpalo::Bump::new();
     for _ in 0..n {
         let val: &mut T = arena.alloc(Default::default());
@@ -24,32 +24,70 @@ fn allocate<T: Default>(n: usize) {
     }
 }
 
+fn alloc_with<T: Default>(n: usize) {
+    let arena = bumpalo::Bump::new();
+    for _ in 0..n {
+        let val: &mut T = arena.alloc_with(|| Default::default());
+        criterion::black_box(val);
+    }
+}
+
 fn criterion_benchmark(c: &mut Criterion) {
     c.bench(
-        "allocate",
+        "alloc",
         ParameterizedBenchmark::new(
-            "allocate-small",
-            |b, n| b.iter(|| allocate::<Small>(*n)),
+            "small",
+            |b, n| b.iter(|| alloc::<Small>(*n)),
             (1..3).map(|n| n * 1000).collect::<Vec<usize>>(),
         )
         .throughput(|n| Throughput::Elements(*n as u32)),
     );
 
     c.bench(
-        "allocate",
+        "alloc",
         ParameterizedBenchmark::new(
-            "allocate-big",
-            |b, n| b.iter(|| allocate::<Big>(*n)),
+            "big",
+            |b, n| b.iter(|| alloc::<Big>(*n)),
             (1..3).map(|n| n * 1000).collect::<Vec<usize>>(),
         )
         .throughput(|n| Throughput::Elements(*n as u32)),
     );
 
     c.bench(
-        "allocate",
+        "alloc",
         ParameterizedBenchmark::new(
-            "allocate-huge",
-            |b, n| b.iter(|| allocate::<Huge>(*n)),
+            "huge",
+            |b, n| b.iter(|| alloc::<Huge>(*n)),
+            (1..3).map(|n| n * 1000).collect::<Vec<usize>>(),
+        )
+        .throughput(|n| Throughput::Elements(*n as u32)),
+    );
+
+    c.bench(
+        "alloc_with",
+        ParameterizedBenchmark::new(
+            "small",
+            |b, n| b.iter(|| alloc_with::<Small>(*n)),
+            (1..3).map(|n| n * 1000).collect::<Vec<usize>>(),
+        )
+        .throughput(|n| Throughput::Elements(*n as u32)),
+    );
+
+    c.bench(
+        "alloc_with",
+        ParameterizedBenchmark::new(
+            "big",
+            |b, n| b.iter(|| alloc_with::<Big>(*n)),
+            (1..3).map(|n| n * 1000).collect::<Vec<usize>>(),
+        )
+        .throughput(|n| Throughput::Elements(*n as u32)),
+    );
+
+    c.bench(
+        "alloc_with",
+        ParameterizedBenchmark::new(
+            "huge",
+            |b, n| b.iter(|| alloc_with::<Huge>(*n)),
             (1..3).map(|n| n * 1000).collect::<Vec<usize>>(),
         )
         .throughput(|n| Throughput::Elements(*n as u32)),
