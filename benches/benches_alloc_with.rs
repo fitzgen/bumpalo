@@ -19,14 +19,14 @@ impl Default for Huge {
 fn allocate<T: Default>(n: usize) {
     let arena = bumpalo::Bump::new();
     for _ in 0..n {
-        let val: &mut T = arena.alloc(Default::default());
+        let val: &mut T = arena.alloc_with(|| Default::default());
         criterion::black_box(val);
     }
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
     c.bench(
-        "allocate",
+        "allocate_with",
         ParameterizedBenchmark::new(
             "allocate-small",
             |b, n| b.iter(|| allocate::<Small>(*n)),
@@ -36,7 +36,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     );
 
     c.bench(
-        "allocate",
+        "allocate_with",
         ParameterizedBenchmark::new(
             "allocate-big",
             |b, n| b.iter(|| allocate::<Big>(*n)),
@@ -46,7 +46,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     );
 
     c.bench(
-        "allocate",
+        "allocate_with",
         ParameterizedBenchmark::new(
             "allocate-huge",
             |b, n| b.iter(|| allocate::<Huge>(*n)),
