@@ -14,6 +14,10 @@ matrix:
         - cargo install-update -a
       script:
         - cargo test
+    - name: "test (release)"
+      rust: stable
+      script:
+        - cargo test --release
     - name: "bench"
       rust: nightly
       script:
