@@ -84,6 +84,7 @@
 //! [`vec!`]: ../../macro.vec.html
 
 use super::raw_vec::RawVec;
+use crate::Bump;
 use core::cmp::Ordering;
 use core::fmt;
 use core::hash::{self, Hash};
@@ -96,7 +97,6 @@ use core::ops::{Index, IndexMut, RangeBounds};
 use core::ptr;
 use core::ptr::NonNull;
 use std::slice;
-use crate::Bump;
 
 unsafe fn arith_offset<T>(p: *const T, offset: isize) -> *const T {
     p.offset(offset)
@@ -1848,13 +1848,20 @@ macro_rules! __impl_slice_eq1 {
         __impl_slice_eq1! { $Lhs, $Rhs, Sized }
     };
     ($Lhs: ty, $Rhs: ty, $Bound: ident) => {
-        impl<'a, 'b, A: $Bound, B> PartialEq<$Rhs> for $Lhs where A: PartialEq<B> {
+        impl<'a, 'b, A: $Bound, B> PartialEq<$Rhs> for $Lhs
+        where
+            A: PartialEq<B>,
+        {
             #[inline]
-            fn eq(&self, other: &$Rhs) -> bool { self[..] == other[..] }
+            fn eq(&self, other: &$Rhs) -> bool {
+                self[..] == other[..]
+            }
             #[inline]
-            fn ne(&self, other: &$Rhs) -> bool { self[..] != other[..] }
+            fn ne(&self, other: &$Rhs) -> bool {
+                self[..] != other[..]
+            }
         }
-    }
+    };
 }
 
 __impl_slice_eq1! { Vec<'a, A>, Vec<'b, B> }
@@ -2337,5 +2344,46 @@ where
         unsafe {
             self.vec.set_len(self.old_len - self.del);
         }
+    }
+}
+
+/// Similar to `std::iter::FromIterator`, but for a bump vec.
+pub trait FromIteratorBump<'bump, A> {
+    /// Similar to `std::iter::FromIterator::from_iter`, but for a bump vec.
+    fn from_iter<T>(iter: T, bump: &'bump Bump) -> Self
+    where
+        T: IntoIterator<Item = A>;
+}
+
+impl<'bump, T> FromIteratorBump<'bump, T> for Vec<'bump, T> {
+    fn from_iter<I>(iter: I, bump: &'bump Bump) -> Self
+    where
+        I: IntoIterator<Item = T>,
+    {
+        let mut v = Vec::new_in(bump);
+        for t in iter.into_iter() {
+            v.push(t);
+        }
+        v
+    }
+}
+
+/// Extension to `Iterator` trait to allow for collecting in bump alloc.
+pub trait IteratorBump: Iterator {
+    /// Like `Iterator::collect` but allocates into a bump arena.
+    fn collect_in<'bump, B>(self, bump: &'bump Bump) -> B
+    where
+        B: FromIteratorBump<'bump, <Self as Iterator>::Item>;
+}
+
+impl<T> IteratorBump for T
+where
+    T: Iterator,
+{
+    fn collect_in<'bump, B>(self, bump: &'bump Bump) -> B
+    where
+        B: FromIteratorBump<'bump, <Self as Iterator>::Item>,
+    {
+        <B as FromIteratorBump<_>>::from_iter(self, bump)
     }
 }
