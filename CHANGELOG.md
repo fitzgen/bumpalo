@@ -1,3 +1,11 @@
+# 2.4.0
+
+Released 2019-04-19.
+
+* Added support for `realloc`ing in-place when the pointer being `realloc`ed is
+  the last allocation made from the bump arena. This should speed up various
+  `String`, `Vec`, and `format!` operations in many cases.
+
 # 2.3.0
 
 Released 2019-03-26.
