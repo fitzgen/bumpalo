@@ -1,3 +1,9 @@
+# 2.4.1
+
+Released 2019-04-19.
+
+* Added readme metadata to Cargo.toml so it shows up on crates.io
+
 # 2.4.0
 
 Released 2019-04-19.
