@@ -517,6 +517,15 @@ impl Bump {
     /// Panics if reserving space for `T` would cause an overflow.
     #[inline(always)]
     pub fn alloc_layout(&self, layout: Layout) -> NonNull<u8> {
+        if let Some(p) = self.try_alloc_layout_fast(layout) {
+            p
+        } else {
+            self.alloc_layout_slow(layout)
+        }
+    }
+
+    #[inline(always)]
+    fn try_alloc_layout_fast(&self, layout: Layout) -> Option<NonNull<u8>> {
         unsafe {
             let footer = self.current_chunk_footer.get();
             let footer = footer.as_ref();
@@ -534,11 +543,11 @@ impl Bump {
                 let p = ptr as *mut u8;
                 debug_assert!(new_ptr <= footer as *const _ as usize);
                 footer.ptr.set(NonNull::new_unchecked(new_ptr as *mut u8));
-                return NonNull::new_unchecked(p);
+                Some(NonNull::new_unchecked(p))
+            } else {
+                None
             }
         }
-
-        self.alloc_layout_slow(layout)
     }
 
     #[inline(never)]
@@ -667,6 +676,46 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
 
     #[inline(always)]
     unsafe fn dealloc(&mut self, _ptr: NonNull<u8>, _layout: Layout) {}
+
+    #[inline]
+    unsafe fn realloc(
+        &mut self,
+        ptr: NonNull<u8>,
+        layout: Layout,
+        new_size: usize,
+    ) -> Result<NonNull<u8>, alloc::AllocErr> {
+        let old_size = layout.size();
+
+        // Shrinking allocations. Do nothing.
+        if new_size < old_size {
+            return Ok(ptr);
+        }
+
+        // See if the `ptr` is the last allocation we made. If so, we can likely
+        // realloc in place by just bumping a bit further!
+        //
+        // Note that we align-up the bump pointer on new allocation requests
+        // (not eagerly) so if `ptr` was the result of our last allocation, then
+        // the bump pointer is still pointing just after it.
+        let footer = self.current_chunk_footer.get();
+        let footer = footer.as_ref();
+        let footer_ptr = footer.ptr.get().as_ptr() as usize;
+        if footer_ptr.checked_sub(old_size) == Some(ptr.as_ptr() as usize) {
+            let delta = layout_from_size_align(new_size - old_size, 1);
+            if let Some(_) = self.try_alloc_layout_fast(delta) {
+                return Ok(ptr);
+            }
+        }
+
+        // Otherwise, fall back on alloc + copy + dealloc.
+        let new_layout = layout_from_size_align(new_size, layout.align());
+        let result = self.alloc(new_layout);
+        if let Ok(new_ptr) = result {
+            ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), cmp::min(old_size, new_size));
+            self.dealloc(ptr, layout);
+        }
+        result
+    }
 }
 
 #[test]
