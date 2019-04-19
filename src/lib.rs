@@ -5,7 +5,7 @@
 [![](https://docs.rs/bumpalo/badge.svg)](https://docs.rs/bumpalo/)
 [![](https://img.shields.io/crates/v/bumpalo.svg)](https://crates.io/crates/bumpalo)
 [![](https://img.shields.io/crates/d/bumpalo.svg)](https://crates.io/crates/bumpalo)
-[![Travis CI Build Status](https://travis-ci.org/fitzgen/bumpalo.svg?branch=master)](https://travis-ci.org/fitzgen/bumpalo)
+[![Build Status](https://dev.azure.com/fitzgen/bumpalo/_apis/build/status/fitzgen.bumpalo?branchName=master)](https://dev.azure.com/fitzgen/bumpalo/_build/latest?definitionId=1&branchName=master)
 
 ![](https://github.com/fitzgen/bumpalo/raw/master/bumpalo.png)
 
