@@ -32,6 +32,12 @@ fn alloc_with<T: Default>(n: usize) {
     }
 }
 
+fn format_realloc(bump: &bumpalo::Bump, n: usize) {
+    let n = criterion::black_box(n);
+    let s = bumpalo::format!(in bump, "Hello {:.*}", n, "World! ");
+    criterion::black_box(s);
+}
+
 fn criterion_benchmark(c: &mut Criterion) {
     c.bench(
         "alloc",
@@ -89,6 +95,22 @@ fn criterion_benchmark(c: &mut Criterion) {
             "huge",
             |b, n| b.iter(|| alloc_with::<Huge>(*n)),
             (1..3).map(|n| n * 1000).collect::<Vec<usize>>(),
+        )
+        .throughput(|n| Throughput::Elements(*n as u32)),
+    );
+
+    c.bench(
+        "format-realloc",
+        ParameterizedBenchmark::new(
+            "hello {someone}",
+            |b, n| {
+                let mut bump = bumpalo::Bump::new();
+                b.iter(|| {
+                    bump.reset();
+                    format_realloc(&bump, *n);
+                });
+            },
+            (1..5).map(|n| n * n * n * 10).collect::<Vec<usize>>(),
         )
         .throughput(|n| Throughput::Elements(*n as u32)),
     );
