@@ -6,6 +6,7 @@ documentation = "https://docs.rs/id-arena"
 edition = "2018"
 license = "MIT/Apache-2.0"
 name = "bumpalo"
+readme = "./README.md"
 repository = "https://github.com/fitzgen/bumpalo"
 version = "2.4.0"
 
