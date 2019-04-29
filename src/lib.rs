@@ -511,10 +511,6 @@ impl Bump {
     /// The returned pointer points at uninitialized memory, and should be
     /// initialized with
     /// [`std::ptr::write`](https://doc.rust-lang.org/stable/std/ptr/fn.write.html).
-    ///
-    /// ## Panics
-    ///
-    /// Panics if reserving space for `T` would cause an overflow.
     #[inline(always)]
     pub fn alloc_layout(&self, layout: Layout) -> NonNull<u8> {
         if let Some(p) = self.try_alloc_layout_fast(layout) {
@@ -534,10 +530,9 @@ impl Bump {
             let end = footer as *const _ as usize;
             debug_assert!(ptr <= end);
 
-            let new_ptr = match ptr.checked_add(layout.size()) {
-                Some(p) => p,
-                None => self.overflow(),
-            };
+            // If the pointer overflows, the allocation definitely doesn't fit into the current
+            // chunk, so we try to get a new one.
+            let new_ptr = ptr.checked_add(layout.size())?;
 
             if new_ptr <= end {
                 let p = ptr as *mut u8;
@@ -548,12 +543,6 @@ impl Bump {
                 None
             }
         }
-    }
-
-    #[inline(never)]
-    #[cold]
-    fn overflow(&self) -> ! {
-        panic!("allocation too large, caused overflow")
     }
 
     // Slow path allocation for when we need to allocate a new chunk from the
