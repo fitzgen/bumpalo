@@ -63,13 +63,13 @@ fn can_iterate_over_allocated_things() {
 }
 
 #[test]
-#[should_panic(expected = "allocation too large, caused overflow")]
-fn alloc_overflow() {
+#[should_panic(expected = "out of memory")]
+fn oom_instead_of_bump_pointer_overflow() {
     let bump = Bump::new();
     let x = bump.alloc(0_u8);
     let p = x as *mut u8 as usize;
 
-    // A size guaranteed to overflow.
+    // A size guaranteed to overflow the bump pointer.
     let size = usize::MAX - p + 1;
     let align = 1;
     let layout = match Layout::from_size_align(size, align) {

@@ -315,8 +315,7 @@ impl Bump {
             debug_assert!(layout.align() % mem::align_of::<ChunkFooter>() == 0);
 
             let data = alloc(layout);
-            assert!(!data.is_null());
-            let data = NonNull::new_unchecked(data);
+            let data = NonNull::new(data).unwrap_or_else(|| oom());
 
             let next = Cell::new(None);
             let ptr = Cell::new(data);
@@ -655,6 +654,12 @@ impl Bump {
             footer = foot.next.get();
         }
     }
+}
+
+#[inline(never)]
+#[cold]
+fn oom() -> ! {
+    panic!("out of memory")
 }
 
 unsafe impl<'a> alloc::Alloc for &'a Bump {
