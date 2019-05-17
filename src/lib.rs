@@ -216,6 +216,12 @@ struct ChunkFooter {
     ptr: Cell<NonNull<u8>>,
 }
 
+impl Default for Bump {
+    fn default() -> Bump {
+        Bump::new()
+    }
+}
+
 impl Drop for Bump {
     fn drop(&mut self) {
         unsafe {
