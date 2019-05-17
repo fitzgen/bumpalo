@@ -1,3 +1,14 @@
+# 2.4.2
+
+Released 2019-05-17.
+
+* Added an implementation `Default` for `Bump`.
+* Made it so that if bump allocation within a chunk overflows, we still try to
+  allocate a new chunk to bump out of for the requested allocation. This can
+  avoid some OOMs in scenarios where the chunk we are currently allocating out
+  of is very near the high end of the address space, and there is still
+  available address space lower down for new chunks.
+
 # 2.4.1
 
 Released 2019-04-19.
