@@ -228,7 +228,7 @@ impl Drop for Bump {
             let mut footer = Some(self.all_chunk_footers.get());
             while let Some(f) = footer {
                 footer = f.as_ref().next.get();
-                dealloc(f.as_ref().data.as_ptr(), Bump::default_chunk_layout());
+                dealloc(f.as_ref().data.as_ptr(), f.as_ref().layout);
             }
         }
     }

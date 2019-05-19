@@ -96,3 +96,12 @@ fn force_new_chunk_fits_well() {
     b.alloc_layout(Layout::from_size_align(100_001, 1).unwrap());
     b.alloc_layout(Layout::from_size_align(100_003, 1).unwrap());
 }
+
+#[test]
+fn alloc_with_strong_alignment() {
+    let b = Bump::new();
+
+    // 64 is probably the strongest alignment we'll see in practice
+    // e.g. AVX-512 types, or cache line padding optimizations
+    b.alloc_layout(Layout::from_size_align(4096, 64).unwrap());
+}
