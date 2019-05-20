@@ -1,3 +1,12 @@
+# 2.4.3
+
+Released 2019-05-20.
+
+* Fixed a bug where chunks were always deallocated with the default chunk
+  layout, not the layout that the chunk was actually allocated with (i.e. if we
+  started growing largers chunks with larger layouts, we would deallocate those
+  chunks with an incorrect layout).
+
 # 2.4.2
 
 Released 2019-05-17.
