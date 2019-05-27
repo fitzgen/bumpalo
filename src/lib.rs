@@ -511,6 +511,31 @@ impl Bump {
         }
     }
 
+    /// `Copy` a slice into this `Bump` and return an exclusive reference to
+    /// the copy.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for the slice would cause an overflow.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.alloc_slice_copy(&[1,2,3]);
+    /// assert_eq!(x, &[1,2,3]);
+    /// ```
+    #[inline(always)]
+    pub fn alloc_slice_copy<T>(&self, src: &[T]) -> &mut [T] where T: Copy {
+        let layout = Layout::for_value(src);
+        let dst = self.alloc_layout(layout).cast::<T>();
+
+        unsafe {
+            ptr::copy_nonoverlapping(src.as_ptr(), dst.as_ptr(), src.len());
+            slice::from_raw_parts_mut(dst.as_ptr(), src.len())
+        }
+    }
+
     /// Allocate space for an object with the given `Layout`.
     ///
     /// The returned pointer points at uninitialized memory, and should be
