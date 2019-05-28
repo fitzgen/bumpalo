@@ -536,6 +536,26 @@ impl Bump {
         }
     }
 
+    /// `Clone` a slice into this `Bump` and return an exclusive reference to
+    /// the clone. Prefer `alloc_slice_copy` if `T` is `Copy`.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for the slice would cause an overflow.
+    #[inline(always)]
+    pub fn alloc_slice_clone<T>(&self, src: &[T]) -> &mut [T] where T: Clone {
+        let layout = Layout::for_value(src);
+        let dst = self.alloc_layout(layout).cast::<T>();
+
+        unsafe {
+            for (i, val) in src.iter().cloned().enumerate() {
+                ptr::write(dst.as_ptr().offset(i as isize), val);
+            }
+
+            slice::from_raw_parts_mut(dst.as_ptr(), src.len())
+        }
+    }
+
     /// Allocate space for an object with the given `Layout`.
     ///
     /// The returned pointer points at uninitialized memory, and should be
