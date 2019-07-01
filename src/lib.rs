@@ -522,11 +522,14 @@ impl Bump {
     ///
     /// ```
     /// let bump = bumpalo::Bump::new();
-    /// let x = bump.alloc_slice_copy(&[1,2,3]);
-    /// assert_eq!(x, &[1,2,3]);
+    /// let x = bump.alloc_slice_copy(&[1, 2, 3]);
+    /// assert_eq!(x, &[1, 2, 3]);
     /// ```
     #[inline(always)]
-    pub fn alloc_slice_copy<T>(&self, src: &[T]) -> &mut [T] where T: Copy {
+    pub fn alloc_slice_copy<T>(&self, src: &[T]) -> &mut [T]
+    where
+        T: Copy,
+    {
         let layout = Layout::for_value(src);
         let dst = self.alloc_layout(layout).cast::<T>();
 
@@ -562,7 +565,10 @@ impl Bump {
     /// assert_eq!(originals, clones);
     /// ```
     #[inline(always)]
-    pub fn alloc_slice_clone<T>(&self, src: &[T]) -> &mut [T] where T: Clone {
+    pub fn alloc_slice_clone<T>(&self, src: &[T]) -> &mut [T]
+    where
+        T: Clone,
+    {
         let layout = Layout::for_value(src);
         let dst = self.alloc_layout(layout).cast::<T>();
 
