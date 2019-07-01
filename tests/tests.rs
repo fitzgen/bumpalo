@@ -105,3 +105,23 @@ fn alloc_with_strong_alignment() {
     // e.g. AVX-512 types, or cache line padding optimizations
     b.alloc_layout(Layout::from_size_align(4096, 64).unwrap());
 }
+
+#[test]
+fn alloc_slice_copy() {
+    let b = Bump::new();
+
+    let src: &[u16] = &[0xFEED, 0xFACE, 0xA7, 0xCAFE];
+    let dst = b.alloc_slice_copy(src);
+
+    assert_eq!(src, dst);
+}
+
+#[test]
+fn alloc_slice_clone() {
+    let b = Bump::new();
+
+    let src = vec![vec![0], vec![1,2], vec![3,4,5], vec![6,7,8,9]];
+    let dst = b.alloc_slice_clone(&src);
+
+    assert_eq!(src, dst);
+}
