@@ -1,3 +1,11 @@
+# 2.5.0
+
+Released 2019-07-01.
+
+* Add `alloc_slice_copy` and `alloc_slice_clone` methods that allocate space for
+  slices and either copy (with bound `T: Copy`) or clone (with bound `T: Clone`)
+  the provided slice's data into the newly allocated space.
+
 # 2.4.3
 
 Released 2019-05-20.

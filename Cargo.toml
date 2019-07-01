@@ -8,7 +8,7 @@ license = "MIT/Apache-2.0"
 name = "bumpalo"
 readme = "./README.md"
 repository = "https://github.com/fitzgen/bumpalo"
-version = "2.4.3"
+version = "2.5.0"
 
 [lib]
 path = "src/lib.rs"
