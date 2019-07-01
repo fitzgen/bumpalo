@@ -542,6 +542,25 @@ impl Bump {
     /// ## Panics
     ///
     /// Panics if reserving space for the slice would cause an overflow.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// #[derive(Clone, Debug, Eq, PartialEq)]
+    /// struct Sheep {
+    ///     name: String,
+    /// }
+    ///
+    /// let originals = vec![
+    ///     Sheep { name: "Alice".into() },
+    ///     Sheep { name: "Bob".into() },
+    ///     Sheep { name: "Cathy".into() },
+    /// ];
+    ///
+    /// let bump = bumpalo::Bump::new();
+    /// let clones = bump.alloc_slice_clone(&originals);
+    /// assert_eq!(originals, clones);
+    /// ```
     #[inline(always)]
     pub fn alloc_slice_clone<T>(&self, src: &[T]) -> &mut [T] where T: Clone {
         let layout = Layout::for_value(src);
