@@ -1,3 +1,9 @@
+# 2.6.0
+
+Released 2019-08-19.
+
+* Implement `Send` for `Bump`.
+
 # 2.5.0
 
 Released 2019-07-01.
