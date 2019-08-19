@@ -234,6 +234,12 @@ impl Drop for Bump {
     }
 }
 
+// `Bump`s are safe to send between threads because nothing aliases its owned
+// chunks until you start allocating from it. But by the time you allocate from
+// it, the returned references to allocations borrow the `Bump` and therefore
+// prevent sending the `Bump` across threads until the borrows end.
+unsafe impl Send for Bump {}
+
 #[inline]
 pub(crate) fn round_up_to(n: usize, divisor: usize) -> usize {
     debug_assert!(divisor.is_power_of_two());
