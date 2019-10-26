@@ -119,7 +119,7 @@ fn alloc_slice_copy() {
 fn alloc_slice_clone() {
     let b = Bump::new();
 
-    let src = vec![vec![0], vec![1,2], vec![3,4,5], vec![6,7,8,9]];
+    let src = vec![vec![0], vec![1, 2], vec![3, 4, 5], vec![6, 7, 8, 9]];
     let dst = b.alloc_slice_clone(&src);
 
     assert_eq!(src, dst);

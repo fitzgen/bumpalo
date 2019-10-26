@@ -715,5 +715,4 @@ mod tests {
             assert!(v.cap() >= 12 + 12 / 2);
         }
     }
-
 }

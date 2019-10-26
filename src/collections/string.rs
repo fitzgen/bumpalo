@@ -60,6 +60,7 @@
 //! ```
 
 use super::str::lossy;
+use crate::Bump;
 use core::char::decode_utf16;
 use core::fmt;
 use core::hash;
@@ -68,7 +69,6 @@ use core::mem;
 use core::ops::Bound::{Excluded, Included, Unbounded};
 use core::ops::{self, Add, AddAssign, Index, IndexMut, RangeBounds};
 use core::ptr;
-use crate::Bump;
 
 use crate::collections::vec::Vec;
 use std::borrow::Cow;
