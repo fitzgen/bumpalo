@@ -296,6 +296,27 @@ impl Bump {
         }
     }
 
+    /// Construct a new arena with the specified capacity to bump allocate into.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::with_capacity(100);
+    /// # let _ = bump;
+    /// ```
+    pub fn with_capacity(capacity: usize) -> Bump {
+        let layout = if capacity + mem::size_of::<ChunkFooter>() < DEFAULT_CHUNK_SIZE_WITH_FOOTER {
+            None
+        } else {
+            Some((0, unsafe { layout_from_size_align(capacity, 1) }))
+        };
+        let chunk_footer = Self::new_chunk(layout);
+        Bump {
+            current_chunk_footer: Cell::new(chunk_footer),
+            all_chunk_footers: Cell::new(chunk_footer),
+        }
+    }
+
     /// Allocate a new chunk and return its initialized footer.
     ///
     /// If given, `layouts` is a tuple of the current chunk size and the
