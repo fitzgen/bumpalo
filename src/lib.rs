@@ -70,6 +70,8 @@ collection types are modified to allocate their space inside `bumpalo::Bump`
 arenas.
 
 ```rust
+# #[cfg(feature = "collections")]
+# {
 use bumpalo::{Bump, collections::Vec};
 
 // Create a new bump arena.
@@ -84,6 +86,7 @@ let mut v = Vec::new_in(&bump);
 for i in 0..100 {
     v.push(i);
 }
+# }
 ```
 
 Eventually [all `std` collection types will be parameterized by an
@@ -92,58 +95,29 @@ this `collections` module and use the `std` versions.
 
 ## `#![no_std]` Support
 
-Requires the `alloc` nightly feature. Disable the on-by-default `"std"` feature:
-
-```toml
-[dependencies.bumpalo]
-version = "1"
-default-features = false
-```
+Bumpalo is a `no_std` crate. It depends only on the `alloc` and `core` crates.
 
  */
 
 #![deny(missing_debug_implementations)]
 #![deny(missing_docs)]
-// In no-std mode, use the alloc crate to get `Vec`.
-#![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(not(feature = "std"), feature(alloc))]
+#![no_std]
 
-#[cfg(feature = "std")]
-extern crate core;
+extern crate alloc as core_alloc;
 
 #[cfg(feature = "collections")]
 pub mod collections;
 
 mod alloc;
 
-#[cfg(feature = "std")]
-mod imports {
-    pub use std::alloc::{alloc, dealloc, Layout};
-    pub use std::cell::{Cell, UnsafeCell};
-    pub use std::cmp;
-    pub use std::fmt;
-    pub use std::iter;
-    pub use std::marker::PhantomData;
-    pub use std::mem;
-    pub use std::ptr::{self, NonNull};
-    pub use std::slice;
-}
-
-#[cfg(not(feature = "std"))]
-mod imports {
-    extern crate alloc;
-    pub use self::alloc::alloc::{alloc, dealloc, Layout};
-    pub use core::cell::{Cell, UnsafeCell};
-    pub use core::cmp;
-    pub use core::fmt;
-    pub use core::iter;
-    pub use core::marker::PhantomData;
-    pub use core::mem;
-    pub use core::ptr::{self, NonNull};
-    pub use core::slice;
-}
-
-use crate::imports::*;
+use core::cell::Cell;
+use core::cmp;
+use core::iter;
+use core::marker::PhantomData;
+use core::mem;
+use core::ptr::{self, NonNull};
+use core::slice;
+use core_alloc::alloc::{alloc, dealloc, Layout};
 
 /// An arena to bump allocate into.
 ///

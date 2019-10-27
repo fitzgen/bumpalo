@@ -24,8 +24,11 @@ quickcheck = "0.8.2"
 criterion = "0.2.10"
 
 [features]
-default = ["collections", "std"]
-collections = ["std"]
+default = ["collections"]
+collections = []
+
+# This feature is only included for backwards compatibility and
+# no longer has any effect
 std = []
 
 # [profile.bench]

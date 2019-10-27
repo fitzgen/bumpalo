@@ -1,3 +1,4 @@
+#![cfg(feature = "collections")]
 use bumpalo::{collections::Vec, Bump};
 
 #[test]

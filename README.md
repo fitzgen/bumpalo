@@ -93,11 +93,5 @@ this `collections` module and use the `std` versions.
 
 ### `#![no_std]` Support
 
-Requires the `alloc` nightly feature. Disable the on-by-default `"std"` feature:
-
-```toml
-[dependencies.bumpalo]
-version = "1"
-default-features = false
-```
+Bumpalo is a `no_std` crate. It depends only on the `alloc` and `core` crates.
 
