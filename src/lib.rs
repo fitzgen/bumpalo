@@ -428,7 +428,7 @@ impl Bump {
                 } else {
                     // If this is not the current chunk, return it to the global
                     // allocator.
-                    dealloc(f.as_ref().data.as_ptr(), f.as_ref().layout.clone());
+                    dealloc(f.as_ref().data.as_ptr(), f.as_ref().layout);
                 }
             }
 
@@ -469,6 +469,7 @@ impl Bump {
     /// assert_eq!(*x, "hello");
     /// ```
     #[inline(always)]
+    #[allow(clippy::mut_from_ref)]
     pub fn alloc<T>(&self, val: T) -> &mut T {
         self.alloc_with(|| val)
     }
@@ -514,6 +515,7 @@ impl Bump {
     /// assert_eq!(*x, "hello");
     /// ```
     #[inline(always)]
+    #[allow(clippy::mut_from_ref)]
     pub fn alloc_with<F, T>(&self, f: F) -> &mut T
     where
         F: FnOnce() -> T,
@@ -561,6 +563,7 @@ impl Bump {
     /// assert_eq!(x, &[1, 2, 3]);
     /// ```
     #[inline(always)]
+    #[allow(clippy::mut_from_ref)]
     pub fn alloc_slice_copy<T>(&self, src: &[T]) -> &mut [T]
     where
         T: Copy,
@@ -600,6 +603,7 @@ impl Bump {
     /// assert_eq!(originals, clones);
     /// ```
     #[inline(always)]
+    #[allow(clippy::mut_from_ref)]
     pub fn alloc_slice_clone<T>(&self, src: &[T]) -> &mut [T]
     where
         T: Clone,
@@ -609,7 +613,7 @@ impl Bump {
 
         unsafe {
             for (i, val) in src.iter().cloned().enumerate() {
-                ptr::write(dst.as_ptr().offset(i as isize), val);
+                ptr::write(dst.as_ptr().add(i), val);
             }
 
             slice::from_raw_parts_mut(dst.as_ptr(), src.len())
@@ -664,7 +668,7 @@ impl Bump {
             let size = layout.size();
 
             // Get a new chunk from the global allocator.
-            let current_layout = self.current_chunk_footer.get().as_ref().layout.clone();
+            let current_layout = self.current_chunk_footer.get().as_ref().layout;
             let footer = Bump::new_chunk(Some((current_layout.size(), layout)));
 
             // Set our current chunk's next link to this new chunk.
@@ -890,7 +894,7 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
         let footer_ptr = footer.ptr.get().as_ptr() as usize;
         if footer_ptr.checked_sub(old_size) == Some(ptr.as_ptr() as usize) {
             let delta = layout_from_size_align(new_size - old_size, 1);
-            if let Some(_) = self.try_alloc_layout_fast(delta) {
+            if self.try_alloc_layout_fast(delta).is_some() {
                 return Ok(ptr);
             }
         }

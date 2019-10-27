@@ -1,4 +1,3 @@
-extern crate bumpalo;
 use bumpalo::{collections::String, Bump};
 use std::fmt::Write;
 

@@ -634,30 +634,28 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
     /// use std::ptr;
     /// use std::mem;
     ///
-    /// fn main() {
-    ///     let b = Bump::new();
+    /// let b = Bump::new();
     ///
-    ///     let mut v = bumpalo::vec![in &b; 1, 2, 3];
+    /// let mut v = bumpalo::vec![in &b; 1, 2, 3];
     ///
-    ///     // Pull out the various important pieces of information about `v`
-    ///     let p = v.as_mut_ptr();
-    ///     let len = v.len();
-    ///     let cap = v.capacity();
+    /// // Pull out the various important pieces of information about `v`
+    /// let p = v.as_mut_ptr();
+    /// let len = v.len();
+    /// let cap = v.capacity();
     ///
-    ///     unsafe {
-    ///         // Cast `v` into the void: no destructor run, so we are in
-    ///         // complete control of the allocation to which `p` points.
-    ///         mem::forget(v);
+    /// unsafe {
+    ///     // Cast `v` into the void: no destructor run, so we are in
+    ///     // complete control of the allocation to which `p` points.
+    ///     mem::forget(v);
     ///
-    ///         // Overwrite memory with 4, 5, 6
-    ///         for i in 0..len as isize {
-    ///             ptr::write(p.offset(i), 4 + i);
-    ///         }
-    ///
-    ///         // Put everything back together into a Vec
-    ///         let rebuilt = Vec::from_raw_parts_in(p, len, cap, &b);
-    ///         assert_eq!(rebuilt, [4, 5, 6]);
+    ///     // Overwrite memory with 4, 5, 6
+    ///     for i in 0..len as isize {
+    ///         ptr::write(p.offset(i), 4 + i);
     ///     }
+    ///
+    ///     // Put everything back together into a Vec
+    ///     let rebuilt = Vec::from_raw_parts_in(p, len, cap, &b);
+    ///     assert_eq!(rebuilt, [4, 5, 6]);
     /// }
     /// ```
     pub unsafe fn from_raw_parts_in(
@@ -904,6 +902,11 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
     /// modifying its buffers, so it is up to the caller to ensure that the
     /// vector is actually the specified size.
     ///
+    /// # Safety
+    ///
+    /// - `new_len` must be less than or equal to [`capacity()`].
+    /// - The elements at `old_len..new_len` must be initialized.
+    ///
     /// # Examples
     ///
     /// ```
@@ -955,8 +958,8 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
     /// }
     /// ```
     #[inline]
-    pub unsafe fn set_len(&mut self, len: usize) {
-        self.len = len;
+    pub unsafe fn set_len(&mut self, new_len: usize) {
+        self.len = new_len;
     }
 
     /// Removes an element from the vector and returns it.
@@ -1588,7 +1591,7 @@ impl<'a> SetLenOnDrop<'a> {
     fn new(len: &'a mut usize) -> Self {
         SetLenOnDrop {
             local_len: *len,
-            len: len,
+            len,
         }
     }
 
@@ -1856,10 +1859,6 @@ macro_rules! __impl_slice_eq1 {
             fn eq(&self, other: &$Rhs) -> bool {
                 self[..] == other[..]
             }
-            #[inline]
-            fn ne(&self, other: &$Rhs) -> bool {
-                self[..] != other[..]
-            }
         }
     };
 }
@@ -2038,21 +2037,19 @@ impl<'bump, T: 'bump> Iterator for IntoIter<T> {
         unsafe {
             if self.ptr as *const _ == self.end {
                 None
+            } else if mem::size_of::<T>() == 0 {
+                // purposefully don't use 'ptr.offset' because for
+                // vectors with 0-size elements this would return the
+                // same pointer.
+                self.ptr = arith_offset(self.ptr as *const i8, 1) as *mut T;
+
+                // Make up a value of this ZST.
+                Some(mem::zeroed())
             } else {
-                if mem::size_of::<T>() == 0 {
-                    // purposefully don't use 'ptr.offset' because for
-                    // vectors with 0-size elements this would return the
-                    // same pointer.
-                    self.ptr = arith_offset(self.ptr as *const i8, 1) as *mut T;
+                let old = self.ptr;
+                self.ptr = self.ptr.offset(1);
 
-                    // Make up a value of this ZST.
-                    Some(mem::zeroed())
-                } else {
-                    let old = self.ptr;
-                    self.ptr = self.ptr.offset(1);
-
-                    Some(ptr::read(old))
-                }
+                Some(ptr::read(old))
             }
         }
     }
@@ -2079,18 +2076,16 @@ impl<'bump, T: 'bump> DoubleEndedIterator for IntoIter<T> {
         unsafe {
             if self.end == self.ptr {
                 None
+            } else if mem::size_of::<T>() == 0 {
+                // See above for why 'ptr.offset' isn't used
+                self.end = arith_offset(self.end as *const i8, -1) as *mut T;
+
+                // Make up a value of this ZST.
+                Some(mem::zeroed())
             } else {
-                if mem::size_of::<T>() == 0 {
-                    // See above for why 'ptr.offset' isn't used
-                    self.end = arith_offset(self.end as *const i8, -1) as *mut T;
+                self.end = self.end.offset(-1);
 
-                    // Make up a value of this ZST.
-                    Some(mem::zeroed())
-                } else {
-                    self.end = self.end.offset(-1);
-
-                    Some(ptr::read(self.end))
-                }
+                Some(ptr::read(self.end))
             }
         }
     }

@@ -1,6 +1,3 @@
-extern crate bumpalo;
-extern crate quickcheck;
-
 use bumpalo::Bump;
 use quickcheck::{quickcheck, Arbitrary, Gen};
 use std::mem;

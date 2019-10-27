@@ -12,20 +12,19 @@ use crate::collections::str as core_str;
 use core::char;
 use core::fmt;
 use core::fmt::Write;
-use core::mem;
 use core::str;
 
 /// Lossy UTF-8 string.
-pub struct Utf8Lossy {
-    bytes: [u8],
+pub struct Utf8Lossy<'a> {
+    bytes: &'a [u8],
 }
 
-impl Utf8Lossy {
-    pub fn from_bytes(bytes: &[u8]) -> &Utf8Lossy {
-        unsafe { mem::transmute(bytes) }
+impl<'a> Utf8Lossy<'a> {
+    pub fn from_bytes(bytes: &'a [u8]) -> Utf8Lossy<'a> {
+        Utf8Lossy { bytes }
     }
 
-    pub fn chunks(&self) -> Utf8LossyChunksIter {
+    pub fn chunks(&self) -> Utf8LossyChunksIter<'a> {
         Utf8LossyChunksIter {
             source: &self.bytes,
         }
@@ -52,7 +51,7 @@ impl<'a> Iterator for Utf8LossyChunksIter<'a> {
     type Item = Utf8LossyChunk<'a>;
 
     fn next(&mut self) -> Option<Utf8LossyChunk<'a>> {
-        if self.source.len() == 0 {
+        if self.source.is_empty() {
             return None;
         }
 
@@ -150,11 +149,11 @@ impl<'a> Iterator for Utf8LossyChunksIter<'a> {
     }
 }
 
-impl fmt::Display for Utf8Lossy {
+impl<'a> fmt::Display for Utf8Lossy<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // If we're the empty string then our iterator won't actually yield
         // anything, so perform the formatting manually
-        if self.bytes.len() == 0 {
+        if self.bytes.is_empty() {
             return "".fmt(f);
         }
 
@@ -176,7 +175,7 @@ impl fmt::Display for Utf8Lossy {
     }
 }
 
-impl fmt::Debug for Utf8Lossy {
+impl<'a> fmt::Debug for Utf8Lossy<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_char('"')?;
 

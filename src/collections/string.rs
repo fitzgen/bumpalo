@@ -220,11 +220,9 @@ macro_rules! format {
 ///
 /// fn example_func<A: TraitExample>(example_arg: A) {}
 ///
-/// fn main() {
-///     let b = Bump::new();
-///     let example_string = String::from_str_in("example_string", &b);
-///     example_func(&example_string);
-/// }
+/// let b = Bump::new();
+/// let example_string = String::from_str_in("example_string", &b);
+/// example_func(&example_string);
 /// ```
 ///
 /// There are two options that would work instead. The first would be to
@@ -644,7 +642,7 @@ impl<'bump> String<'bump> {
             return String::from_str_in("", bump);
         };
 
-        const REPLACEMENT: &'static str = "\u{FFFD}";
+        const REPLACEMENT: &str = "\u{FFFD}";
 
         let mut res = String::with_capacity_in(v.len(), bump);
         res.push_str(first_valid);
@@ -1509,14 +1507,12 @@ impl<'bump> String<'bump> {
     /// ```
     /// use bumpalo::{Bump, collections::String};
     ///
-    /// # fn main() {
     /// let b = Bump::new();
     ///
     /// let mut hello = String::from_str_in("Hello, World!", &b);
     /// let world = hello.split_off(7);
     /// assert_eq!(hello, "Hello, ");
     /// assert_eq!(world, "World!");
-    /// # }
     /// ```
     #[inline]
     pub fn split_off(&mut self, at: usize) -> String<'bump> {
@@ -1835,10 +1831,6 @@ impl<'bump> PartialEq for String<'bump> {
     fn eq(&self, other: &String) -> bool {
         PartialEq::eq(&self[..], &other[..])
     }
-    #[inline]
-    fn ne(&self, other: &String) -> bool {
-        PartialEq::ne(&self[..], &other[..])
-    }
 }
 
 macro_rules! impl_eq {
@@ -1848,20 +1840,12 @@ macro_rules! impl_eq {
             fn eq(&self, other: &$rhs) -> bool {
                 PartialEq::eq(&self[..], &other[..])
             }
-            #[inline]
-            fn ne(&self, other: &$rhs) -> bool {
-                PartialEq::ne(&self[..], &other[..])
-            }
         }
 
         impl<'a, 'b, 'bump> PartialEq<$lhs> for $rhs {
             #[inline]
             fn eq(&self, other: &$lhs) -> bool {
                 PartialEq::eq(&self[..], &other[..])
-            }
-            #[inline]
-            fn ne(&self, other: &$lhs) -> bool {
-                PartialEq::ne(&self[..], &other[..])
             }
         }
     };
