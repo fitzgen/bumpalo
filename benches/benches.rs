@@ -1,5 +1,3 @@
-extern crate criterion;
-
 use criterion::{criterion_group, criterion_main, Criterion, ParameterizedBenchmark, Throughput};
 
 #[derive(Default)]
@@ -27,7 +25,7 @@ fn alloc<T: Default>(n: usize) {
 fn alloc_with<T: Default>(n: usize) {
     let arena = bumpalo::Bump::new();
     for _ in 0..n {
-        let val: &mut T = arena.alloc_with(|| Default::default());
+        let val: &mut T = arena.alloc_with(Default::default);
         criterion::black_box(val);
     }
 }

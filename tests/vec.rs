@@ -1,4 +1,3 @@
-extern crate bumpalo;
 use bumpalo::{collections::Vec, Bump};
 
 #[test]

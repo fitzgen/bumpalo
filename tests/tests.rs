@@ -1,16 +1,13 @@
-extern crate bumpalo;
-
 use bumpalo::Bump;
 use std::alloc::Layout;
 use std::mem;
-use std::slice;
 use std::usize;
 
 #[test]
 fn can_iterate_over_allocated_things() {
     let mut bump = Bump::new();
 
-    const MAX: u64 = 131072;
+    const MAX: u64 = 131_072;
 
     let mut chunks = vec![];
     let mut last = None;
@@ -41,18 +38,17 @@ fn can_iterate_over_allocated_things() {
     // Safe because we always allocated objects of the same type in this arena,
     // and their size >= their align.
     for ch in bump.iter_allocated_chunks() {
-        let ch_usize = ch.as_ptr() as usize;
-        println!("iter chunk @ 0x{:x}", ch_usize);
+        println!("iter chunk @ {:p}", ch);
         assert_eq!(
             chunks.pop().unwrap(),
-            ch_usize,
+            ch.as_ptr() as usize,
             "should iterate over each chunk once, in order they were allocated in"
         );
 
-        let ch: &[u64] = unsafe {
-            slice::from_raw_parts(ch.as_ptr() as *mut u64, ch.len() / mem::size_of::<u64>())
-        };
-        for i in ch {
+        let (before, mid, after) = unsafe { ch.align_to::<u64>() };
+        assert!(before.is_empty());
+        assert!(after.is_empty());
+        for i in mid {
             assert!(*i < MAX, "{} < {} (aka {:x} < {:x})", i, MAX, i, MAX);
             seen[*i as usize] = true;
         }
