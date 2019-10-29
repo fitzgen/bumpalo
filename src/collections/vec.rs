@@ -84,6 +84,7 @@
 //! [`vec!`]: ../../macro.vec.html
 
 use super::raw_vec::RawVec;
+use crate::Bump;
 use core::cmp::Ordering;
 use core::fmt;
 use core::hash::{self, Hash};
@@ -96,7 +97,6 @@ use core::ops::{Index, IndexMut, RangeBounds};
 use core::ptr;
 use core::ptr::NonNull;
 use std::slice;
-use crate::Bump;
 
 unsafe fn arith_offset<T>(p: *const T, offset: isize) -> *const T {
     p.offset(offset)
@@ -1848,13 +1848,20 @@ macro_rules! __impl_slice_eq1 {
         __impl_slice_eq1! { $Lhs, $Rhs, Sized }
     };
     ($Lhs: ty, $Rhs: ty, $Bound: ident) => {
-        impl<'a, 'b, A: $Bound, B> PartialEq<$Rhs> for $Lhs where A: PartialEq<B> {
+        impl<'a, 'b, A: $Bound, B> PartialEq<$Rhs> for $Lhs
+        where
+            A: PartialEq<B>,
+        {
             #[inline]
-            fn eq(&self, other: &$Rhs) -> bool { self[..] == other[..] }
+            fn eq(&self, other: &$Rhs) -> bool {
+                self[..] == other[..]
+            }
             #[inline]
-            fn ne(&self, other: &$Rhs) -> bool { self[..] != other[..] }
+            fn ne(&self, other: &$Rhs) -> bool {
+                self[..] != other[..]
+            }
         }
-    }
+    };
 }
 
 __impl_slice_eq1! { Vec<'a, A>, Vec<'b, B> }

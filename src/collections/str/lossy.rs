@@ -8,16 +8,16 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::char;
-use core::str;
 use crate::collections::str as core_str;
+use core::char;
 use core::fmt;
 use core::fmt::Write;
 use core::mem;
+use core::str;
 
 /// Lossy UTF-8 string.
 pub struct Utf8Lossy {
-    bytes: [u8]
+    bytes: [u8],
 }
 
 impl Utf8Lossy {
@@ -26,10 +26,11 @@ impl Utf8Lossy {
     }
 
     pub fn chunks(&self) -> Utf8LossyChunksIter {
-        Utf8LossyChunksIter { source: &self.bytes }
+        Utf8LossyChunksIter {
+            source: &self.bytes,
+        }
     }
 }
-
 
 /// Iterator over lossy UTF-8 string
 #[allow(missing_debug_implementations)]
@@ -60,7 +61,11 @@ impl<'a> Iterator for Utf8LossyChunksIter<'a> {
             unsafe { *xs.get_unchecked(i) }
         }
         fn safe_get(xs: &[u8], i: usize) -> u8 {
-            if i >= xs.len() { 0 } else { unsafe_get(xs, i) }
+            if i >= xs.len() {
+                0
+            } else {
+                unsafe_get(xs, i)
+            }
         }
 
         let mut i = 0;
@@ -71,20 +76,21 @@ impl<'a> Iterator for Utf8LossyChunksIter<'a> {
             i += 1;
 
             if byte < 128 {
-
             } else {
                 let w = core_str::utf8_char_width(byte);
 
-                macro_rules! error { () => ({
-                    unsafe {
-                        let r = Utf8LossyChunk {
-                            valid: str::from_utf8_unchecked(&self.source[0..i_]),
-                            broken: &self.source[i_..i],
-                        };
-                        self.source = &self.source[i..];
-                        return Some(r);
-                    }
-                })}
+                macro_rules! error {
+                    () => {{
+                        unsafe {
+                            let r = Utf8LossyChunk {
+                                valid: str::from_utf8_unchecked(&self.source[0..i_]),
+                                broken: &self.source[i_..i],
+                            };
+                            self.source = &self.source[i..];
+                            return Some(r);
+                        }
+                    }};
+                }
 
                 match w {
                     2 => {
@@ -95,10 +101,10 @@ impl<'a> Iterator for Utf8LossyChunksIter<'a> {
                     }
                     3 => {
                         match (byte, safe_get(self.source, i)) {
-                            (0xE0, 0xA0 ..= 0xBF) => (),
-                            (0xE1 ..= 0xEC, 0x80 ..= 0xBF) => (),
-                            (0xED, 0x80 ..= 0x9F) => (),
-                            (0xEE ..= 0xEF, 0x80 ..= 0xBF) => (),
+                            (0xE0, 0xA0..=0xBF) => (),
+                            (0xE1..=0xEC, 0x80..=0xBF) => (),
+                            (0xED, 0x80..=0x9F) => (),
+                            (0xEE..=0xEF, 0x80..=0xBF) => (),
                             _ => {
                                 error!();
                             }
@@ -111,9 +117,9 @@ impl<'a> Iterator for Utf8LossyChunksIter<'a> {
                     }
                     4 => {
                         match (byte, safe_get(self.source, i)) {
-                            (0xF0, 0x90 ..= 0xBF) => (),
-                            (0xF1 ..= 0xF3, 0x80 ..= 0xBF) => (),
-                            (0xF4, 0x80 ..= 0x8F) => (),
+                            (0xF0, 0x90..=0xBF) => (),
+                            (0xF1..=0xF3, 0x80..=0xBF) => (),
+                            (0xF4, 0x80..=0x8F) => (),
                             _ => {
                                 error!();
                             }
@@ -144,13 +150,12 @@ impl<'a> Iterator for Utf8LossyChunksIter<'a> {
     }
 }
 
-
 impl fmt::Display for Utf8Lossy {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // If we're the empty string then our iterator won't actually yield
         // anything, so perform the formatting manually
         if self.bytes.len() == 0 {
-            return "".fmt(f)
+            return "".fmt(f);
         }
 
         for Utf8LossyChunk { valid, broken } in self.chunks() {
@@ -159,7 +164,7 @@ impl fmt::Display for Utf8Lossy {
             // respect various formatting flags if possible.
             if valid.len() == self.bytes.len() {
                 assert!(broken.is_empty());
-                return valid.fmt(f)
+                return valid.fmt(f);
             }
 
             f.write_str(valid)?;
@@ -176,7 +181,6 @@ impl fmt::Debug for Utf8Lossy {
         f.write_char('"')?;
 
         for Utf8LossyChunk { valid, broken } in self.chunks() {
-
             // Valid part.
             // Here we partially parse UTF-8 again which is suboptimal.
             {
