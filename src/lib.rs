@@ -730,7 +730,7 @@ impl Bump {
 /// chunks last.
 ///
 /// This struct is created by the [`iter_allocated_chunks`] method on
-/// [Bump]. See that function for a safety description regarding.
+/// [Bump]. See that function for a safety description regarding reading from the returned items.
 #[derive(Debug)]
 pub struct ChunkIter<'a> {
     footer: Option<NonNull<ChunkFooter>>,
