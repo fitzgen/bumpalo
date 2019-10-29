@@ -834,7 +834,19 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
     }
 
     #[inline(always)]
-    unsafe fn dealloc(&mut self, _ptr: NonNull<u8>, _layout: Layout) {}
+    unsafe fn dealloc(&mut self, ptr: NonNull<u8>, layout: Layout) {
+        // See if the `ptr` is the last allocation we made. If so, we can reuse
+        // the bytes, otherwise they are simply leaked -- at least until somebody
+        // calls reset().
+        let old_size = layout.size();
+        let footer = self.current_chunk_footer.get();
+        let footer = footer.as_ref();
+        let footer_ptr = footer.ptr.get();
+        let footer_usize = footer_ptr.as_ptr() as usize;
+        if footer_usize.checked_sub(old_size) == Some(ptr.as_ptr() as usize) {
+            footer.ptr.set(ptr);
+        }
+    }
 
     #[inline]
     unsafe fn realloc(
@@ -844,36 +856,70 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
         new_size: usize,
     ) -> Result<NonNull<u8>, alloc::AllocErr> {
         let old_size = layout.size();
-
-        // Shrinking allocations. Do nothing.
-        if new_size < old_size {
-            return Ok(ptr);
-        }
+        let new_layout = layout_from_size_align(new_size, layout.align());
 
         // See if the `ptr` is the last allocation we made. If so, we can likely
         // realloc in place by just bumping a bit further!
-        //
-        // Note that we align-up the bump pointer on new allocation requests
-        // (not eagerly) so if `ptr` was the result of our last allocation, then
-        // the bump pointer is still pointing just after it.
         let footer = self.current_chunk_footer.get();
         let footer = footer.as_ref();
-        let footer_ptr = footer.ptr.get().as_ptr() as usize;
-        if footer_ptr.checked_sub(old_size) == Some(ptr.as_ptr() as usize) {
-            let delta = layout_from_size_align(new_size - old_size, 1);
-            if self.try_alloc_layout_fast(delta).is_some() {
-                return Ok(ptr);
-            }
-        }
+        let footer_ptr = footer.ptr.get();
+        let footer_usize = footer_ptr.as_ptr() as usize;
+        if footer_usize.checked_sub(old_size) == Some(ptr.as_ptr() as usize) {
+            // Our strategy is to deallocate the old allocation and then do a new
+            // allocation of the required size hoping for it to fit in the same
+            // location.
+            //
+            // We use the fact, that no matter what happens, our allocator will never
+            // actually touch any of the bytes it allocates.
+            //
+            // There are two special cases we need to handle: If the allocation
+            // outright fails, or if it simply does not fit within the current
+            // chunk.
+            //
+            // In the first case, we need to revert the deallocation we made, and
+            // return the error we got.
+            // In the second case, we need to copy the existing data to the new chunk.
+            //
+            // However in all cases, we can simply return whatever we got from trying
+            // to allocate.
+            footer.ptr.set(ptr);
+            let result = self.alloc(new_layout);
 
-        // Otherwise, fall back on alloc + copy + dealloc.
-        let new_layout = layout_from_size_align(new_size, layout.align());
-        let result = self.alloc(new_layout);
-        if let Ok(new_ptr) = result {
-            ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), cmp::min(old_size, new_size));
-            self.dealloc(ptr, layout);
+            match &result {
+                Err(_) => {
+                    // Restore the pointer to before we deallocated
+                    footer.ptr.set(footer_ptr);
+                }
+                &Ok(new_ptr) if ptr != new_ptr => {
+                    // We are in a new chunk, so we need to copy
+                    debug_assert_eq!(new_ptr, self.current_chunk_footer.get().as_ref().data);
+                    ptr::copy_nonoverlapping(
+                        ptr.as_ptr(),
+                        new_ptr.as_ptr(),
+                        cmp::min(old_size, new_size),
+                    );
+                }
+                Ok(_) => (),
+            }
+
+            result
+        } else if new_size <= old_size {
+            // Shrinking allocations. Do nothing.
+            Ok(ptr)
+        } else {
+            // Fall back on alloc + copy
+            // We do not deallocate the old pointer, since we have not way of
+            // using it for anything meaningful
+            let result = self.alloc(new_layout);
+            if let Ok(new_ptr) = result {
+                ptr::copy_nonoverlapping(
+                    ptr.as_ptr(),
+                    new_ptr.as_ptr(),
+                    cmp::min(old_size, new_size),
+                );
+            }
+            result
         }
-        result
     }
 }
 
