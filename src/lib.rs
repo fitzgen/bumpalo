@@ -305,12 +305,9 @@ impl Bump {
     /// # let _ = bump;
     /// ```
     pub fn with_capacity(capacity: usize) -> Bump {
-        let layout = if capacity + mem::size_of::<ChunkFooter>() < DEFAULT_CHUNK_SIZE_WITH_FOOTER {
-            None
-        } else {
-            Some((0, unsafe { layout_from_size_align(capacity, 1) }))
-        };
-        let chunk_footer = Self::new_chunk(layout);
+        let chunk_footer = Self::new_chunk(Some((DEFAULT_CHUNK_SIZE_WITH_FOOTER, unsafe {
+            layout_from_size_align(capacity, 1)
+        })));
         Bump {
             current_chunk_footer: Cell::new(chunk_footer),
             all_chunk_footers: Cell::new(chunk_footer),
