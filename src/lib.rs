@@ -721,6 +721,64 @@ impl Bump {
             bump: PhantomData,
         }
     }
+
+    /// Call `f` on each chunk of allocated memory that this arena has bump
+    /// allocated into.
+    ///
+    /// `f` is invoked in order of allocation: oldest chunks first, newest
+    /// chunks last.
+    ///
+    /// ## Safety
+    ///
+    /// Because this method takes `&mut self`, we know that the bump arena
+    /// reference is unique and therefore there aren't any active references to
+    /// any of the objects we've allocated in it either. This potential aliasing
+    /// of exclusive references is one common footgun for unsafe code that we
+    /// don't need to worry about here.
+    ///
+    /// However, there could be regions of uninitialized memory used as padding
+    /// between allocations. Reading uninitialized memory is big time undefined
+    /// behavior!
+    ///
+    /// The only way to guarantee that there is no padding between allocations
+    /// or within allocated objects is if all of these properties hold:
+    ///
+    /// 1. Every object allocated in this arena has the same alignment.
+    /// 2. Every object's size is a multiple of its alignment.
+    /// 3. None of the objects allocated in this arena contain any internal
+    ///    padding.
+    ///
+    /// If you want to use this `each_allocated_chunk` method, it is *your*
+    /// responsibility to ensure that these properties hold!
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let mut bump = bumpalo::Bump::new();
+    ///
+    /// // Allocate a bunch of things in this bump arena, potentially causing
+    /// // additional memory chunks to be reserved.
+    /// for i in 0..10000 {
+    ///     bump.alloc(i);
+    /// }
+    ///
+    /// // Iterate over each chunk we've bump allocated into. This is safe
+    /// // because we have only allocated `i32` objects in this arena.
+    /// unsafe {
+    ///     bump.each_allocated_chunk(|ch| {
+    ///         println!("Used a chunk that is {} bytes long", ch.len());
+    ///     });
+    /// }
+    /// ```
+    #[deprecated(note = "deprecated in favor of iter_allocated_chunks")]
+    pub unsafe fn each_allocated_chunk<F>(&mut self, mut f: F)
+    where
+        F: for<'a> FnMut(&'a [u8]),
+    {
+        for chunk in self.iter_allocated_chunks() {
+            f(slice::from_raw_parts(chunk.as_ptr() as *const u8, chunk.len()));
+        }
+    }
 }
 
 /// An iterator over each chunk of allocated memory that
