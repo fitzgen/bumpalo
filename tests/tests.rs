@@ -124,3 +124,10 @@ fn alloc_slice_clone() {
 
     assert_eq!(src, dst);
 }
+
+#[test]
+fn small_size_and_large_align() {
+    let b = Bump::new();
+    let layout = std::alloc::Layout::from_size_align(1, 0x1000).unwrap();
+    b.alloc_layout(layout);
+}
