@@ -122,6 +122,8 @@ mod imports {
     pub use std::cell::{Cell, UnsafeCell};
     pub use std::cmp;
     pub use std::fmt;
+    pub use std::iter;
+    pub use std::marker::PhantomData;
     pub use std::mem;
     pub use std::ptr::{self, NonNull};
     pub use std::slice;
@@ -134,6 +136,8 @@ mod imports {
     pub use core::cell::{Cell, UnsafeCell};
     pub use core::cmp;
     pub use core::fmt;
+    pub use core::iter;
+    pub use core::marker::PhantomData;
     pub use core::mem;
     pub use core::ptr::{self, NonNull};
     pub use core::slice;
@@ -663,6 +667,61 @@ impl Bump {
         }
     }
 
+    /// Returns an iterator over each chunk of allocated memory that
+    /// this arena has bump allocated into.
+    ///
+    /// Chunks are returned in order of allocation: oldest chunks first, newest
+    /// chunks last.
+    ///
+    /// ## Safety
+    ///
+    /// Because this method takes `&mut self`, we know that the bump arena
+    /// reference is unique and therefore there aren't any active references to
+    /// any of the objects we've allocated in it either. This potential aliasing
+    /// of exclusive references is one common footgun for unsafe code that we
+    /// don't need to worry about here.
+    ///
+    /// However, there could be regions of uninitialized memory used as padding
+    /// between allocations, which is why this iterator has items of type
+    /// `[MaybeUninit<u8>]`, instead of simply `[u8]`.
+    ///
+    /// The only way to guarantee that there is no padding between allocations
+    /// or within allocated objects is if all of these properties hold:
+    ///
+    /// 1. Every object allocated in this arena has the same alignment.
+    /// 2. Every object's size is a multiple of its alignment.
+    /// 3. None of the objects allocated in this arena contain any internal
+    ///    padding.
+    ///
+    /// If you want to use this `iter_allocated_chunks` method, it is *your*
+    /// responsibility to ensure that these properties hold before calling
+    /// `MaybeUninit::assume_init` or otherwise reading the returned values.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let mut bump = bumpalo::Bump::new();
+    ///
+    /// // Allocate a bunch of things in this bump arena, potentially causing
+    /// // additional memory chunks to be reserved.
+    /// for i in 0..10000 {
+    ///     bump.alloc(i);
+    /// }
+    ///
+    /// // Iterate over each chunk we've bump allocated into. This is safe
+    /// // because we have only allocated `i32` objects in this arena.
+    /// for ch in bump.iter_allocated_chunks() {
+    ///     println!("Used a chunk that is {} bytes long", ch.len());
+    ///     println!("The first byte is {:?}", unsafe { ch.get(0).unwrap().assume_init() });
+    /// }
+    /// ```
+    pub fn iter_allocated_chunks(&mut self) -> ChunkIter<'_> {
+        ChunkIter {
+            footer: Some(self.all_chunk_footers.get()),
+            bump: PhantomData,
+        }
+    }
+
     /// Call `f` on each chunk of allocated memory that this arena has bump
     /// allocated into.
     ///
@@ -711,14 +770,37 @@ impl Bump {
     ///     });
     /// }
     /// ```
+    #[deprecated(note = "deprecated in favor of iter_allocated_chunks")]
     pub unsafe fn each_allocated_chunk<F>(&mut self, mut f: F)
     where
         F: for<'a> FnMut(&'a [u8]),
     {
-        let mut footer = Some(self.all_chunk_footers.get());
-        while let Some(foot) = footer {
-            let foot = foot.as_ref();
+        for chunk in self.iter_allocated_chunks() {
+            f(slice::from_raw_parts(chunk.as_ptr() as *const u8, chunk.len()));
+        }
+    }
+}
 
+/// An iterator over each chunk of allocated memory that
+/// an arena has bump allocated into.
+///
+/// Chunks are returned in order of allocation: oldest chunks first, newest
+/// chunks last.
+///
+/// This struct is created by the [`iter_allocated_chunks`] method on
+/// [Bump]. See that function for a safety description regarding reading from the returned items.
+#[derive(Debug)]
+pub struct ChunkIter<'a> {
+    footer: Option<NonNull<ChunkFooter>>,
+    bump: PhantomData<&'a mut Bump>,
+}
+
+impl<'a> Iterator for ChunkIter<'a> {
+    type Item = &'a [mem::MaybeUninit<u8>];
+    fn next(&mut self) -> Option<&'a [mem::MaybeUninit<u8>]> {
+        unsafe {
+            let foot = self.footer?;
+            let foot = foot.as_ref();
             let start = foot.data.as_ptr() as usize;
             let end_of_allocated_region = foot.ptr.get().as_ptr() as usize;
             debug_assert!(end_of_allocated_region <= foot as *const _ as usize);
@@ -730,13 +812,14 @@ impl Bump {
             );
 
             let len = end_of_allocated_region - start;
-            let slice = slice::from_raw_parts(start as *const u8, len);
-            f(slice);
-
-            footer = foot.next.get();
+            let slice = slice::from_raw_parts(start as *const mem::MaybeUninit<u8>, len);
+            self.footer = foot.next.get();
+            Some(slice)
         }
     }
 }
+
+impl<'a> iter::FusedIterator for ChunkIter<'a> {}
 
 #[inline(never)]
 #[cold]
