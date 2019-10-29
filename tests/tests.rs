@@ -158,3 +158,19 @@ fn with_capacity_test() {
     with_capacity_helper(0u64..10000);
     with_capacity_helper(0u128..10000);
 }
+
+#[test]
+fn test_reset() {
+    let mut b = Bump::new();
+
+    for i in 0u64..10_000 {
+        b.alloc(i);
+    }
+
+    assert!(b.iter_allocated_chunks().count() > 1);
+
+    let ptr = b.iter_allocated_chunks().last().unwrap().as_ptr();
+    b.reset();
+    assert_eq!(ptr as usize, b.alloc(0u64) as *const u64 as usize);
+    assert_eq!(b.iter_allocated_chunks().count(), 1);
+}

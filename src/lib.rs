@@ -411,26 +411,19 @@ impl Bump {
         // Takes `&mut self` so `self` must be unique and there can't be any
         // borrows active that would get invalidated by resetting.
         unsafe {
-            let mut footer = Some(self.all_chunk_footers.get());
+            let mut cur_chunk = self.all_chunk_footers.get();
 
-            // Reset the pointer in each of our chunks.
-            while let Some(f) = footer {
-                footer = f.as_ref().next.get();
-
-                if f == self.current_chunk_footer.get() {
-                    // If this is the current chunk, then reset the bump finger
-                    // to the start of the chunk.
-                    f.as_ref()
-                        .ptr
-                        .set(NonNull::new_unchecked(f.as_ref().data.as_ptr() as *mut u8));
-                    f.as_ref().next.set(None);
-                    self.all_chunk_footers.set(f);
-                } else {
-                    // If this is not the current chunk, return it to the global
-                    // allocator.
-                    dealloc(f.as_ref().data.as_ptr(), f.as_ref().layout);
-                }
+            // Free all chunks except the last one
+            while let Some(next_chunk) = cur_chunk.as_ref().next.get() {
+                dealloc(cur_chunk.as_ref().data.as_ptr(), cur_chunk.as_ref().layout);
+                cur_chunk = next_chunk;
             }
+
+            // Reset the bump finger to the start of the chunk.
+            cur_chunk.as_ref().ptr.set(cur_chunk.as_ref().data);
+
+            self.all_chunk_footers.set(cur_chunk);
+            self.current_chunk_footer.set(cur_chunk);
 
             debug_assert_eq!(
                 self.all_chunk_footers.get(),
