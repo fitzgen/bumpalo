@@ -30,6 +30,7 @@ fn alloc_with<T: Default>(n: usize) {
     }
 }
 
+#[cfg(feature = "collections")]
 fn format_realloc(bump: &bumpalo::Bump, n: usize) {
     let n = criterion::black_box(n);
     let s = bumpalo::format!(in bump, "Hello {:.*}", n, "World! ");
@@ -97,6 +98,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         .throughput(|n| Throughput::Elements(*n as u32)),
     );
 
+    #[cfg(feature = "collections")]
     c.bench(
         "format-realloc",
         ParameterizedBenchmark::new(

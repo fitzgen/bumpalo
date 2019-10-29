@@ -59,7 +59,8 @@
 //! assert_eq!(bytes, [240, 159, 146, 150]);
 //! ```
 
-use super::str::lossy;
+use crate::collections::str::lossy;
+use crate::collections::vec::Vec;
 use crate::Bump;
 use core::char::decode_utf16;
 use core::fmt;
@@ -69,10 +70,8 @@ use core::mem;
 use core::ops::Bound::{Excluded, Included, Unbounded};
 use core::ops::{self, Add, AddAssign, Index, IndexMut, RangeBounds};
 use core::ptr;
-
-use crate::collections::vec::Vec;
-use std::borrow::Cow;
-use std::str::{self, Chars, Utf8Error};
+use core::str::{self, Chars, Utf8Error};
+use core_alloc::borrow::Cow;
 
 /// Like the `format!` macro for creating `std::string::String`s but for
 /// `bumpalo::collections::String`.
@@ -1810,8 +1809,8 @@ impl<'bump> Extend<String<'bump>> for String<'bump> {
     }
 }
 
-impl<'bump> Extend<::std::string::String> for String<'bump> {
-    fn extend<I: IntoIterator<Item = ::std::string::String>>(&mut self, iter: I) {
+impl<'bump> Extend<core_alloc::string::String> for String<'bump> {
+    fn extend<I: IntoIterator<Item = core_alloc::string::String>>(&mut self, iter: I) {
         for s in iter {
             self.push_str(&s)
         }
@@ -1854,7 +1853,7 @@ macro_rules! impl_eq {
 impl_eq! { String<'bump>, str }
 impl_eq! { String<'bump>, &'a str }
 impl_eq! { Cow<'a, str>, String<'bump> }
-impl_eq! { ::std::string::String, String<'bump> }
+impl_eq! { core_alloc::string::String, String<'bump> }
 
 impl<'bump> fmt::Display for String<'bump> {
     #[inline]

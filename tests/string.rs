@@ -1,3 +1,4 @@
+#![cfg(feature = "collections")]
 use bumpalo::{collections::String, Bump};
 use std::fmt::Write;
 
