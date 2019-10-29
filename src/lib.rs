@@ -723,7 +723,7 @@ impl Bump {
     }
 }
 
-/// An iterator over the each chunk of allocated memory that
+/// An iterator over each chunk of allocated memory that
 /// an arena has bump allocated into.
 ///
 /// Chunks are returned in order of allocation: oldest chunks first, newest
