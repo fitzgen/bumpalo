@@ -131,3 +131,34 @@ fn small_size_and_large_align() {
     let layout = std::alloc::Layout::from_size_align(1, 0x1000).unwrap();
     b.alloc_layout(layout);
 }
+
+fn with_capacity_helper<I, T>(iter: I)
+where
+    T: Copy + Eq,
+    I: Clone + Iterator<Item = T>,
+{
+    for &initial_size in &[0, 1, 8, 11, 0x1000, 0x12345] {
+        let mut b = Bump::with_capacity(initial_size);
+
+        for v in iter.clone() {
+            b.alloc(v);
+        }
+
+        let pushed_values = b.iter_allocated_chunks().flat_map(|c| {
+            let (before, mid, after) = unsafe { c.align_to::<T>() };
+            assert!(before.is_empty());
+            assert!(after.is_empty());
+            mid.iter().copied()
+        });
+        assert!(pushed_values.eq(iter.clone()));
+    }
+}
+
+#[test]
+fn with_capacity_test() {
+    with_capacity_helper(0u8..255);
+    with_capacity_helper(0u16..10000);
+    with_capacity_helper(0u32..10000);
+    with_capacity_helper(0u64..10000);
+    with_capacity_helper(0u128..10000);
+}
