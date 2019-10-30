@@ -779,6 +779,16 @@ impl Bump {
             ));
         }
     }
+
+    #[inline]
+    unsafe fn is_last_allocation(&self, ptr: NonNull<u8>, layout: Layout) -> bool {
+        let old_size = layout.size();
+        let footer = self.current_chunk_footer.get();
+        let footer = footer.as_ref();
+        let footer_ptr = footer.ptr.get();
+        let footer_usize = footer_ptr.as_ptr() as usize;
+        footer_usize.checked_sub(old_size) == Some(ptr.as_ptr() as usize)
+    }
 }
 
 /// An iterator over each chunk of allocated memory that
@@ -833,8 +843,14 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
         Ok(self.alloc_layout(layout))
     }
 
-    #[inline(always)]
-    unsafe fn dealloc(&mut self, _ptr: NonNull<u8>, _layout: Layout) {}
+    #[inline]
+    unsafe fn dealloc(&mut self, ptr: NonNull<u8>, layout: Layout) {
+        // If the pointer is the last allocation we made, we can reuse the bytes,
+        // otherwise they are simply leaked -- at least until somebody calls reset().
+        if self.is_last_allocation(ptr, layout) {
+            self.current_chunk_footer.get().as_ref().ptr.set(ptr);
+        }
+    }
 
     #[inline]
     unsafe fn realloc(
@@ -845,35 +861,38 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
     ) -> Result<NonNull<u8>, alloc::AllocErr> {
         let old_size = layout.size();
 
-        // Shrinking allocations. Do nothing.
-        if new_size < old_size {
-            return Ok(ptr);
-        }
-
-        // See if the `ptr` is the last allocation we made. If so, we can likely
-        // realloc in place by just bumping a bit further!
-        //
-        // Note that we align-up the bump pointer on new allocation requests
-        // (not eagerly) so if `ptr` was the result of our last allocation, then
-        // the bump pointer is still pointing just after it.
-        let footer = self.current_chunk_footer.get();
-        let footer = footer.as_ref();
-        let footer_ptr = footer.ptr.get().as_ptr() as usize;
-        if footer_ptr.checked_sub(old_size) == Some(ptr.as_ptr() as usize) {
-            let delta = layout_from_size_align(new_size - old_size, 1);
-            if self.try_alloc_layout_fast(delta).is_some() {
-                return Ok(ptr);
+        if new_size <= old_size {
+            // Shrinking an allocation is easy: Just give the same pointer back
+            // If it's the last allocation, we can reclaim some of the bytes, otherwise
+            // they are simply leaked.
+            if self.is_last_allocation(ptr, layout) {
+                let new_end = NonNull::new_unchecked(ptr.as_ptr().add(new_size));
+                self.current_chunk_footer.get().as_ref().ptr.set(new_end);
             }
-        }
 
-        // Otherwise, fall back on alloc + copy + dealloc.
-        let new_layout = layout_from_size_align(new_size, layout.align());
-        let result = self.alloc(new_layout);
-        if let Ok(new_ptr) = result {
-            ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), cmp::min(old_size, new_size));
-            self.dealloc(ptr, layout);
+            Ok(ptr)
+        } else {
+            // Increasing an allocation is harder. If it is the last allocation, we
+            // can *try* increasing it, but we might not have enough space in the
+            // current chunk. If this does not work, we must fall back to alloc+copy
+            if self.is_last_allocation(ptr, layout) {
+                // Since the old pointer is already aligned, we can simple request the
+                // remaining bytes without any alignment.
+                let delta = new_size - old_size;
+                if self
+                    .try_alloc_layout_fast(layout_from_size_align(delta, 1))
+                    .is_some()
+                {
+                    return Ok(ptr);
+                }
+            }
+
+            // Fallback: alloc+copy
+            let new_layout = layout_from_size_align(new_size, layout.align());
+            let new_ptr = self.alloc_layout(new_layout);
+            ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), old_size);
+            Ok(new_ptr)
         }
-        result
     }
 }
 
