@@ -1775,6 +1775,9 @@ impl<'a, 'bump, T> IntoIterator for &'a mut Vec<'bump, T> {
 impl<'bump, T: 'bump> Extend<T> for Vec<'bump, T> {
     #[inline]
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        let iter = iter.into_iter();
+        self.reserve(iter.size_hint().0);
+
         for t in iter {
             self.push(t);
         }
