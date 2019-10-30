@@ -779,6 +779,16 @@ impl Bump {
             ));
         }
     }
+
+    #[inline]
+    unsafe fn is_last_allocation(&self, ptr: NonNull<u8>, layout: Layout) -> bool {
+        let old_size = layout.size();
+        let footer = self.current_chunk_footer.get();
+        let footer = footer.as_ref();
+        let footer_ptr = footer.ptr.get();
+        let footer_usize = footer_ptr.as_ptr() as usize;
+        footer_usize.checked_sub(old_size) == Some(ptr.as_ptr() as usize)
+    }
 }
 
 /// An iterator over each chunk of allocated memory that
@@ -833,18 +843,12 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
         Ok(self.alloc_layout(layout))
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn dealloc(&mut self, ptr: NonNull<u8>, layout: Layout) {
-        // See if the `ptr` is the last allocation we made. If so, we can reuse
-        // the bytes, otherwise they are simply leaked -- at least until somebody
-        // calls reset().
-        let old_size = layout.size();
-        let footer = self.current_chunk_footer.get();
-        let footer = footer.as_ref();
-        let footer_ptr = footer.ptr.get();
-        let footer_usize = footer_ptr.as_ptr() as usize;
-        if footer_usize.checked_sub(old_size) == Some(ptr.as_ptr() as usize) {
-            footer.ptr.set(ptr);
+        // If the pointer is the last allocation we made, we can reuse the bytes,
+        // otherwise they are simply leaked -- at least until somebody calls reset().
+        if self.is_last_allocation(ptr, layout) {
+            self.current_chunk_footer.get().as_ref().ptr.set(ptr);
         }
     }
 
@@ -856,69 +860,38 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
         new_size: usize,
     ) -> Result<NonNull<u8>, alloc::AllocErr> {
         let old_size = layout.size();
-        let new_layout = layout_from_size_align(new_size, layout.align());
 
-        // See if the `ptr` is the last allocation we made. If so, we can likely
-        // realloc in place by just bumping a bit further!
-        let footer = self.current_chunk_footer.get();
-        let footer = footer.as_ref();
-        let footer_ptr = footer.ptr.get();
-        let footer_usize = footer_ptr.as_ptr() as usize;
-        if footer_usize.checked_sub(old_size) == Some(ptr.as_ptr() as usize) {
-            // Our strategy is to deallocate the old allocation and then do a new
-            // allocation of the required size hoping for it to fit in the same
-            // location.
-            //
-            // We use the fact, that no matter what happens, our allocator will never
-            // actually touch any of the bytes it allocates.
-            //
-            // There are two special cases we need to handle: If the allocation
-            // outright fails, or if it simply does not fit within the current
-            // chunk.
-            //
-            // In the first case, we need to revert the deallocation we made, and
-            // return the error we got.
-            // In the second case, we need to copy the existing data to the new chunk.
-            //
-            // However in all cases, we can simply return whatever we got from trying
-            // to allocate.
-            footer.ptr.set(ptr);
-            let result = self.alloc(new_layout);
-
-            match &result {
-                Err(_) => {
-                    // Restore the pointer to before we deallocated
-                    footer.ptr.set(footer_ptr);
-                }
-                &Ok(new_ptr) if ptr != new_ptr => {
-                    // We are in a new chunk, so we need to copy
-                    debug_assert_eq!(new_ptr, self.current_chunk_footer.get().as_ref().data);
-                    ptr::copy_nonoverlapping(
-                        ptr.as_ptr(),
-                        new_ptr.as_ptr(),
-                        cmp::min(old_size, new_size),
-                    );
-                }
-                Ok(_) => (),
+        if new_size <= old_size {
+            // Shrinking an allocation is easy: Just give the same pointer back
+            // If it's the last allocation, we can reclaim some of the bytes, otherwise
+            // they are simply leaked.
+            if self.is_last_allocation(ptr, layout) {
+                let new_end = NonNull::new_unchecked(ptr.as_ptr().add(new_size));
+                self.current_chunk_footer.get().as_ref().ptr.set(new_end);
             }
 
-            result
-        } else if new_size <= old_size {
-            // Shrinking allocations. Do nothing.
             Ok(ptr)
         } else {
-            // Fall back on alloc + copy
-            // We do not deallocate the old pointer, since we have not way of
-            // using it for anything meaningful
-            let result = self.alloc(new_layout);
-            if let Ok(new_ptr) = result {
-                ptr::copy_nonoverlapping(
-                    ptr.as_ptr(),
-                    new_ptr.as_ptr(),
-                    cmp::min(old_size, new_size),
-                );
+            // Increasing an allocation is harder. If it is the last allocation, we
+            // can *try* increasing it, but we might not have enough space in the
+            // current chunk. If this does not work, we must fall back to alloc+copy
+            if self.is_last_allocation(ptr, layout) {
+                // Since the old pointer is already aligned, we can simple request the
+                // remaining bytes without any alignment.
+                let delta = new_size - old_size;
+                if self
+                    .try_alloc_layout_fast(layout_from_size_align(delta, 1))
+                    .is_some()
+                {
+                    return Ok(ptr);
+                }
             }
-            result
+
+            // Fallback: alloc+copy
+            let new_layout = layout_from_size_align(new_size, layout.align());
+            let new_ptr = self.alloc_layout(new_layout);
+            ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), old_size);
+            Ok(new_ptr)
         }
     }
 }
