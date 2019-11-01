@@ -327,15 +327,22 @@ impl Bump {
                 });
 
             let size = layout.size();
-            debug_assert!(layout.align() % mem::align_of::<ChunkFooter>() == 0);
+            debug_assert_eq!(layout.align() % mem::align_of::<ChunkFooter>(), 0);
 
             let data = alloc(layout);
             let data = NonNull::new(data).unwrap_or_else(|| oom());
 
             let next = Cell::new(None);
-            let ptr = Cell::new(data);
+
+            // The `ChunkFooter` is at the end of the chunk.
             let footer_ptr = data.as_ptr() as usize + size - mem::size_of::<ChunkFooter>();
+            debug_assert_eq!(footer_ptr % mem::align_of::<ChunkFooter>(), 0);
             let footer_ptr = footer_ptr as *mut ChunkFooter;
+
+            // The bump pointer is initialized to the end of the range we will
+            // bump out of.
+            let ptr = Cell::new(NonNull::new_unchecked(footer_ptr as *mut u8));
+
             ptr::write(
                 footer_ptr,
                 ChunkFooter {
@@ -345,6 +352,7 @@ impl Bump {
                     ptr,
                 },
             );
+
             NonNull::new_unchecked(footer_ptr)
         }
     }
@@ -393,8 +401,8 @@ impl Bump {
                 cur_chunk = next_chunk;
             }
 
-            // Reset the bump finger to the start of the chunk.
-            cur_chunk.as_ref().ptr.set(cur_chunk.as_ref().data);
+            // Reset the bump finger to the end of the chunk.
+            cur_chunk.as_ref().ptr.set(cur_chunk.cast());
 
             self.all_chunk_footers.set(cur_chunk);
             self.current_chunk_footer.set(cur_chunk);
@@ -415,7 +423,7 @@ impl Bump {
             );
             debug_assert_eq!(
                 self.current_chunk_footer.get().as_ref().ptr.get(),
-                self.current_chunk_footer.get().as_ref().data,
+                self.current_chunk_footer.get().cast(),
                 "Our chunk's bump finger should be reset to the start of its allocation"
             );
         }
@@ -607,20 +615,17 @@ impl Bump {
             let footer = self.current_chunk_footer.get();
             let footer = footer.as_ref();
             let ptr = footer.ptr.get().as_ptr() as usize;
-            let end = footer as *const _ as usize;
-            debug_assert!(ptr <= end);
+            let start = footer.data.as_ptr() as usize;
+            debug_assert!(start <= ptr);
+            debug_assert!(ptr <= footer as *const _ as usize);
 
-            // If the pointer overflows, the allocation definitely doesn't fit into the current
-            // chunk, so we try to get a new one.
-            let aligned_ptr = round_up_to(ptr, layout.align())?;
-            let new_ptr = aligned_ptr.checked_add(layout.size())?;
+            let ptr = ptr.checked_sub(layout.size())?;
+            let aligned_ptr = ptr & !(layout.align() - 1);
 
-            if new_ptr <= end {
-                debug_assert!(aligned_ptr <= end);
-                let p = aligned_ptr as *mut u8;
-                debug_assert!(new_ptr <= footer as *const _ as usize);
-                footer.ptr.set(NonNull::new_unchecked(new_ptr as *mut u8));
-                Some(NonNull::new_unchecked(p))
+            if aligned_ptr >= start {
+                let aligned_ptr = NonNull::new_unchecked(aligned_ptr as *mut u8);
+                footer.ptr.set(aligned_ptr);
+                Some(aligned_ptr)
             } else {
                 None
             }
@@ -648,19 +653,23 @@ impl Bump {
             // Set the new chunk as our new current chunk.
             self.current_chunk_footer.set(footer);
 
-            // Move the bump ptr finger ahead to allocate room for `val`.
             let footer = footer.as_ref();
-            let ptr = footer.ptr.get().as_ptr() as usize + size;
+
+            // Move the bump ptr finger down to allocate room for `val`. We know
+            // this can't overflow because we successfully allocated a chunk of
+            // at least the requested size.
+            let ptr = footer.ptr.get().as_ptr() as usize - size;
             debug_assert!(
                 ptr <= footer as *const _ as usize,
-                "{} <= {}",
+                "{:#x} <= {:#x}",
                 ptr,
                 footer as *const _ as usize
             );
-            footer.ptr.set(NonNull::new_unchecked(ptr as *mut u8));
+            let ptr = NonNull::new_unchecked(ptr as *mut u8);
+            footer.ptr.set(ptr);
 
-            // Return a pointer to the start of this chunk.
-            footer.data.cast::<u8>()
+            // Return a pointer to the freshly allocated region in this chunk.
+            ptr
         }
     }
 
@@ -781,13 +790,10 @@ impl Bump {
     }
 
     #[inline]
-    unsafe fn is_last_allocation(&self, ptr: NonNull<u8>, layout: Layout) -> bool {
-        let old_size = layout.size();
+    unsafe fn is_last_allocation(&self, ptr: NonNull<u8>) -> bool {
         let footer = self.current_chunk_footer.get();
         let footer = footer.as_ref();
-        let footer_ptr = footer.ptr.get();
-        let footer_usize = footer_ptr.as_ptr() as usize;
-        footer_usize.checked_sub(old_size) == Some(ptr.as_ptr() as usize)
+        footer.ptr.get() == ptr
     }
 }
 
@@ -811,18 +817,13 @@ impl<'a> Iterator for ChunkIter<'a> {
         unsafe {
             let foot = self.footer?;
             let foot = foot.as_ref();
-            let start = foot.data.as_ptr() as usize;
-            let end_of_allocated_region = foot.ptr.get().as_ptr() as usize;
-            debug_assert!(end_of_allocated_region <= foot as *const _ as usize);
-            debug_assert!(
-                end_of_allocated_region >= start,
-                "end_of_allocated_region (0x{:x}) >= start (0x{:x})",
-                end_of_allocated_region,
-                start
-            );
+            let data = foot.data.as_ptr() as usize;
+            let ptr = foot.ptr.get().as_ptr() as usize;
+            debug_assert!(data <= ptr);
+            debug_assert!(ptr <= foot as *const _ as usize);
 
-            let len = end_of_allocated_region - start;
-            let slice = slice::from_raw_parts(start as *const mem::MaybeUninit<u8>, len);
+            let len = foot as *const _ as usize - ptr;
+            let slice = slice::from_raw_parts(ptr as *const mem::MaybeUninit<u8>, len);
             self.footer = foot.next.get();
             Some(slice)
         }
@@ -847,7 +848,8 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
     unsafe fn dealloc(&mut self, ptr: NonNull<u8>, layout: Layout) {
         // If the pointer is the last allocation we made, we can reuse the bytes,
         // otherwise they are simply leaked -- at least until somebody calls reset().
-        if self.is_last_allocation(ptr, layout) {
+        if self.is_last_allocation(ptr) {
+            let ptr = NonNull::new_unchecked(ptr.as_ptr().add(layout.size()));
             self.current_chunk_footer.get().as_ref().ptr.set(ptr);
         }
     }
@@ -862,41 +864,189 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
         let old_size = layout.size();
 
         if new_size <= old_size {
-            // Shrinking an allocation is easy: Just give the same pointer back
-            // If it's the last allocation, we can reclaim some of the bytes, otherwise
-            // they are simply leaked.
-            if self.is_last_allocation(ptr, layout) {
-                let new_end = NonNull::new_unchecked(ptr.as_ptr().add(new_size));
-                self.current_chunk_footer.get().as_ref().ptr.set(new_end);
+            if self.is_last_allocation(ptr)
+                // Only reclaim the excess space (which requires a copy) if it
+                // is worth it: we are actually going to recover "enough" space
+                // and we can do a non-overlapping copy.
+                && new_size <= old_size / 2
+            {
+                let delta = old_size - new_size;
+                let footer = self.current_chunk_footer.get();
+                let footer = footer.as_ref();
+                footer
+                    .ptr
+                    .set(NonNull::new_unchecked(footer.ptr.get().as_ptr().add(delta)));
+                let new_ptr = footer.ptr.get();
+                // NB: we know it is non-overlapping because of the size check
+                // in the `if` condition.
+                ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), new_size);
+                return Ok(new_ptr);
+            } else {
+                return Ok(ptr);
             }
-
-            Ok(ptr)
-        } else {
-            // Increasing an allocation is harder. If it is the last allocation, we
-            // can *try* increasing it, but we might not have enough space in the
-            // current chunk. If this does not work, we must fall back to alloc+copy
-            if self.is_last_allocation(ptr, layout) {
-                // Since the old pointer is already aligned, we can simple request the
-                // remaining bytes without any alignment.
-                let delta = new_size - old_size;
-                if self
-                    .try_alloc_layout_fast(layout_from_size_align(delta, 1))
-                    .is_some()
-                {
-                    return Ok(ptr);
-                }
-            }
-
-            // Fallback: alloc+copy
-            let new_layout = layout_from_size_align(new_size, layout.align());
-            let new_ptr = self.alloc_layout(new_layout);
-            ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), old_size);
-            Ok(new_ptr)
         }
+
+        if self.is_last_allocation(ptr) {
+            // Try to allocate the delta size within this same block so we can
+            // reuse the currently allocated space.
+            let delta = new_size - old_size;
+            if let Some(p) =
+                self.try_alloc_layout_fast(layout_from_size_align(delta, layout.align()))
+            {
+                ptr::copy(ptr.as_ptr(), p.as_ptr(), new_size);
+                return Ok(p);
+            }
+        }
+
+        // Fallback: do a fresh allocation and copy the existing data into it.
+        let new_layout = layout_from_size_align(new_size, layout.align());
+        let new_ptr = self.alloc_layout(new_layout);
+        ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), old_size);
+        Ok(new_ptr)
     }
 }
 
-#[test]
-fn chunk_footer_is_five_words() {
-    assert_eq!(mem::size_of::<ChunkFooter>(), mem::size_of::<usize>() * 5);
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn chunk_footer_is_five_words() {
+        assert_eq!(mem::size_of::<ChunkFooter>(), mem::size_of::<usize>() * 5);
+    }
+
+    #[test]
+    #[allow(clippy::cognitive_complexity)]
+    fn test_realloc() {
+        use crate::alloc::Alloc;
+
+        unsafe {
+            const CAPACITY: usize = 1000;
+            let mut b = Bump::with_capacity(CAPACITY);
+
+            // `realloc` doesn't shrink allocations that aren't "worth it".
+            let layout = Layout::from_size_align(100, 1).unwrap();
+            let p = b.alloc_layout(layout);
+            let q = (&b).realloc(p, layout, 51).unwrap();
+            assert_eq!(p, q);
+            b.reset();
+
+            // `realloc` will shrink allocations that are "worth it".
+            let layout = Layout::from_size_align(100, 1).unwrap();
+            let p = b.alloc_layout(layout);
+            let q = (&b).realloc(p, layout, 50).unwrap();
+            assert!(p != q);
+            b.reset();
+
+            // `realloc` will reuse the last allocation when growing.
+            let layout = Layout::from_size_align(10, 1).unwrap();
+            let p = b.alloc_layout(layout);
+            let q = (&b).realloc(p, layout, 11).unwrap();
+            assert_eq!(q.as_ptr() as usize, p.as_ptr() as usize - 1);
+            b.reset();
+
+            // `realloc` will allocate a new chunk when growing the last
+            // allocation, if need be.
+            let layout = Layout::from_size_align(1, 1).unwrap();
+            let p = b.alloc_layout(layout);
+            let q = (&b).realloc(p, layout, CAPACITY + 1).unwrap();
+            assert!(q.as_ptr() as usize != p.as_ptr() as usize - CAPACITY);
+            b = Bump::with_capacity(CAPACITY);
+
+            // `realloc` will allocate and copy when reallocating anything that
+            // wasn't the last allocation.
+            let layout = Layout::from_size_align(1, 1).unwrap();
+            let p = b.alloc_layout(layout);
+            let _ = b.alloc_layout(layout);
+            let q = (&b).realloc(p, layout, 2).unwrap();
+            assert!(q.as_ptr() as usize != p.as_ptr() as usize - 1);
+            b.reset();
+        }
+        // let v1_data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        // let v2_data = [41, 42, 43, 44, 45, 46, 47, 48, 49, 50];
+        // let mut v1 = bumpalo::vec![in &b; 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        // v1.reserve(90);
+        // let v1_ptr = v1.as_ptr();
+        // assert!(10 <= v1.capacity() && v1.capacity() < 20);
+
+        // // Shift the size up and down a few times and see that it stays in place
+        // v1.reserve(100);
+        // assert!(v1.capacity() >= 100);
+        // assert_eq!(v1.as_ptr(), v1_ptr);
+        // assert_eq!(v1, v1_data);
+
+        // v1.shrink_to_fit();
+        // assert!(10 <= v1.capacity() && v1.capacity() < 20);
+        // assert_eq!(v1.as_ptr(), v1_ptr);
+        // assert_eq!(v1, v1_data);
+
+        // v1.reserve(100);
+        // assert!(v1.capacity() >= 100);
+        // assert_eq!(v1.as_ptr(), v1_ptr);
+        // assert_eq!(v1, v1_data);
+
+        // v1.shrink_to_fit();
+        // assert!(10 <= v1.capacity() && v1.capacity() < 20);
+        // assert_eq!(v1.as_ptr(), v1_ptr);
+        // assert_eq!(v1, v1_data);
+
+        // // Allocate just after our buffer, to see that it blocks in-place expansion
+        // let mut v2 = bumpalo::vec![in &b; 41, 42, 43, 44, 45, 46, 47, 48, 49, 50];
+        // let v2_ptr = v2.as_ptr();
+        // assert!(10 <= v2.capacity() && v2.capacity() < 20);
+        // assert_eq!(unsafe { v1_ptr.add(v1.capacity()) }, v2_ptr);
+
+        // v1.reserve(100);
+        // assert!(v1.capacity() >= 100);
+        // assert_ne!(v1.as_ptr(), v1_ptr);
+        // assert_eq!(v1, v1_data);
+
+        // // Our chunk is now [old, dead v1] [current v2] [current v1]
+        // let v1_ptr = v1.as_ptr();
+        // assert_eq!(unsafe { v2_ptr.add(v2.capacity()) }, v1_ptr);
+
+        // // See that we can still shrink at the new location as well
+        // v1.shrink_to_fit();
+        // assert!(10 <= v1.capacity() && v1.capacity() < 20);
+        // assert_eq!(v1.as_ptr(), v1_ptr);
+        // assert_eq!(v1, v1_data);
+
+        // // And see that we get a new chunk if we expand too much
+        // v1.reserve(10_000);
+        // assert!(v1.capacity() >= 10_000);
+        // assert_ne!(v1.as_ptr(), v1_ptr);
+        // assert_eq!(v1, v1_data);
+
+        // // See that we can deallocate and re-use the existing memory
+        // let v1_ptr = v1.as_ptr();
+        // mem::drop(v1);
+
+        // let mut v1 = bumpalo::vec![in &b; 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        // assert!(10 <= v1.capacity() && v1.capacity() < 20);
+        // assert_eq!(v1.as_ptr(), v1_ptr);
+
+        // // At this point, the old chunk is [old, dead v1] [current v2] [old, dead v1]
+        // // See that we can still shrink buffers that are not at the end without moving them
+        // v2.truncate(5);
+        // v2.shrink_to_fit();
+        // assert!(v2.capacity() < 10);
+        // assert_eq!(v2.as_ptr(), v2_ptr);
+        // assert_eq!(v2, &v2_data[..5]);
+
+        // // However we cannot increase their size back up again without moving
+        // v2.extend_from_slice(&[46, 47, 48, 49, 50]);
+        // assert!(10 <= v2.capacity() && v2.capacity() < 20);
+        // assert_ne!(v2.as_ptr(), v2_ptr);
+        // assert_eq!(v2, v2_data);
+        // let v2_ptr = v2.as_ptr();
+
+        // // At this point, our new chunk should be [current v1][current v2]
+        // assert_eq!(unsafe { v1_ptr.add(v1.capacity()) }, v2_ptr);
+
+        // // If we free v2, we should be able to extend v1 inplace
+        // mem::drop(v2);
+        // v1.reserve(100);
+        // assert!(v1.capacity() >= 100);
+        // assert_eq!(v1.as_ptr(), v1_ptr);
+    }
 }
