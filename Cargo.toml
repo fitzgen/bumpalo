@@ -21,7 +21,7 @@ harness = false
 
 [dev-dependencies]
 quickcheck = "0.8.2"
-criterion = "0.2.10"
+criterion = "0.3.0"
 
 [features]
 default = ["collections"]
