@@ -9,7 +9,7 @@ fn can_iterate_over_allocated_things() {
 
     const MAX: u64 = 131_072;
 
-    let mut chunks = vec![];
+    let mut chunk_ends = vec![];
     let mut last = None;
 
     for i in 0..MAX {
@@ -18,30 +18,32 @@ fn can_iterate_over_allocated_things() {
         let this = this as *const _ as usize;
 
         if match last {
-            Some(last) if last + mem::size_of::<u64>() == this => false,
+            Some(last) if last - mem::size_of::<u64>() == this => false,
             _ => true,
         } {
-            println!("new chunk @ 0x{:x}", this);
+            let chunk_end = this + mem::size_of::<u64>();
+            println!("new chunk ending @ 0x{:x}", chunk_end);
             assert!(
-                !chunks.contains(&this),
+                !chunk_ends.contains(&chunk_end),
                 "should not have already allocated this chunk"
             );
-            chunks.push(this);
+            chunk_ends.push(chunk_end);
         }
 
         last = Some(this);
     }
 
     let mut seen = vec![false; MAX as usize];
-    chunks.reverse();
+    chunk_ends.reverse();
 
     // Safe because we always allocated objects of the same type in this arena,
     // and their size >= their align.
     for ch in bump.iter_allocated_chunks() {
-        println!("iter chunk @ {:p}", ch);
+        let chunk_end = ch.as_ptr() as usize + ch.len();
+        println!("iter chunk ending @ {:#x}", chunk_end);
         assert_eq!(
-            chunks.pop().unwrap(),
-            ch.as_ptr() as usize,
+            chunk_ends.pop().unwrap(),
+            chunk_end,
             "should iterate over each chunk once, in order they were allocated in"
         );
 
@@ -144,7 +146,7 @@ where
             let (before, mid, after) = unsafe { c.align_to::<T>() };
             assert!(before.is_empty());
             assert!(after.is_empty());
-            mid.iter().copied()
+            mid.iter().rev().copied()
         });
         assert!(pushed_values.eq(iter.clone()));
     }
@@ -169,8 +171,11 @@ fn test_reset() {
 
     assert!(b.iter_allocated_chunks().count() > 1);
 
-    let ptr = b.iter_allocated_chunks().last().unwrap().as_ptr();
+    let last_chunk = b.iter_allocated_chunks().last().unwrap();
+    let start = last_chunk.as_ptr() as usize;
+    let end = start + last_chunk.len();
+    dbg!((start, end));
     b.reset();
-    assert_eq!(ptr as usize, b.alloc(0u64) as *const u64 as usize);
+    assert_eq!(end - mem::size_of::<u64>(), b.alloc(0u64) as *const u64 as usize);
     assert_eq!(b.iter_allocated_chunks().count(), 1);
 }
