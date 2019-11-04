@@ -174,7 +174,6 @@ fn test_reset() {
     let last_chunk = b.iter_allocated_chunks().last().unwrap();
     let start = last_chunk.as_ptr() as usize;
     let end = start + last_chunk.len();
-    dbg!((start, end));
     b.reset();
     assert_eq!(end - mem::size_of::<u64>(), b.alloc(0u64) as *const u64 as usize);
     assert_eq!(b.iter_allocated_chunks().count(), 1);
