@@ -14,7 +14,7 @@
 Bump allocation is a fast, but limited approach to allocation. We have a chunk
 of memory, and we maintain a pointer within that memory. Whenever we allocate an
 object, we do a quick test that we have enough capacity left in our chunk to
-allocate the object and then increment the pointer by the object's size. *That's
+allocate the object and then update the pointer by the object's size. *That's
 it!*
 
 The disadvantage of bump allocation is that there is no general way to
@@ -171,10 +171,6 @@ use core_alloc::alloc::{alloc, dealloc, Layout};
 pub struct Bump {
     // The current chunk we are bump allocating within.
     current_chunk_footer: Cell<NonNull<ChunkFooter>>,
-
-    // The first chunk we were ever given, which is the head of the intrusive
-    // linked list of all chunks this arena has been bump allocating within.
-    all_chunk_footers: Cell<NonNull<ChunkFooter>>,
 }
 
 #[repr(C)]
@@ -187,8 +183,8 @@ struct ChunkFooter {
     // The layout of this chunk's allocation.
     layout: Layout,
 
-    // Link to the next chunk, if any.
-    next: Cell<Option<NonNull<ChunkFooter>>>,
+    // Link to the previous chunk, if any.
+    prev: Cell<Option<NonNull<ChunkFooter>>>,
 
     // Bump allocation finger that is always in the range `self.data..=self`.
     ptr: Cell<NonNull<u8>>,
@@ -203,12 +199,16 @@ impl Default for Bump {
 impl Drop for Bump {
     fn drop(&mut self) {
         unsafe {
-            let mut footer = Some(self.all_chunk_footers.get());
-            while let Some(f) = footer {
-                footer = f.as_ref().next.get();
-                dealloc(f.as_ref().data.as_ptr(), f.as_ref().layout);
-            }
+            dealloc_chunk_list(Some(self.current_chunk_footer.get()));
         }
+    }
+}
+
+#[inline]
+unsafe fn dealloc_chunk_list(mut footer: Option<NonNull<ChunkFooter>>) {
+    while let Some(f) = footer {
+        footer = f.as_ref().prev.get();
+        dealloc(f.as_ref().data.as_ptr(), f.as_ref().layout);
     }
 }
 
@@ -263,10 +263,9 @@ impl Bump {
     /// # let _ = bump;
     /// ```
     pub fn new() -> Bump {
-        let chunk_footer = Self::new_chunk(None);
+        let chunk_footer = Self::new_chunk(None, None);
         Bump {
             current_chunk_footer: Cell::new(chunk_footer),
-            all_chunk_footers: Cell::new(chunk_footer),
         }
     }
 
@@ -279,12 +278,14 @@ impl Bump {
     /// # let _ = bump;
     /// ```
     pub fn with_capacity(capacity: usize) -> Bump {
-        let chunk_footer = Self::new_chunk(Some((DEFAULT_CHUNK_SIZE_WITH_FOOTER, unsafe {
-            layout_from_size_align(capacity, 1)
-        })));
+        let chunk_footer = Self::new_chunk(
+            Some((DEFAULT_CHUNK_SIZE_WITH_FOOTER, unsafe {
+                layout_from_size_align(capacity, 1)
+            })),
+            None,
+        );
         Bump {
             current_chunk_footer: Cell::new(chunk_footer),
-            all_chunk_footers: Cell::new(chunk_footer),
         }
     }
 
@@ -293,7 +294,10 @@ impl Bump {
     /// If given, `layouts` is a tuple of the current chunk size and the
     /// layout of the allocation request that triggered us to fall back to
     /// allocating a new chunk of memory.
-    fn new_chunk(layouts: Option<(usize, Layout)>) -> NonNull<ChunkFooter> {
+    fn new_chunk(
+        layouts: Option<(usize, Layout)>,
+        prev: Option<NonNull<ChunkFooter>>,
+    ) -> NonNull<ChunkFooter> {
         unsafe {
             let layout: Layout =
                 layouts.map_or_else(Bump::default_chunk_layout, |(old_size, requested)| {
@@ -332,8 +336,6 @@ impl Bump {
             let data = alloc(layout);
             let data = NonNull::new(data).unwrap_or_else(|| oom());
 
-            let next = Cell::new(None);
-
             // The `ChunkFooter` is at the end of the chunk.
             let footer_ptr = data.as_ptr() as usize + size - mem::size_of::<ChunkFooter>();
             debug_assert_eq!(footer_ptr % mem::align_of::<ChunkFooter>(), 0);
@@ -348,7 +350,7 @@ impl Bump {
                 ChunkFooter {
                     data,
                     layout,
-                    next,
+                    prev: Cell::new(prev),
                     ptr,
                 },
             );
@@ -393,30 +395,20 @@ impl Bump {
         // Takes `&mut self` so `self` must be unique and there can't be any
         // borrows active that would get invalidated by resetting.
         unsafe {
-            let mut cur_chunk = self.all_chunk_footers.get();
+            let cur_chunk = self.current_chunk_footer.get();
 
-            // Free all chunks except the last one
-            while let Some(next_chunk) = cur_chunk.as_ref().next.get() {
-                dealloc(cur_chunk.as_ref().data.as_ptr(), cur_chunk.as_ref().layout);
-                cur_chunk = next_chunk;
-            }
+            // Deallocate all chunks except the current one
+            let prev_chunk = cur_chunk.as_ref().prev.replace(None);
+            dealloc_chunk_list(prev_chunk);
 
             // Reset the bump finger to the end of the chunk.
             cur_chunk.as_ref().ptr.set(cur_chunk.cast());
 
-            self.all_chunk_footers.set(cur_chunk);
-            self.current_chunk_footer.set(cur_chunk);
-
-            debug_assert_eq!(
-                self.all_chunk_footers.get(),
-                self.current_chunk_footer.get(),
-                "The current chunk should be the list head of all of our chunks"
-            );
             debug_assert!(
                 self.current_chunk_footer
                     .get()
                     .as_ref()
-                    .next
+                    .prev
                     .get()
                     .is_none(),
                 "We should only have a single chunk"
@@ -640,33 +632,28 @@ impl Bump {
             let size = layout.size();
 
             // Get a new chunk from the global allocator.
-            let current_layout = self.current_chunk_footer.get().as_ref().layout;
-            let footer = Bump::new_chunk(Some((current_layout.size(), layout)));
-
-            // Set our current chunk's next link to this new chunk.
-            self.current_chunk_footer
-                .get()
-                .as_ref()
-                .next
-                .set(Some(footer));
+            let current_footer = self.current_chunk_footer.get();
+            let current_layout = current_footer.as_ref().layout;
+            let new_footer =
+                Bump::new_chunk(Some((current_layout.size(), layout)), Some(current_footer));
 
             // Set the new chunk as our new current chunk.
-            self.current_chunk_footer.set(footer);
+            self.current_chunk_footer.set(new_footer);
 
-            let footer = footer.as_ref();
+            let new_footer = new_footer.as_ref();
 
             // Move the bump ptr finger down to allocate room for `val`. We know
             // this can't overflow because we successfully allocated a chunk of
             // at least the requested size.
-            let ptr = footer.ptr.get().as_ptr() as usize - size;
+            let ptr = new_footer.ptr.get().as_ptr() as usize - size;
             debug_assert!(
-                ptr <= footer as *const _ as usize,
+                ptr <= new_footer as *const _ as usize,
                 "{:#x} <= {:#x}",
                 ptr,
-                footer as *const _ as usize
+                new_footer as *const _ as usize
             );
             let ptr = NonNull::new_unchecked(ptr as *mut u8);
-            footer.ptr.set(ptr);
+            new_footer.ptr.set(ptr);
 
             // Return a pointer to the freshly allocated region in this chunk.
             ptr
@@ -676,8 +663,11 @@ impl Bump {
     /// Returns an iterator over each chunk of allocated memory that
     /// this arena has bump allocated into.
     ///
-    /// Chunks are returned in order of allocation: oldest chunks first, newest
-    /// chunks last.
+    /// The chunks are returned ordered by allocation time, with the most recently
+    /// allocated chunk being returned first.
+    ///
+    /// The values inside each chunk is also ordered by allocation time, with the most
+    /// recent allocation being earlier in the slice.
     ///
     /// ## Safety
     ///
@@ -723,7 +713,7 @@ impl Bump {
     /// ```
     pub fn iter_allocated_chunks(&mut self) -> ChunkIter<'_> {
         ChunkIter {
-            footer: Some(self.all_chunk_footers.get()),
+            footer: Some(self.current_chunk_footer.get()),
             bump: PhantomData,
         }
     }
@@ -731,7 +721,7 @@ impl Bump {
     /// Call `f` on each chunk of allocated memory that this arena has bump
     /// allocated into.
     ///
-    /// `f` is invoked in order of allocation: oldest chunks first, newest
+    /// `f` is invoked in order of allocation: newest chunks first, oldest
     /// chunks last.
     ///
     /// ## Safety
@@ -800,11 +790,17 @@ impl Bump {
 /// An iterator over each chunk of allocated memory that
 /// an arena has bump allocated into.
 ///
-/// Chunks are returned in order of allocation: oldest chunks first, newest
-/// chunks last.
+/// The chunks are returned ordered by allocation time, with the most recently
+/// allocated chunk being returned first.
+///
+/// The values inside each chunk is also ordered by allocation time, with the most
+/// recent allocation being earlier in the slice.
 ///
 /// This struct is created by the [`iter_allocated_chunks`] method on
-/// [Bump]. See that function for a safety description regarding reading from the returned items.
+/// [`Bump`]. See that function for a safety description regarding reading from the returned items.
+///
+/// [`Bump`]: ./struct.Bump.html
+/// [`iter_allocated_chunks`]: ./struct.Bump.html#method.iter_allocated_chunks
 #[derive(Debug)]
 pub struct ChunkIter<'a> {
     footer: Option<NonNull<ChunkFooter>>,
@@ -824,7 +820,7 @@ impl<'a> Iterator for ChunkIter<'a> {
 
             let len = foot as *const _ as usize - ptr;
             let slice = slice::from_raw_parts(ptr as *const mem::MaybeUninit<u8>, len);
-            self.footer = foot.next.get();
+            self.footer = foot.prev.get();
             Some(slice)
         }
     }
