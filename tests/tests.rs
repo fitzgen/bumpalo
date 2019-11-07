@@ -180,3 +180,15 @@ fn test_reset() {
     );
     assert_eq!(b.iter_allocated_chunks().count(), 1);
 }
+
+#[test]
+fn test_alignment() {
+    let b = Bump::new();
+
+    let layout = std::alloc::Layout::from_size_align(64, 64).unwrap();
+
+    for _ in 0..1024 {
+        let ptr = b.alloc_layout(layout).as_ptr();
+        assert_eq!(ptr as *const u8 as usize % 64, 0);
+    }
+}
