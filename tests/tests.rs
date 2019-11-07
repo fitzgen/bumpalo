@@ -34,7 +34,6 @@ fn can_iterate_over_allocated_things() {
     }
 
     let mut seen = vec![false; MAX as usize];
-    chunk_ends.reverse();
 
     // Safe because we always allocated objects of the same type in this arena,
     // and their size >= their align.
@@ -133,7 +132,7 @@ fn small_size_and_large_align() {
 fn with_capacity_helper<I, T>(iter: I)
 where
     T: Copy + Eq,
-    I: Clone + Iterator<Item = T>,
+    I: Clone + Iterator<Item = T> + DoubleEndedIterator,
 {
     for &initial_size in &[0, 1, 8, 11, 0x1000, 0x12345] {
         let mut b = Bump::with_capacity(initial_size);
@@ -146,9 +145,9 @@ where
             let (before, mid, after) = unsafe { c.align_to::<T>() };
             assert!(before.is_empty());
             assert!(after.is_empty());
-            mid.iter().rev().copied()
+            mid.iter().copied()
         });
-        assert!(pushed_values.eq(iter.clone()));
+        assert!(pushed_values.eq(iter.clone().rev()));
     }
 }
 
@@ -171,10 +170,13 @@ fn test_reset() {
 
     assert!(b.iter_allocated_chunks().count() > 1);
 
-    let last_chunk = b.iter_allocated_chunks().last().unwrap();
+    let last_chunk = b.iter_allocated_chunks().next().unwrap();
     let start = last_chunk.as_ptr() as usize;
     let end = start + last_chunk.len();
     b.reset();
-    assert_eq!(end - mem::size_of::<u64>(), b.alloc(0u64) as *const u64 as usize);
+    assert_eq!(
+        end - mem::size_of::<u64>(),
+        b.alloc(0u64) as *const u64 as usize
+    );
     assert_eq!(b.iter_allocated_chunks().count(), 1);
 }

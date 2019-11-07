@@ -15,7 +15,7 @@
 Bump allocation is a fast, but limited approach to allocation. We have a chunk
 of memory, and we maintain a pointer within that memory. Whenever we allocate an
 object, we do a quick test that we have enough capacity left in our chunk to
-allocate the object and then increment the pointer by the object's size. *That's
+allocate the object and then update the pointer by the object's size. *That's
 it!*
 
 The disadvantage of bump allocation is that there is no general way to
