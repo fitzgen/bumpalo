@@ -652,7 +652,7 @@ impl Bump {
     ///
     /// ```
     /// let bump = bumpalo::Bump::new();
-    /// let x = bump.alloc_slice_fill_copy(5, 42);
+    /// let x = bump.alloc_slice_fill_copy(42, 5);
     /// assert_eq!(x, &[42, 42, 42, 42, 42]);
     /// ```
     #[inline(always)]
@@ -670,7 +670,9 @@ impl Bump {
                 ptr::write(dst.as_ptr().add(i), value);
             }
 
-            slice::from_raw_parts_mut(dst.as_ptr(), len)
+            let result = slice::from_raw_parts_mut(dst.as_ptr(), len);
+            debug_assert_eq!(Layout::for_value(result), layout);
+            result
         }
     }
 
@@ -688,7 +690,7 @@ impl Bump {
     /// ```
     /// let bump = bumpalo::Bump::new();
     /// let s: String = "Hello Bump!".to_string();
-    /// let x: &[String] = bump.alloc_slice_fill_clone(2, &s);
+    /// let x: &[String] = bump.alloc_slice_fill_clone(&s, 2);
     /// assert_eq!(x.len(), 2);
     /// assert_eq!(&x[0], &s);
     /// assert_eq!(&x[1], &s);
@@ -708,7 +710,9 @@ impl Bump {
                 ptr::write(dst.as_ptr().add(i), value.clone());
             }
 
-            slice::from_raw_parts_mut(dst.as_ptr(), len)
+            let result = slice::from_raw_parts_mut(dst.as_ptr(), len);
+            debug_assert_eq!(Layout::for_value(result), layout);
+            result
         }
     }
 
@@ -743,7 +747,9 @@ impl Bump {
                 ptr::write(dst.as_ptr().add(i), T::default());
             }
 
-            slice::from_raw_parts_mut(dst.as_ptr(), len)
+            let result = slice::from_raw_parts_mut(dst.as_ptr(), len);
+            debug_assert_eq!(Layout::for_value(result), layout);
+            result
         }
     }
 
