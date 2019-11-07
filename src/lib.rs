@@ -657,7 +657,7 @@ impl Bump {
     /// ```
     #[inline(always)]
     #[allow(clippy::mut_from_ref)]
-    pub fn alloc_slice_fill_copy<T: Copy>(&self, len: usize, value: T) -> &mut [T] {
+    pub fn alloc_slice_fill_copy<T: Copy>(&self, value: T, len: usize) -> &mut [T] {
         if len == 0 {
             return &mut [];
         }
@@ -695,7 +695,7 @@ impl Bump {
     /// ```
     #[inline(always)]
     #[allow(clippy::mut_from_ref)]
-    pub fn alloc_slice_fill_clone<T: Clone>(&self, len: usize, value: &T) -> &mut [T] {
+    pub fn alloc_slice_fill_clone<T: Clone>(&self, value: &T, len: usize) -> &mut [T] {
         if len == 0 {
             return &mut [];
         }
