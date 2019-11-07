@@ -261,18 +261,19 @@ const DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER: usize = FIRST_ALLOCATION_GOAL - OVERHEA
 fn layout_for_array<T>(len: usize) -> Option<Layout> {
     // TODO: use Layout::array once the rust feature `alloc_layout_extra`
     // gets stabilized
+    //
+    // According to https://doc.rust-lang.org/reference/type-layout.html#size-and-alignment
+    // the size of a value is always a multiple of it's alignment. But that does not seem to match
+    // with https://doc.rust-lang.org/std/alloc/struct.Layout.html#method.from_size_align
+    //
+    // Let's be on the safe size and round up to the padding in any case.
+    //
+    // An interesting question is whether there needs to be padding at the end of
+    // the last object in the array. Again, we take the safe approach and include it.
 
     let layout = Layout::new::<T>();
     let size_rounded_up = round_up_to(layout.size(), layout.align())?;
-    let padding = size_rounded_up - layout.size();
-    let mut total_size = len.checked_mul(size_rounded_up)?;
-
-    // Remove the padding on the last element
-    // If 0 < total_size, then padding < size_rounded_up <= total_size,
-    // so we can use a wrapping sub here
-    if total_size > 0 {
-        total_size = total_size.wrapping_sub(padding);
-    }
+    let total_size = len.checked_mul(size_rounded_up)?;
 
     Layout::from_size_align(total_size, layout.align()).ok()
 }
