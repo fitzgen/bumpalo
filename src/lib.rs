@@ -257,6 +257,26 @@ const FIRST_ALLOCATION_GOAL: usize = (1 << 9);
 // take the alignment into account.
 const DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER: usize = FIRST_ALLOCATION_GOAL - OVERHEAD;
 
+#[inline]
+fn layout_for_array<T>(len: usize) -> Option<Layout> {
+    // TODO: use Layout::array once the rust feature `alloc_layout_extra`
+    // gets stabilized
+
+    let layout = Layout::new::<T>();
+    let size_rounded_up = round_up_to(layout.size(), layout.align())?;
+    let padding = size_rounded_up - layout.size();
+    let mut total_size = len.checked_mul(size_rounded_up)?;
+
+    // Remove the padding on the last element
+    // If 0 < total_size, then padding < size_rounded_up <= total_size,
+    // so we can use a wrapping sub here
+    if total_size > 0 {
+        total_size = total_size.wrapping_sub(padding);
+    }
+
+    Layout::from_size_align(total_size, layout.align()).ok()
+}
+
 /// Wrapper around `Layout::from_size_align` that adds debug assertions.
 #[inline]
 unsafe fn layout_from_size_align(size: usize, align: usize) -> Layout {
@@ -616,6 +636,114 @@ impl Bump {
             }
 
             slice::from_raw_parts_mut(dst.as_ptr(), src.len())
+        }
+    }
+
+    /// Allocates a new slice of size `len` slice into this `Bump` and return an
+    /// exclusive reference to the copy.
+    ///
+    /// All elements of the slice are initialized to `value`.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for the slice would cause an overflow.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.alloc_slice_fill_copy(5, 42);
+    /// assert_eq!(x, &[42, 42, 42, 42, 42]);
+    /// ```
+    #[inline(always)]
+    #[allow(clippy::mut_from_ref)]
+    pub fn alloc_slice_fill_copy<T: Copy>(&self, len: usize, value: T) -> &mut [T] {
+        if len == 0 {
+            return &mut [];
+        }
+
+        let layout = layout_for_array::<T>(len).unwrap_or_else(|| oom());
+        let dst = self.alloc_layout(layout).cast::<T>();
+
+        unsafe {
+            for i in 0..len {
+                ptr::write(dst.as_ptr().add(i), value);
+            }
+
+            slice::from_raw_parts_mut(dst.as_ptr(), len)
+        }
+    }
+
+    /// Allocates a new slice of size `len` slice into this `Bump` and return an
+    /// exclusive reference to the copy.
+    ///
+    /// All elements of the slice are initialized to `value.clone()`.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for the slice would cause an overflow.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let s: String = "Hello Bump!".to_string();
+    /// let x: &[String] = bump.alloc_slice_fill_clone(2, &s);
+    /// assert_eq!(x.len(), 2);
+    /// assert_eq!(&x[0], &s);
+    /// assert_eq!(&x[1], &s);
+    /// ```
+    #[inline(always)]
+    #[allow(clippy::mut_from_ref)]
+    pub fn alloc_slice_fill_clone<T: Clone>(&self, len: usize, value: &T) -> &mut [T] {
+        if len == 0 {
+            return &mut [];
+        }
+
+        let layout = layout_for_array::<T>(len).unwrap_or_else(|| oom());
+        let dst = self.alloc_layout(layout).cast::<T>();
+
+        unsafe {
+            for i in 0..len {
+                ptr::write(dst.as_ptr().add(i), value.clone());
+            }
+
+            slice::from_raw_parts_mut(dst.as_ptr(), len)
+        }
+    }
+
+    /// Allocates a new slice of size `len` slice into this `Bump` and return an
+    /// exclusive reference to the copy.
+    ///
+    /// All elements of the slice are initialized to `T::default()`.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for the slice would cause an overflow.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.alloc_slice_fill_default::<u32>(5);
+    /// assert_eq!(x, &[0, 0, 0, 0, 0]);
+    /// ```
+    #[inline(always)]
+    #[allow(clippy::mut_from_ref)]
+    pub fn alloc_slice_fill_default<T: Default>(&self, len: usize) -> &mut [T] {
+        if len == 0 {
+            return &mut [];
+        }
+
+        let layout = layout_for_array::<T>(len).unwrap_or_else(|| oom());
+        let dst = self.alloc_layout(layout).cast::<T>();
+
+        unsafe {
+            for i in 0..len {
+                ptr::write(dst.as_ptr().add(i), T::default());
+            }
+
+            slice::from_raw_parts_mut(dst.as_ptr(), len)
         }
     }
 
