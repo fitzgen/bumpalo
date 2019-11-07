@@ -636,6 +636,10 @@ impl Bump {
             let current_layout = current_footer.as_ref().layout;
             let new_footer =
                 Bump::new_chunk(Some((current_layout.size(), layout)), Some(current_footer));
+            debug_assert_eq!(
+                new_footer.as_ref().data.as_ptr() as usize % layout.align(),
+                0
+            );
 
             // Set the new chunk as our new current chunk.
             self.current_chunk_footer.set(new_footer);
@@ -646,6 +650,8 @@ impl Bump {
             // this can't overflow because we successfully allocated a chunk of
             // at least the requested size.
             let ptr = new_footer.ptr.get().as_ptr() as usize - size;
+            // Round the pointer down to the requested alignment.
+            let ptr = ptr & !(layout.align() - 1);
             debug_assert!(
                 ptr <= new_footer as *const _ as usize,
                 "{:#x} <= {:#x}",
