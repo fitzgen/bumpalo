@@ -640,7 +640,7 @@ impl Bump {
         }
     }
 
-    /// Allocates a new slice of size `len` slice into this `Bump` and return an
+    /// Allocates a new slice of size `len` into this `Bump` and returns an
     /// exclusive reference to the copy.
     ///
     /// All elements of the slice are initialized to `value`.
