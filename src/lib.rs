@@ -229,6 +229,9 @@ const fn max(a: usize, b: usize) -> usize {
     [a, b][(a < b) as usize]
 }
 
+// After this point, we try to always request memory that uses as much of a page as possible
+const PAGE_STRATEGY_CUTOFF: usize = 0x2000;
+
 // We only support alignments of up to 16 bytes for iter_allocated_chunks.
 const SUPPORTED_ITER_ALIGNMENT: usize = 16;
 const CHUNK_ALIGN: usize = max(SUPPORTED_ITER_ALIGNMENT, mem::align_of::<ChunkFooter>());
@@ -306,21 +309,11 @@ impl Bump {
         prev: Option<NonNull<ChunkFooter>>,
     ) -> NonNull<ChunkFooter> {
         unsafe {
-            // We want to at least double the available size on every chunk allocation
             let mut new_size_without_footer =
                 if let Some(old_size_with_footer) = old_size_with_footer {
-                    // This code ensure that we roughly double every time, while
-                    // fulfilling alignment requirements. We also prefer to request just
-                    // short of a full number of pages, instead of just above a full number
-                    // of pages. On 64-bit code means that quickly begin requesting chunks
-                    // with size 0x???ff8, while on 32-bit we begin requesting chunks with
-                    // size 0x???ff4.
+                    // We want to at least double the available size on every chunk allocation
                     round_up_to(
-                        old_size_with_footer
-                            .checked_mul(2)
-                            .unwrap_or_else(|| oom())
-                            .checked_sub(FOOTER_SIZE)
-                            .unwrap(),
+                        old_size_with_footer.checked_mul(2).unwrap_or_else(|| oom()),
                         CHUNK_ALIGN,
                     )
                     .unwrap_or_else(|| oom())
@@ -338,6 +331,12 @@ impl Bump {
                 let requested_size = round_up_to(requested_layout.size(), align)
                     .unwrap_or_else(allocation_size_overflow);
                 new_size_without_footer = new_size_without_footer.max(requested_size);
+            }
+
+            // If we are in the range of using entire pages, let's actually use entire pages
+            if new_size_without_footer >= PAGE_STRATEGY_CUTOFF {
+                new_size_without_footer =
+                    ((new_size_without_footer | 0xfff) - FOOTER_SIZE + 1) & !(CHUNK_ALIGN - 1);
             }
 
             debug_assert_eq!(align % CHUNK_ALIGN, 0);
