@@ -286,9 +286,7 @@ impl Bump {
     /// ```
     pub fn with_capacity(capacity: usize) -> Bump {
         let chunk_footer = Self::new_chunk(
-            // We divide by 2, since this is the "old size", which will
-            // be multiplied by two inside the new_chunk function
-            DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER / 2,
+            None,
             Some(unsafe { layout_from_size_align(capacity, 1) }),
             None,
         );
@@ -303,19 +301,32 @@ impl Bump {
     /// layout of the allocation request that triggered us to fall back to
     /// allocating a new chunk of memory.
     fn new_chunk(
-        old_size_without_footer: usize,
+        old_size_with_footer: Option<usize>,
         requested_layout: Option<Layout>,
         prev: Option<NonNull<ChunkFooter>>,
     ) -> NonNull<ChunkFooter> {
         unsafe {
             // We want to at least double the available size on every chunk allocation
-            let mut new_size_without_footer = old_size_without_footer.checked_mul(2).unwrap();
-            debug_assert_eq!(
-                new_size_without_footer,
-                round_up_to(new_size_without_footer, CHUNK_ALIGN).unwrap(),
-                "The old size was already a multiple of our chunk alignment, so no \
-                 need to round it up again."
-            );
+            let mut new_size_without_footer =
+                if let Some(old_size_with_footer) = old_size_with_footer {
+                    // This code ensure that we roughly double every time, while
+                    // fulfilling alignment requirements. We also prefer to request just
+                    // short of a full number of pages, instead of just above a full number
+                    // of pages. On 64-bit code means that quickly begin requesting chunks
+                    // with size 0x???ff8, while on 32-bit we begin requesting chunks with
+                    // size 0x???ff4.
+                    round_up_to(
+                        old_size_with_footer
+                            .checked_mul(2)
+                            .unwrap_or_else(|| oom())
+                            .checked_sub(FOOTER_SIZE)
+                            .unwrap(),
+                        CHUNK_ALIGN,
+                    )
+                    .unwrap_or_else(|| oom())
+                } else {
+                    DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER
+                };
 
             // We want to have CHUNK_ALIGN or better alignment
             let mut align = CHUNK_ALIGN;
@@ -331,12 +342,12 @@ impl Bump {
 
             debug_assert_eq!(align % CHUNK_ALIGN, 0);
             debug_assert_eq!(new_size_without_footer % CHUNK_ALIGN, 0);
-            debug_assert!(new_size_without_footer / 2 >= old_size_without_footer);
-
             let size = new_size_without_footer
                 .checked_add(FOOTER_SIZE)
                 .unwrap_or_else(allocation_size_overflow);
             let layout = layout_from_size_align(size, align);
+
+            debug_assert!(size >= old_size_with_footer.unwrap_or(0) * 2);
 
             let data = alloc(layout);
             let data = NonNull::new(data).unwrap_or_else(|| oom());
@@ -344,7 +355,7 @@ impl Bump {
             // The `ChunkFooter` is at the end of the chunk.
             let footer_ptr = data.as_ptr() as usize + new_size_without_footer;
             debug_assert_eq!((data.as_ptr() as usize) % align, 0);
-            debug_assert_eq!(footer_ptr % align, 0);
+            debug_assert_eq!(footer_ptr % CHUNK_ALIGN, 0);
             let footer_ptr = footer_ptr as *mut ChunkFooter;
 
             // The bump pointer is initialized to the end of the range we will
@@ -641,7 +652,7 @@ impl Bump {
             let current_footer = self.current_chunk_footer.get();
             let current_layout = current_footer.as_ref().layout;
             let new_footer = Bump::new_chunk(
-                current_layout.size() - FOOTER_SIZE,
+                Some(current_layout.size()),
                 Some(layout),
                 Some(current_footer),
             );
