@@ -183,12 +183,13 @@ fn test_reset() {
 
 #[test]
 fn test_alignment() {
-    let b = Bump::new();
+    for &alignment in &[2, 4, 8, 16, 32, 64] {
+        let b = Bump::with_capacity(513);
+        let layout = std::alloc::Layout::from_size_align(alignment, alignment).unwrap();
 
-    let layout = std::alloc::Layout::from_size_align(64, 64).unwrap();
-
-    for _ in 0..1024 {
-        let ptr = b.alloc_layout(layout).as_ptr();
-        assert_eq!(ptr as *const u8 as usize % 64, 0);
+        for _ in 0..1024 {
+            let ptr = b.alloc_layout(layout).as_ptr();
+            assert_eq!(ptr as *const u8 as usize % alignment, 0);
+        }
     }
 }

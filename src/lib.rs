@@ -111,7 +111,6 @@ pub mod collections;
 mod alloc;
 
 use core::cell::Cell;
-use core::cmp;
 use core::iter;
 use core::marker::PhantomData;
 use core::mem;
@@ -225,14 +224,29 @@ pub(crate) fn round_up_to(n: usize, divisor: usize) -> Option<usize> {
     Some(n.checked_add(divisor - 1)? & !(divisor - 1))
 }
 
+// We need a const fn for max
+const fn max(a: usize, b: usize) -> usize {
+    [a, b][(a < b) as usize]
+}
+
+// We only support alignments of up to 16 bytes for iter_allocated_chunks.
+const SUPPORTED_ITER_ALIGNMENT: usize = 16;
+const CHUNK_ALIGN: usize = max(SUPPORTED_ITER_ALIGNMENT, mem::align_of::<ChunkFooter>());
+const FOOTER_SIZE: usize = mem::size_of::<ChunkFooter>();
+
 // Maximum typical overhead per allocation imposed by allocators.
 const MALLOC_OVERHEAD: usize = 16;
 
 // Choose a relatively small default initial chunk size, since we double chunk
 // sizes as we grow bump arenas to amortize costs of hitting the global
 // allocator.
-const DEFAULT_CHUNK_SIZE_WITH_FOOTER: usize = (1 << 9) - MALLOC_OVERHEAD;
-const DEFAULT_CHUNK_ALIGN: usize = mem::align_of::<ChunkFooter>();
+const FIRST_ALLOCATION_GOAL: usize = (1 << 9) - MALLOC_OVERHEAD;
+
+// The actual size of the first allocation is going to be a bit smaller
+// than the goal. We need to make room for the footer, and we also need
+// take the alignment into account.
+const DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER: usize =
+    (FIRST_ALLOCATION_GOAL - FOOTER_SIZE) & !(CHUNK_ALIGN - 1);
 
 /// Wrapper around `Layout::from_size_align` that adds debug assertions.
 #[inline]
@@ -250,10 +264,6 @@ fn allocation_size_overflow<T>() -> T {
 }
 
 impl Bump {
-    fn default_chunk_layout() -> Layout {
-        unsafe { layout_from_size_align(DEFAULT_CHUNK_SIZE_WITH_FOOTER, DEFAULT_CHUNK_ALIGN) }
-    }
-
     /// Construct a new arena to bump allocate into.
     ///
     /// ## Example
@@ -263,10 +273,7 @@ impl Bump {
     /// # let _ = bump;
     /// ```
     pub fn new() -> Bump {
-        let chunk_footer = Self::new_chunk(None, None);
-        Bump {
-            current_chunk_footer: Cell::new(chunk_footer),
-        }
+        Self::with_capacity(0)
     }
 
     /// Construct a new arena with the specified capacity to bump allocate into.
@@ -279,9 +286,10 @@ impl Bump {
     /// ```
     pub fn with_capacity(capacity: usize) -> Bump {
         let chunk_footer = Self::new_chunk(
-            Some((DEFAULT_CHUNK_SIZE_WITH_FOOTER, unsafe {
-                layout_from_size_align(capacity, 1)
-            })),
+            // We divide by 2, since this is the "old size", which will
+            // be multiplied by two inside the new_chunk function
+            DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER / 2,
+            Some(unsafe { layout_from_size_align(capacity, 1) }),
             None,
         );
         Bump {
@@ -295,50 +303,48 @@ impl Bump {
     /// layout of the allocation request that triggered us to fall back to
     /// allocating a new chunk of memory.
     fn new_chunk(
-        layouts: Option<(usize, Layout)>,
+        old_size_without_footer: usize,
+        requested_layout: Option<Layout>,
         prev: Option<NonNull<ChunkFooter>>,
     ) -> NonNull<ChunkFooter> {
         unsafe {
-            let layout: Layout =
-                layouts.map_or_else(Bump::default_chunk_layout, |(old_size, requested)| {
-                    let old_doubled = old_size.checked_mul(2).unwrap();
-                    let footer_align = mem::align_of::<ChunkFooter>();
-                    debug_assert_eq!(
-                        old_doubled,
-                        round_up_to(old_doubled, footer_align).unwrap(),
-                        "The old size was already a multiple of our chunk footer alignment, so no \
-                         need to round it up again."
-                    );
+            // We want to at least double the available size on every chunk allocation
+            let mut new_size_without_footer = old_size_without_footer.checked_mul(2).unwrap();
+            debug_assert_eq!(
+                new_size_without_footer,
+                round_up_to(new_size_without_footer, CHUNK_ALIGN).unwrap(),
+                "The old size was already a multiple of our chunk alignment, so no \
+                 need to round it up again."
+            );
 
-                    // Have a reasonable "doubling behavior" but ensure that if
-                    // a very large size is requested we round up to that.
-                    let size_to_allocate = cmp::max(old_doubled, requested.size());
+            // We want to have CHUNK_ALIGN or better alignment
+            let mut align = CHUNK_ALIGN;
 
-                    // Handle size/alignment of our allocated chunk, taking into
-                    // account an overaligned allocation if one is required.
-                    // Note that we also add to the size a `ChunkFooter` because
-                    // we'll be placing one at the end, and we need to at least
-                    // satisfy `requested.size()` bytes.
-                    let size = cmp::max(
-                        size_to_allocate,
-                        requested.size() + mem::size_of::<ChunkFooter>(),
-                    );
-                    let size =
-                        round_up_to(size, footer_align).unwrap_or_else(allocation_size_overflow);
-                    let align = cmp::max(footer_align, requested.align());
+            // If we already know we need to fulfill some request,
+            // make sure we allocate at least enough to satisfy it
+            if let Some(requested_layout) = requested_layout {
+                align = align.max(requested_layout.align());
+                let requested_size = round_up_to(requested_layout.size(), align)
+                    .unwrap_or_else(allocation_size_overflow);
+                new_size_without_footer = new_size_without_footer.max(requested_size);
+            }
 
-                    layout_from_size_align(size, align)
-                });
+            debug_assert_eq!(align % CHUNK_ALIGN, 0);
+            debug_assert_eq!(new_size_without_footer % CHUNK_ALIGN, 0);
+            debug_assert!(new_size_without_footer / 2 >= old_size_without_footer);
 
-            let size = layout.size();
-            debug_assert_eq!(layout.align() % mem::align_of::<ChunkFooter>(), 0);
+            let size = new_size_without_footer
+                .checked_add(FOOTER_SIZE)
+                .unwrap_or_else(allocation_size_overflow);
+            let layout = layout_from_size_align(size, align);
 
             let data = alloc(layout);
             let data = NonNull::new(data).unwrap_or_else(|| oom());
 
             // The `ChunkFooter` is at the end of the chunk.
-            let footer_ptr = data.as_ptr() as usize + size - mem::size_of::<ChunkFooter>();
-            debug_assert_eq!(footer_ptr % mem::align_of::<ChunkFooter>(), 0);
+            let footer_ptr = data.as_ptr() as usize + new_size_without_footer;
+            debug_assert_eq!((data.as_ptr() as usize) % align, 0);
+            debug_assert_eq!(footer_ptr % align, 0);
             let footer_ptr = footer_ptr as *mut ChunkFooter;
 
             // The bump pointer is initialized to the end of the range we will
@@ -634,8 +640,11 @@ impl Bump {
             // Get a new chunk from the global allocator.
             let current_footer = self.current_chunk_footer.get();
             let current_layout = current_footer.as_ref().layout;
-            let new_footer =
-                Bump::new_chunk(Some((current_layout.size(), layout)), Some(current_footer));
+            let new_footer = Bump::new_chunk(
+                current_layout.size() - FOOTER_SIZE,
+                Some(layout),
+                Some(current_footer),
+            );
             debug_assert_eq!(
                 new_footer.as_ref().data.as_ptr() as usize % layout.align(),
                 0
@@ -690,7 +699,8 @@ impl Bump {
     /// The only way to guarantee that there is no padding between allocations
     /// or within allocated objects is if all of these properties hold:
     ///
-    /// 1. Every object allocated in this arena has the same alignment.
+    /// 1. Every object allocated in this arena has the same alignment,
+    ///    and that alignment is at most 16.
     /// 2. Every object's size is a multiple of its alignment.
     /// 3. None of the objects allocated in this arena contain any internal
     ///    padding.
@@ -923,7 +933,7 @@ mod tests {
         use crate::alloc::Alloc;
 
         unsafe {
-            const CAPACITY: usize = 1000;
+            const CAPACITY: usize = 1024;
             let mut b = Bump::with_capacity(CAPACITY);
 
             // `realloc` doesn't shrink allocations that aren't "worth it".

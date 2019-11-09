@@ -75,6 +75,7 @@ where
                     Elems::TwoT(a.clone(), d.clone()),
                     Elems::TwoT(b.clone(), c.clone()),
                     Elems::TwoT(b.clone(), d.clone()),
+                    Elems::TwoT(c.clone(), d.clone()),
                 ]
                 .into_iter(),
             ),
@@ -89,6 +90,7 @@ where
                     Elems::TwoU(a.clone(), d.clone()),
                     Elems::TwoU(b.clone(), c.clone()),
                     Elems::TwoU(b.clone(), d.clone()),
+                    Elems::TwoU(c.clone(), d.clone()),
                 ]
                 .into_iter(),
             ),
@@ -171,6 +173,31 @@ quickcheck! {
             }
 
             ranges.push(r);
+        }
+    }
+
+
+    fn test_alignment_chunks(sizes: Vec<usize>) -> () {
+        const SUPPORTED_ALIGNMENTS: &[usize] = &[1, 2, 4, 8, 16];
+        for &alignment in SUPPORTED_ALIGNMENTS {
+            let mut b = Bump::with_capacity(513);
+            let mut sizes = sizes.iter().map(|&size| (size % 10) * alignment).collect::<Vec<_>>();
+
+            for &size in &sizes {
+                let layout = std::alloc::Layout::from_size_align(size, alignment).unwrap();
+                let ptr = b.alloc_layout(layout).as_ptr() as *const u8 as usize;
+                assert_eq!(ptr % alignment, 0);
+            }
+
+            for chunk in b.iter_allocated_chunks() {
+                let mut remaining = chunk.len();
+                while remaining > 0 {
+                    let size = sizes.pop().expect("too many bytes in the chunk output");
+                    assert!(remaining >= size, "returned chunk contained padding");
+                    remaining -= size;
+                }
+            }
+            assert_eq!(sizes.into_iter().sum::<usize>(), 0);
         }
     }
 }
