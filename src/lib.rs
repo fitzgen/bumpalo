@@ -188,6 +188,11 @@ struct ChunkFooter {
 
     // Bump allocation finger that is always in the range `self.data..=self`.
     ptr: Cell<NonNull<u8>>,
+
+    // Pointer to the end of the first allocation made in this chunk.
+    // Used in iter_allocated_chunks to avoid giving back padding bytes
+    // that are outside the user's control
+    end_of_first_allocation: Cell<Option<NonNull<u8>>>,
 }
 
 impl Default for Bump {
@@ -352,6 +357,7 @@ impl Bump {
                     layout,
                     prev: Cell::new(prev),
                     ptr,
+                    end_of_first_allocation: Cell::new(None),
                 },
             );
 
@@ -403,6 +409,7 @@ impl Bump {
 
             // Reset the bump finger to the end of the chunk.
             cur_chunk.as_ref().ptr.set(cur_chunk.cast());
+            cur_chunk.as_ref().end_of_first_allocation.set(None);
 
             debug_assert!(
                 self.current_chunk_footer
@@ -606,15 +613,25 @@ impl Bump {
         unsafe {
             let footer = self.current_chunk_footer.get();
             let footer = footer.as_ref();
-            let ptr = footer.ptr.get().as_ptr() as usize;
+            let initial_ptr = footer.ptr.get().as_ptr() as usize;
             let start = footer.data.as_ptr() as usize;
-            debug_assert!(start <= ptr);
-            debug_assert!(ptr <= footer as *const _ as usize);
+            debug_assert!(start <= initial_ptr);
+            debug_assert!(initial_ptr <= footer as *const _ as usize);
 
-            let ptr = ptr.checked_sub(layout.size())?;
+            let ptr = initial_ptr.checked_sub(layout.size())?;
             let aligned_ptr = ptr & !(layout.align() - 1);
 
             if aligned_ptr >= start {
+                // We might be the very first allocation made in the entire bump,
+                // in which case we need to set end_of_first_allocation
+                // for the first chunk
+                if initial_ptr == footer as *const ChunkFooter as usize {
+                    footer
+                        .end_of_first_allocation
+                        .set(Some(NonNull::new_unchecked(
+                            (aligned_ptr + layout.size()) as *mut u8,
+                        )));
+                }
                 let aligned_ptr = NonNull::new_unchecked(aligned_ptr as *mut u8);
                 footer.ptr.set(aligned_ptr);
                 Some(aligned_ptr)
@@ -658,6 +675,13 @@ impl Bump {
                 ptr,
                 new_footer as *const _ as usize
             );
+
+            new_footer
+                .end_of_first_allocation
+                .set(Some(NonNull::new_unchecked(
+                    (ptr + layout.size()) as *mut u8,
+                )));
+
             let ptr = NonNull::new_unchecked(ptr as *mut u8);
             new_footer.ptr.set(ptr);
 
@@ -819,15 +843,29 @@ impl<'a> Iterator for ChunkIter<'a> {
         unsafe {
             let foot = self.footer?;
             let foot = foot.as_ref();
+            self.footer = foot.prev.get();
+
             let data = foot.data.as_ptr() as usize;
             let ptr = foot.ptr.get().as_ptr() as usize;
+
             debug_assert!(data <= ptr);
             debug_assert!(ptr <= foot as *const _ as usize);
 
-            let len = foot as *const _ as usize - ptr;
-            let slice = slice::from_raw_parts(ptr as *const mem::MaybeUninit<u8>, len);
-            self.footer = foot.prev.get();
-            Some(slice)
+            // Have we allocated in this chunk?
+            if let Some(end_of_first_allocation) = foot.end_of_first_allocation.get() {
+                let end_of_first_allocation = end_of_first_allocation.as_ptr() as usize;
+                debug_assert!(ptr <= end_of_first_allocation);
+                let len = end_of_first_allocation - ptr;
+                let slice = slice::from_raw_parts(ptr as *const mem::MaybeUninit<u8>, len);
+                Some(slice)
+            } else {
+                // If we have not allocated, then we must be the very first chunk
+                debug_assert!(
+                    foot.prev.get().is_none(),
+                    "Empty chunk, but chunk has a prev pointer"
+                );
+                None
+            }
         }
     }
 }
@@ -853,6 +891,12 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
         if self.is_last_allocation(ptr) {
             let ptr = NonNull::new_unchecked(ptr.as_ptr().add(layout.size()));
             self.current_chunk_footer.get().as_ref().ptr.set(ptr);
+            // We could try to detect if the chunk is now empty by
+            // comparing ptr to end_of_first_allocation, however this would
+            // only save a few padding bytes in a few rare cases. It would
+            // also mean that we would need to handle empty chunks
+            // in iter_allocated_chunks, so it is probably not worth it.
+            // Instead we just accept that those bytes are gone.
         }
     }
 
@@ -913,8 +957,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn chunk_footer_is_five_words() {
-        assert_eq!(mem::size_of::<ChunkFooter>(), mem::size_of::<usize>() * 5);
+    fn chunk_footer_is_six_words() {
+        assert_eq!(mem::size_of::<ChunkFooter>(), mem::size_of::<usize>() * 6);
     }
 
     #[test]
