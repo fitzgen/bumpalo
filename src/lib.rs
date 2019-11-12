@@ -959,7 +959,7 @@ mod tests {
         use crate::alloc::Alloc;
 
         unsafe {
-            const CAPACITY: usize = 1024;
+            const CAPACITY: usize = 1024 - OVERHEAD;
             let mut b = Bump::with_capacity(CAPACITY);
 
             // `realloc` doesn't shrink allocations that aren't "worth it".
