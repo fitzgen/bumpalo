@@ -229,8 +229,8 @@ const fn max(a: usize, b: usize) -> usize {
     [a, b][(a < b) as usize]
 }
 
-// After this point, we try to always request memory that uses as much of a page as possible
-const PAGE_STRATEGY_CUTOFF: usize = 0x2000;
+// After this point, we try to hit page boundaries instead of powers of 2
+const PAGE_STRATEGY_CUTOFF: usize = 0x1000;
 
 // We only support alignments of up to 16 bytes for iter_allocated_chunks.
 const SUPPORTED_ITER_ALIGNMENT: usize = 16;
@@ -250,6 +250,14 @@ const FIRST_ALLOCATION_GOAL: usize = (1 << 9) - MALLOC_OVERHEAD;
 // take the alignment into account.
 const DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER: usize =
     (FIRST_ALLOCATION_GOAL - FOOTER_SIZE) & !(CHUNK_ALIGN - 1);
+
+// This is the overhead from malloc, footer and alignment. For instance, if
+// we want to request a chunk of memory that has at least X bytes usable for
+// allocations (where X is aligned to CHUNK_ALIGN), then we expect that the
+// after adding a footer, malloc overhead and alignment, the chunk of memory
+// the allocator actually sets asside for us is X+OVERHEAD rounded up to the
+// nearest suitable size boundary.
+const OVERHEAD: usize = (MALLOC_OVERHEAD + FOOTER_SIZE + (CHUNK_ALIGN - 1)) & !(CHUNK_ALIGN - 1);
 
 /// Wrapper around `Layout::from_size_align` that adds debug assertions.
 #[inline]
@@ -309,14 +317,14 @@ impl Bump {
         prev: Option<NonNull<ChunkFooter>>,
     ) -> NonNull<ChunkFooter> {
         unsafe {
+            // As a sane default, we want our new allocation to be about twice as
+            // big as the previous allocation
             let mut new_size_without_footer =
                 if let Some(old_size_with_footer) = old_size_with_footer {
-                    // We want to at least double the available size on every chunk allocation
-                    round_up_to(
-                        old_size_with_footer.checked_mul(2).unwrap_or_else(|| oom()),
-                        CHUNK_ALIGN,
-                    )
-                    .unwrap_or_else(|| oom())
+                    let old_size_without_footer = old_size_with_footer - FOOTER_SIZE;
+                    old_size_without_footer
+                        .checked_mul(2)
+                        .unwrap_or_else(|| oom())
                 } else {
                     DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER
                 };
@@ -333,10 +341,20 @@ impl Bump {
                 new_size_without_footer = new_size_without_footer.max(requested_size);
             }
 
-            // If we are in the range of using entire pages, let's actually use entire pages
-            if new_size_without_footer >= PAGE_STRATEGY_CUTOFF {
+            // We want our allocations to play nice with the memory allocator,
+            // and waste as little memory as possible.
+            // For small allocations, this means that the entire allocation
+            // including the chunk footer and mallocs internal overhead is
+            // as close to a power of two as we can go without going over.
+            // For larger allocations, we only need to get close to a page
+            // boundary without going over.
+            if new_size_without_footer < PAGE_STRATEGY_CUTOFF {
                 new_size_without_footer =
-                    ((new_size_without_footer | 0xfff) - FOOTER_SIZE + 1) & !(CHUNK_ALIGN - 1);
+                    (new_size_without_footer + OVERHEAD).next_power_of_two() - OVERHEAD;
+            } else {
+                new_size_without_footer = round_up_to(new_size_without_footer + OVERHEAD, 0x1000)
+                    .unwrap_or_else(|| oom())
+                    - OVERHEAD;
             }
 
             debug_assert_eq!(align % CHUNK_ALIGN, 0);
