@@ -643,6 +643,47 @@ impl Bump {
     /// Allocates a new slice of size `len` into this `Bump` and returns an
     /// exclusive reference to the copy.
     ///
+    /// The elements of the slice are initialized using the supplied closure.
+    /// The closure argument is the position in the slice.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for the slice would cause an overflow.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.alloc_slice_fill_with(5, |i| 5*(i+1));
+    /// assert_eq!(x, &[5, 10, 15, 20, 25]);
+    /// ```
+    #[inline(always)]
+    #[allow(clippy::mut_from_ref)]
+    pub fn alloc_slice_fill_with<T, F>(&self, len: usize, mut f: F) -> &mut [T]
+    where
+        F: FnMut(usize) -> T,
+    {
+        if len == 0 {
+            return &mut [];
+        }
+
+        let layout = layout_for_array::<T>(len).unwrap_or_else(|| oom());
+        let dst = self.alloc_layout(layout).cast::<T>();
+
+        unsafe {
+            for i in 0..len {
+                ptr::write(dst.as_ptr().add(i), f(i));
+            }
+
+            let result = slice::from_raw_parts_mut(dst.as_ptr(), len);
+            debug_assert_eq!(Layout::for_value(result), layout);
+            result
+        }
+    }
+
+    /// Allocates a new slice of size `len` into this `Bump` and returns an
+    /// exclusive reference to the copy.
+    ///
     /// All elements of the slice are initialized to `value`.
     ///
     /// ## Panics
@@ -659,22 +700,7 @@ impl Bump {
     #[inline(always)]
     #[allow(clippy::mut_from_ref)]
     pub fn alloc_slice_fill_copy<T: Copy>(&self, value: T, len: usize) -> &mut [T] {
-        if len == 0 {
-            return &mut [];
-        }
-
-        let layout = layout_for_array::<T>(len).unwrap_or_else(|| oom());
-        let dst = self.alloc_layout(layout).cast::<T>();
-
-        unsafe {
-            for i in 0..len {
-                ptr::write(dst.as_ptr().add(i), value);
-            }
-
-            let result = slice::from_raw_parts_mut(dst.as_ptr(), len);
-            debug_assert_eq!(Layout::for_value(result), layout);
-            result
-        }
+        self.alloc_slice_fill_with(len, |_| value)
     }
 
     /// Allocates a new slice of size `len` slice into this `Bump` and return an
@@ -699,22 +725,37 @@ impl Bump {
     #[inline(always)]
     #[allow(clippy::mut_from_ref)]
     pub fn alloc_slice_fill_clone<T: Clone>(&self, value: &T, len: usize) -> &mut [T] {
-        if len == 0 {
-            return &mut [];
-        }
+        self.alloc_slice_fill_with(len, |_| value.clone())
+    }
 
-        let layout = layout_for_array::<T>(len).unwrap_or_else(|| oom());
-        let dst = self.alloc_layout(layout).cast::<T>();
-
-        unsafe {
-            for i in 0..len {
-                ptr::write(dst.as_ptr().add(i), value.clone());
-            }
-
-            let result = slice::from_raw_parts_mut(dst.as_ptr(), len);
-            debug_assert_eq!(Layout::for_value(result), layout);
-            result
-        }
+    /// Allocates a new slice of size `len` slice into this `Bump` and return an
+    /// exclusive reference to the copy.
+    ///
+    /// The elements are initialized using the supplied iterator.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for the slice would cause an overflow, or if the supplied
+    /// iterator returns fewer elements than it promised.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x: &[i32] = bump.alloc_slice_fill_iter([2, 3, 5].iter().cloned().map(|i| i * i));
+    /// assert_eq!(x, [4, 9, 25]);
+    /// ```
+    #[inline(always)]
+    #[allow(clippy::mut_from_ref)]
+    pub fn alloc_slice_fill_iter<T, I>(&self, iter: I) -> &mut [T]
+    where
+        I: IntoIterator<Item = T>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        let mut iter = iter.into_iter();
+        self.alloc_slice_fill_with(iter.len(), |_| {
+            iter.next().expect("Iterator supplied too few elements")
+        })
     }
 
     /// Allocates a new slice of size `len` slice into this `Bump` and return an
@@ -736,22 +777,7 @@ impl Bump {
     #[inline(always)]
     #[allow(clippy::mut_from_ref)]
     pub fn alloc_slice_fill_default<T: Default>(&self, len: usize) -> &mut [T] {
-        if len == 0 {
-            return &mut [];
-        }
-
-        let layout = layout_for_array::<T>(len).unwrap_or_else(|| oom());
-        let dst = self.alloc_layout(layout).cast::<T>();
-
-        unsafe {
-            for i in 0..len {
-                ptr::write(dst.as_ptr().add(i), T::default());
-            }
-
-            let result = slice::from_raw_parts_mut(dst.as_ptr(), len);
-            debug_assert_eq!(Layout::for_value(result), layout);
-            result
-        }
+        self.alloc_slice_fill_with(len, |_| T::default())
     }
 
     /// Allocate space for an object with the given `Layout`.
