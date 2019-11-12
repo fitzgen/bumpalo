@@ -224,18 +224,17 @@ pub(crate) fn round_up_to(n: usize, divisor: usize) -> Option<usize> {
     Some(n.checked_add(divisor - 1)? & !(divisor - 1))
 }
 
-// We need a const fn for max
-const fn max(a: usize, b: usize) -> usize {
-    [a, b][(a < b) as usize]
-}
-
 // After this point, we try to hit page boundaries instead of powers of 2
 const PAGE_STRATEGY_CUTOFF: usize = 0x1000;
 
 // We only support alignments of up to 16 bytes for iter_allocated_chunks.
 const SUPPORTED_ITER_ALIGNMENT: usize = 16;
-const CHUNK_ALIGN: usize = max(SUPPORTED_ITER_ALIGNMENT, mem::align_of::<ChunkFooter>());
+const CHUNK_ALIGN: usize = SUPPORTED_ITER_ALIGNMENT;
 const FOOTER_SIZE: usize = mem::size_of::<ChunkFooter>();
+
+// Assert that ChunkFooter is at most the supported alignment. This will give a compile time error if it is not the case
+const _FOOTER_ALIGN_ASSERTION: bool = mem::align_of::<ChunkFooter>() <= CHUNK_ALIGN;
+const _: [(); _FOOTER_ALIGN_ASSERTION as usize] = [()];
 
 // Maximum typical overhead per allocation imposed by allocators.
 const MALLOC_OVERHEAD: usize = 16;
