@@ -240,17 +240,6 @@ const FOOTER_SIZE: usize = mem::size_of::<ChunkFooter>();
 // Maximum typical overhead per allocation imposed by allocators.
 const MALLOC_OVERHEAD: usize = 16;
 
-// Choose a relatively small default initial chunk size, since we double chunk
-// sizes as we grow bump arenas to amortize costs of hitting the global
-// allocator.
-const FIRST_ALLOCATION_GOAL: usize = (1 << 9) - MALLOC_OVERHEAD;
-
-// The actual size of the first allocation is going to be a bit smaller
-// than the goal. We need to make room for the footer, and we also need
-// take the alignment into account.
-const DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER: usize =
-    (FIRST_ALLOCATION_GOAL - FOOTER_SIZE) & !(CHUNK_ALIGN - 1);
-
 // This is the overhead from malloc, footer and alignment. For instance, if
 // we want to request a chunk of memory that has at least X bytes usable for
 // allocations (where X is aligned to CHUNK_ALIGN), then we expect that the
@@ -258,6 +247,16 @@ const DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER: usize =
 // the allocator actually sets asside for us is X+OVERHEAD rounded up to the
 // nearest suitable size boundary.
 const OVERHEAD: usize = (MALLOC_OVERHEAD + FOOTER_SIZE + (CHUNK_ALIGN - 1)) & !(CHUNK_ALIGN - 1);
+
+// Choose a relatively small default initial chunk size, since we double chunk
+// sizes as we grow bump arenas to amortize costs of hitting the global
+// allocator.
+const FIRST_ALLOCATION_GOAL: usize = (1 << 9);
+
+// The actual size of the first allocation is going to be a bit smaller
+// than the goal. We need to make room for the footer, and we also need
+// take the alignment into account.
+const DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER: usize = FIRST_ALLOCATION_GOAL - OVERHEAD;
 
 /// Wrapper around `Layout::from_size_align` that adds debug assertions.
 #[inline]
