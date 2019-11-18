@@ -200,4 +200,23 @@ quickcheck! {
             assert_eq!(sizes.into_iter().sum::<usize>(), 0);
         }
     }
+
+    fn alloc_slices(allocs: Vec<(u8, usize)>) -> () {
+        let b = Bump::new();
+        let mut allocated: Vec<(usize, usize)> = vec![];
+        for (val, len) in allocs {
+            let len = len % 100;
+            let s = b.alloc_slice_fill_copy(len, val);
+
+            assert_eq!(s.len(), len);
+            assert!(s.iter().all(|v| v == &val));
+
+            let range = (s.as_ptr() as usize, unsafe { s.as_ptr().add(s.len()) } as usize);
+            for r in &allocated {
+                let no_overlap = range.1 <= r.0 || r.1 <= range.0;
+                assert!(no_overlap);
+            }
+            allocated.push(range);
+        }
+    }
 }
