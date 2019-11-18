@@ -663,10 +663,6 @@ impl Bump {
     where
         F: FnMut(usize) -> T,
     {
-        if len == 0 {
-            return &mut [];
-        }
-
         let layout = layout_for_array::<T>(len).unwrap_or_else(|| oom());
         let dst = self.alloc_layout(layout).cast::<T>();
 
@@ -797,6 +793,18 @@ impl Bump {
     #[inline(always)]
     fn try_alloc_layout_fast(&self, layout: Layout) -> Option<NonNull<u8>> {
         unsafe {
+            if layout.size() == 0 {
+                // We want to use NonNull::dangling here, but that function uses mem::align_of::<T>
+                // internally. For our use-case we cannot call dangling::<T>, since we are not generic
+                // over T; we only have access to the Layout of T. Instead we re-implement the
+                // functionality here.
+                //
+                // See https://github.com/rust-lang/rust/blob/9966af3/src/libcore/ptr/non_null.rs#L70
+                // for the reference implementation.
+                let ptr = layout.align() as *mut u8;
+                return Some(NonNull::new_unchecked(ptr));
+            }
+
             let footer = self.current_chunk_footer.get();
             let footer = footer.as_ref();
             let ptr = footer.ptr.get().as_ptr() as usize;
@@ -1047,7 +1055,7 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
     unsafe fn dealloc(&mut self, ptr: NonNull<u8>, layout: Layout) {
         // If the pointer is the last allocation we made, we can reuse the bytes,
         // otherwise they are simply leaked -- at least until somebody calls reset().
-        if self.is_last_allocation(ptr) {
+        if layout.size() != 0 && self.is_last_allocation(ptr) {
             let ptr = NonNull::new_unchecked(ptr.as_ptr().add(layout.size()));
             self.current_chunk_footer.get().as_ref().ptr.set(ptr);
         }
@@ -1061,6 +1069,10 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
         new_size: usize,
     ) -> Result<NonNull<u8>, alloc::AllocErr> {
         let old_size = layout.size();
+
+        if old_size == 0 {
+            return self.alloc(layout);
+        }
 
         if new_size <= old_size {
             if self.is_last_allocation(ptr)
