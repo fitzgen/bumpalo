@@ -690,12 +690,12 @@ impl Bump {
     ///
     /// ```
     /// let bump = bumpalo::Bump::new();
-    /// let x = bump.alloc_slice_fill_copy(42, 5);
+    /// let x = bump.alloc_slice_fill_copy(5, 42);
     /// assert_eq!(x, &[42, 42, 42, 42, 42]);
     /// ```
     #[inline(always)]
     #[allow(clippy::mut_from_ref)]
-    pub fn alloc_slice_fill_copy<T: Copy>(&self, value: T, len: usize) -> &mut [T] {
+    pub fn alloc_slice_fill_copy<T: Copy>(&self, len: usize, value: T) -> &mut [T] {
         self.alloc_slice_fill_with(len, |_| value)
     }
 
@@ -713,14 +713,14 @@ impl Bump {
     /// ```
     /// let bump = bumpalo::Bump::new();
     /// let s: String = "Hello Bump!".to_string();
-    /// let x: &[String] = bump.alloc_slice_fill_clone(&s, 2);
+    /// let x: &[String] = bump.alloc_slice_fill_clone(2, &s);
     /// assert_eq!(x.len(), 2);
     /// assert_eq!(&x[0], &s);
     /// assert_eq!(&x[1], &s);
     /// ```
     #[inline(always)]
     #[allow(clippy::mut_from_ref)]
-    pub fn alloc_slice_fill_clone<T: Clone>(&self, value: &T, len: usize) -> &mut [T] {
+    pub fn alloc_slice_fill_clone<T: Clone>(&self, len: usize, value: &T) -> &mut [T] {
         self.alloc_slice_fill_with(len, |_| value.clone())
     }
 
