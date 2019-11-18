@@ -257,6 +257,27 @@ const FIRST_ALLOCATION_GOAL: usize = (1 << 9);
 // take the alignment into account.
 const DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER: usize = FIRST_ALLOCATION_GOAL - OVERHEAD;
 
+#[inline]
+fn layout_for_array<T>(len: usize) -> Option<Layout> {
+    // TODO: use Layout::array once the rust feature `alloc_layout_extra`
+    // gets stabilized
+    //
+    // According to https://doc.rust-lang.org/reference/type-layout.html#size-and-alignment
+    // the size of a value is always a multiple of it's alignment. But that does not seem to match
+    // with https://doc.rust-lang.org/std/alloc/struct.Layout.html#method.from_size_align
+    //
+    // Let's be on the safe size and round up to the padding in any case.
+    //
+    // An interesting question is whether there needs to be padding at the end of
+    // the last object in the array. Again, we take the safe approach and include it.
+
+    let layout = Layout::new::<T>();
+    let size_rounded_up = round_up_to(layout.size(), layout.align())?;
+    let total_size = len.checked_mul(size_rounded_up)?;
+
+    Layout::from_size_align(total_size, layout.align()).ok()
+}
+
 /// Wrapper around `Layout::from_size_align` that adds debug assertions.
 #[inline]
 unsafe fn layout_from_size_align(size: usize, align: usize) -> Layout {
@@ -619,6 +640,142 @@ impl Bump {
         }
     }
 
+    /// Allocates a new slice of size `len` into this `Bump` and returns an
+    /// exclusive reference to the copy.
+    ///
+    /// The elements of the slice are initialized using the supplied closure.
+    /// The closure argument is the position in the slice.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for the slice would cause an overflow.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.alloc_slice_fill_with(5, |i| 5*(i+1));
+    /// assert_eq!(x, &[5, 10, 15, 20, 25]);
+    /// ```
+    #[inline(always)]
+    #[allow(clippy::mut_from_ref)]
+    pub fn alloc_slice_fill_with<T, F>(&self, len: usize, mut f: F) -> &mut [T]
+    where
+        F: FnMut(usize) -> T,
+    {
+        let layout = layout_for_array::<T>(len).unwrap_or_else(|| oom());
+        let dst = self.alloc_layout(layout).cast::<T>();
+
+        unsafe {
+            for i in 0..len {
+                ptr::write(dst.as_ptr().add(i), f(i));
+            }
+
+            let result = slice::from_raw_parts_mut(dst.as_ptr(), len);
+            debug_assert_eq!(Layout::for_value(result), layout);
+            result
+        }
+    }
+
+    /// Allocates a new slice of size `len` into this `Bump` and returns an
+    /// exclusive reference to the copy.
+    ///
+    /// All elements of the slice are initialized to `value`.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for the slice would cause an overflow.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.alloc_slice_fill_copy(5, 42);
+    /// assert_eq!(x, &[42, 42, 42, 42, 42]);
+    /// ```
+    #[inline(always)]
+    #[allow(clippy::mut_from_ref)]
+    pub fn alloc_slice_fill_copy<T: Copy>(&self, len: usize, value: T) -> &mut [T] {
+        self.alloc_slice_fill_with(len, |_| value)
+    }
+
+    /// Allocates a new slice of size `len` slice into this `Bump` and return an
+    /// exclusive reference to the copy.
+    ///
+    /// All elements of the slice are initialized to `value.clone()`.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for the slice would cause an overflow.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let s: String = "Hello Bump!".to_string();
+    /// let x: &[String] = bump.alloc_slice_fill_clone(2, &s);
+    /// assert_eq!(x.len(), 2);
+    /// assert_eq!(&x[0], &s);
+    /// assert_eq!(&x[1], &s);
+    /// ```
+    #[inline(always)]
+    #[allow(clippy::mut_from_ref)]
+    pub fn alloc_slice_fill_clone<T: Clone>(&self, len: usize, value: &T) -> &mut [T] {
+        self.alloc_slice_fill_with(len, |_| value.clone())
+    }
+
+    /// Allocates a new slice of size `len` slice into this `Bump` and return an
+    /// exclusive reference to the copy.
+    ///
+    /// The elements are initialized using the supplied iterator.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for the slice would cause an overflow, or if the supplied
+    /// iterator returns fewer elements than it promised.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x: &[i32] = bump.alloc_slice_fill_iter([2, 3, 5].iter().cloned().map(|i| i * i));
+    /// assert_eq!(x, [4, 9, 25]);
+    /// ```
+    #[inline(always)]
+    #[allow(clippy::mut_from_ref)]
+    pub fn alloc_slice_fill_iter<T, I>(&self, iter: I) -> &mut [T]
+    where
+        I: IntoIterator<Item = T>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        let mut iter = iter.into_iter();
+        self.alloc_slice_fill_with(iter.len(), |_| {
+            iter.next().expect("Iterator supplied too few elements")
+        })
+    }
+
+    /// Allocates a new slice of size `len` slice into this `Bump` and return an
+    /// exclusive reference to the copy.
+    ///
+    /// All elements of the slice are initialized to `T::default()`.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for the slice would cause an overflow.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.alloc_slice_fill_default::<u32>(5);
+    /// assert_eq!(x, &[0, 0, 0, 0, 0]);
+    /// ```
+    #[inline(always)]
+    #[allow(clippy::mut_from_ref)]
+    pub fn alloc_slice_fill_default<T: Default>(&self, len: usize) -> &mut [T] {
+        self.alloc_slice_fill_with(len, |_| T::default())
+    }
+
     /// Allocate space for an object with the given `Layout`.
     ///
     /// The returned pointer points at uninitialized memory, and should be
@@ -636,6 +793,18 @@ impl Bump {
     #[inline(always)]
     fn try_alloc_layout_fast(&self, layout: Layout) -> Option<NonNull<u8>> {
         unsafe {
+            if layout.size() == 0 {
+                // We want to use NonNull::dangling here, but that function uses mem::align_of::<T>
+                // internally. For our use-case we cannot call dangling::<T>, since we are not generic
+                // over T; we only have access to the Layout of T. Instead we re-implement the
+                // functionality here.
+                //
+                // See https://github.com/rust-lang/rust/blob/9966af3/src/libcore/ptr/non_null.rs#L70
+                // for the reference implementation.
+                let ptr = layout.align() as *mut u8;
+                return Some(NonNull::new_unchecked(ptr));
+            }
+
             let footer = self.current_chunk_footer.get();
             let footer = footer.as_ref();
             let ptr = footer.ptr.get().as_ptr() as usize;
@@ -886,7 +1055,7 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
     unsafe fn dealloc(&mut self, ptr: NonNull<u8>, layout: Layout) {
         // If the pointer is the last allocation we made, we can reuse the bytes,
         // otherwise they are simply leaked -- at least until somebody calls reset().
-        if self.is_last_allocation(ptr) {
+        if layout.size() != 0 && self.is_last_allocation(ptr) {
             let ptr = NonNull::new_unchecked(ptr.as_ptr().add(layout.size()));
             self.current_chunk_footer.get().as_ref().ptr.set(ptr);
         }
@@ -900,6 +1069,10 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
         new_size: usize,
     ) -> Result<NonNull<u8>, alloc::AllocErr> {
         let old_size = layout.size();
+
+        if old_size == 0 {
+            return self.alloc(layout);
+        }
 
         if new_size <= old_size {
             if self.is_last_allocation(ptr)
