@@ -116,6 +116,7 @@ use core::marker::PhantomData;
 use core::mem;
 use core::ptr::{self, NonNull};
 use core::slice;
+use core::str;
 use core_alloc::alloc::{alloc, dealloc, Layout};
 
 /// An arena to bump allocate into.
@@ -637,6 +638,29 @@ impl Bump {
             }
 
             slice::from_raw_parts_mut(dst.as_ptr(), src.len())
+        }
+    }
+
+    /// `Copy` a string slice into this `Bump` and return an exclusive reference to it.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for the string would cause an overflow.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let hello = bump.alloc_str("hello world");
+    /// assert_eq!("hello world", hello);
+    /// ```
+    #[inline(always)]
+    #[allow(clippy::mut_from_ref)]
+    pub fn alloc_str(&self, src: &str) -> &mut str {
+        let buffer = self.alloc_slice_copy(src.as_bytes());
+        unsafe {
+            // This is OK, because it already came in as str, so it is guaranteed to be utf8
+            str::from_utf8_unchecked_mut(buffer)
         }
     }
 
