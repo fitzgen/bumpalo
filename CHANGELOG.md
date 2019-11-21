@@ -1,3 +1,6 @@
+* Add `alloc_str`, which is similar to `alloc_slice_*` methods, but works on
+  string slices.
+
 # 2.6.0
 
 Released 2019-08-19.

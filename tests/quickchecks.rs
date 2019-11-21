@@ -219,4 +219,12 @@ quickcheck! {
             allocated.push(range);
         }
     }
+
+    fn alloc_strs(allocs: Vec<String>) -> () {
+        let b = Bump::new();
+        let allocated: Vec<&str> = allocs.iter().map(|s| b.alloc_str(s) as &_).collect();
+        for (val, alloc) in allocs.into_iter().zip(allocated) {
+            assert_eq!(val, alloc);
+        }
+    }
 }
