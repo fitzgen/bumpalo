@@ -26,6 +26,7 @@ criterion = "0.3.0"
 [features]
 default = ["collections"]
 collections = []
+unstable_core_alloc = []
 
 # This feature is only included for backwards compatibility and
 # no longer has any effect

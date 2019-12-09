@@ -7,11 +7,8 @@
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
-
 #![allow(unstable_name_collisions)]
 #![allow(dead_code)]
-
-//! Memory allocation APIs
 
 use core::cmp;
 use core::fmt;
@@ -19,14 +16,10 @@ use core::mem;
 use core::ptr::{self, NonNull};
 use core::usize;
 
-pub use core::alloc::{Layout, LayoutErr};
+use core::alloc::{Layout, LayoutErr};
 
 fn new_layout_err() -> LayoutErr {
     Layout::from_size_align(1, 3).unwrap_err()
-}
-
-pub fn handle_alloc_error(layout: Layout) -> ! {
-    panic!("encountered allocation error: {:?}", layout)
 }
 
 pub trait UnstableLayoutMethods {
