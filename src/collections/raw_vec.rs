@@ -17,7 +17,10 @@ use core::cmp;
 use core::mem;
 use core::ptr::{self, NonNull};
 
-use crate::alloc::{handle_alloc_error, Alloc, Layout, UnstableLayoutMethods};
+use crate::alloc::{handle_alloc_error, Alloc, Layout};
+#[allow(unused_imports)]
+use crate::alloc::UnstableLayoutMethods;
+
 use crate::collections::CollectionAllocErr;
 use crate::collections::CollectionAllocErr::*;
 // use boxed::Box;

@@ -19,13 +19,17 @@ name = "benches"
 path = "benches/benches.rs"
 harness = false
 
+[dependencies]
+hashbrown = { git = "https://github.com/hansihe/hashbrown.git", optional = true }
+
 [dev-dependencies]
 quickcheck = "0.8.2"
 criterion = "0.3.0"
 
 [features]
-default = ["collections"]
+default = ["collections", "collections_hash"]
 collections = []
+collections_hash = ["hashbrown", "hashbrown/nightly", "hashbrown/raw", "unstable_core_alloc"]
 unstable_core_alloc = []
 
 # This feature is only included for backwards compatibility and

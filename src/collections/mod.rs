@@ -19,6 +19,9 @@ mod str;
 pub mod string;
 pub use self::string::String;
 
+#[cfg(feature = "collections_hash")]
+mod hash_map;
+
 // pub mod binary_heap;
 // mod btree;
 // pub mod linked_list;
