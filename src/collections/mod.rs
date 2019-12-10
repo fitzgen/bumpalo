@@ -20,7 +20,9 @@ pub mod string;
 pub use self::string::String;
 
 #[cfg(feature = "collections_hash")]
-mod hash_map;
+pub mod hash_map;
+#[cfg(feature = "collections_hash")]
+pub use self::hash_map::HashMap;
 
 // pub mod binary_heap;
 // mod btree;
