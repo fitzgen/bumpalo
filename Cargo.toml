@@ -8,7 +8,7 @@ license = "MIT/Apache-2.0"
 name = "bumpalo"
 readme = "./README.md"
 repository = "https://github.com/fitzgen/bumpalo"
-version = "2.6.0"
+version = "3.0.0"
 
 [lib]
 path = "src/lib.rs"
@@ -18,18 +18,18 @@ bench = false
 name = "benches"
 path = "benches/benches.rs"
 harness = false
+required-features = ["collections"]
 
 [dev-dependencies]
 quickcheck = "0.8.2"
 criterion = "0.3.0"
 
 [features]
-default = ["collections"]
+default = []
 collections = []
 
-# This feature is only included for backwards compatibility and
-# no longer has any effect
-std = []
+[package.metadata.docs.rs]
+all-features = true
 
 # [profile.bench]
 # debug = true

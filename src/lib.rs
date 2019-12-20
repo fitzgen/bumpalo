@@ -64,8 +64,8 @@ assert!(scooter.scritches_required);
 
 ## Collections
 
-When the on-by-default `"collections"` feature is enabled, a fork of some of the
-`std` library's collections are available in the `collections` module. These
+When the `"collections"` cargo feature is enabled, a fork of some of the `std`
+library's collections are available in the `collections` module. These
 collection types are modified to allocate their space inside `bumpalo::Bump`
 arenas.
 
@@ -897,11 +897,13 @@ impl Bump {
     /// Returns an iterator over each chunk of allocated memory that
     /// this arena has bump allocated into.
     ///
-    /// The chunks are returned ordered by allocation time, with the most recently
-    /// allocated chunk being returned first.
+    /// The chunks are returned ordered by allocation time, with the most
+    /// recently allocated chunk being returned first, and the least recently
+    /// allocated chunk being returned last.
     ///
-    /// The values inside each chunk is also ordered by allocation time, with the most
-    /// recent allocation being earlier in the slice.
+    /// The values inside each chunk are also ordered by allocation time, with
+    /// the most recent allocation being earlier in the slice, and the least
+    /// recent allocation being towards the end of the slice.
     ///
     /// ## Safety
     ///
@@ -933,84 +935,48 @@ impl Bump {
     /// ```
     /// let mut bump = bumpalo::Bump::new();
     ///
-    /// // Allocate a bunch of things in this bump arena, potentially causing
+    /// // Allocate a bunch of `i32`s in this bump arena, potentially causing
     /// // additional memory chunks to be reserved.
     /// for i in 0..10000 {
     ///     bump.alloc(i);
     /// }
     ///
     /// // Iterate over each chunk we've bump allocated into. This is safe
-    /// // because we have only allocated `i32` objects in this arena.
+    /// // because we have only allocated `i32`s in this arena, which fulfills
+    /// // the above requirements.
     /// for ch in bump.iter_allocated_chunks() {
     ///     println!("Used a chunk that is {} bytes long", ch.len());
-    ///     println!("The first byte is {:?}", unsafe { ch.get(0).unwrap().assume_init() });
+    ///     println!("The first byte is {:?}", unsafe {
+    ///         ch.get(0).unwrap().assume_init()
+    ///     });
+    /// }
+    ///
+    /// // Within a chunk, allocations are ordered from most recent to least
+    /// // recent. If we allocated 'a', then 'b', then 'c', when we iterate
+    /// // through the chunk's data, we get them in the order 'c', then 'b',
+    /// // then 'a'.
+    ///
+    /// bump.reset();
+    /// bump.alloc(b'a');
+    /// bump.alloc(b'b');
+    /// bump.alloc(b'c');
+    ///
+    /// assert_eq!(bump.iter_allocated_chunks().count(), 1);
+    /// let chunk = bump.iter_allocated_chunks().nth(0).unwrap();
+    /// assert_eq!(chunk.len(), 3);
+    ///
+    /// // Safe because we've only allocated `u8`s in this arena, which
+    /// // fulfills the above requirements.
+    /// unsafe {
+    ///     assert_eq!(chunk[0].assume_init(), b'c');
+    ///     assert_eq!(chunk[1].assume_init(), b'b');
+    ///     assert_eq!(chunk[2].assume_init(), b'a');
     /// }
     /// ```
     pub fn iter_allocated_chunks(&mut self) -> ChunkIter<'_> {
         ChunkIter {
             footer: Some(self.current_chunk_footer.get()),
             bump: PhantomData,
-        }
-    }
-
-    /// Call `f` on each chunk of allocated memory that this arena has bump
-    /// allocated into.
-    ///
-    /// `f` is invoked in order of allocation: newest chunks first, oldest
-    /// chunks last.
-    ///
-    /// ## Safety
-    ///
-    /// Because this method takes `&mut self`, we know that the bump arena
-    /// reference is unique and therefore there aren't any active references to
-    /// any of the objects we've allocated in it either. This potential aliasing
-    /// of exclusive references is one common footgun for unsafe code that we
-    /// don't need to worry about here.
-    ///
-    /// However, there could be regions of uninitialized memory used as padding
-    /// between allocations. Reading uninitialized memory is big time undefined
-    /// behavior!
-    ///
-    /// The only way to guarantee that there is no padding between allocations
-    /// or within allocated objects is if all of these properties hold:
-    ///
-    /// 1. Every object allocated in this arena has the same alignment.
-    /// 2. Every object's size is a multiple of its alignment.
-    /// 3. None of the objects allocated in this arena contain any internal
-    ///    padding.
-    ///
-    /// If you want to use this `each_allocated_chunk` method, it is *your*
-    /// responsibility to ensure that these properties hold!
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// let mut bump = bumpalo::Bump::new();
-    ///
-    /// // Allocate a bunch of things in this bump arena, potentially causing
-    /// // additional memory chunks to be reserved.
-    /// for i in 0..10000 {
-    ///     bump.alloc(i);
-    /// }
-    ///
-    /// // Iterate over each chunk we've bump allocated into. This is safe
-    /// // because we have only allocated `i32` objects in this arena.
-    /// unsafe {
-    ///     bump.each_allocated_chunk(|ch| {
-    ///         println!("Used a chunk that is {} bytes long", ch.len());
-    ///     });
-    /// }
-    /// ```
-    #[deprecated(note = "deprecated in favor of iter_allocated_chunks")]
-    pub unsafe fn each_allocated_chunk<F>(&mut self, mut f: F)
-    where
-        F: for<'a> FnMut(&'a [u8]),
-    {
-        for chunk in self.iter_allocated_chunks() {
-            f(slice::from_raw_parts(
-                chunk.as_ptr() as *const u8,
-                chunk.len(),
-            ));
         }
     }
 
