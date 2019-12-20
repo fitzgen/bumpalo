@@ -897,11 +897,13 @@ impl Bump {
     /// Returns an iterator over each chunk of allocated memory that
     /// this arena has bump allocated into.
     ///
-    /// The chunks are returned ordered by allocation time, with the most recently
-    /// allocated chunk being returned first.
+    /// The chunks are returned ordered by allocation time, with the most
+    /// recently allocated chunk being returned first, and the least recently
+    /// allocated chunk being returned last.
     ///
-    /// The values inside each chunk is also ordered by allocation time, with the most
-    /// recent allocation being earlier in the slice.
+    /// The values inside each chunk are also ordered by allocation time, with
+    /// the most recent allocation being earlier in the slice, and the least
+    /// recent allocation being towards the end of the slice.
     ///
     /// ## Safety
     ///
@@ -933,17 +935,42 @@ impl Bump {
     /// ```
     /// let mut bump = bumpalo::Bump::new();
     ///
-    /// // Allocate a bunch of things in this bump arena, potentially causing
+    /// // Allocate a bunch of `i32`s in this bump arena, potentially causing
     /// // additional memory chunks to be reserved.
     /// for i in 0..10000 {
     ///     bump.alloc(i);
     /// }
     ///
     /// // Iterate over each chunk we've bump allocated into. This is safe
-    /// // because we have only allocated `i32` objects in this arena.
+    /// // because we have only allocated `i32`s in this arena, which fulfills
+    /// // the above requirements.
     /// for ch in bump.iter_allocated_chunks() {
     ///     println!("Used a chunk that is {} bytes long", ch.len());
-    ///     println!("The first byte is {:?}", unsafe { ch.get(0).unwrap().assume_init() });
+    ///     println!("The first byte is {:?}", unsafe {
+    ///         ch.get(0).unwrap().assume_init()
+    ///     });
+    /// }
+    ///
+    /// // Within a chunk, allocations are ordered from most recent to least
+    /// // recent. If we allocated 'a', then 'b', then 'c', when we iterate
+    /// // through the chunk's data, we get them in the order 'c', then 'b',
+    /// // then 'a'.
+    ///
+    /// bump.reset();
+    /// bump.alloc(b'a');
+    /// bump.alloc(b'b');
+    /// bump.alloc(b'c');
+    ///
+    /// assert_eq!(bump.iter_allocated_chunks().count(), 1);
+    /// let chunk = bump.iter_allocated_chunks().nth(0).unwrap();
+    /// assert_eq!(chunk.len(), 3);
+    ///
+    /// // Safe because we've only allocated `u8`s in this arena, which
+    /// // fulfills the above requirements.
+    /// unsafe {
+    ///     assert_eq!(chunk[0].assume_init(), b'c');
+    ///     assert_eq!(chunk[1].assume_init(), b'b');
+    ///     assert_eq!(chunk[2].assume_init(), b'a');
     /// }
     /// ```
     pub fn iter_allocated_chunks(&mut self) -> ChunkIter<'_> {
