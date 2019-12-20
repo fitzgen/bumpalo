@@ -27,9 +27,5 @@ criterion = "0.3.0"
 default = ["collections"]
 collections = []
 
-# This feature is only included for backwards compatibility and
-# no longer has any effect
-std = []
-
 # [profile.bench]
 # debug = true
