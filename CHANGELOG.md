@@ -75,9 +75,9 @@ Released 2019-12-20.
   chunks are iterated over last.
 
   If you were using `Bump::each_allocated_chunk` to iterate over data that you
-  had previously allocated, and *you want to iterate in order of allocation*,
-  you need to reverse the chunks iterator and also reverse the order in which
-  you loop through the data within a chunk!
+  had previously allocated, and *you want to iterate in order of
+  youngest-to-oldest allocation*, you need to reverse the chunks iterator and
+  also reverse the order in which you loop through the data within a chunk!
 
   For example, if you had this code:
 
@@ -85,7 +85,7 @@ Released 2019-12-20.
   unsafe {
       bump.each_allocated_chunk(|chunk| {
           for byte in chunk {
-              // Touch each byte in allocation order...
+              // Touch each byte in youngest-to-oldest allocation order...
           }
       });
   }
@@ -99,7 +99,7 @@ Released 2019-12-20.
   for chunk in chunks {
       for byte in chunk.iter().rev() {
           let byte = unsafe { byte.assume_init() };
-          // Touch each byte in allocation order...
+          // Touch each byte in youngest-to-oldest allocation order...
       }
   }
   ```
