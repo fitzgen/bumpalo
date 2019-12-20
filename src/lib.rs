@@ -64,8 +64,8 @@ assert!(scooter.scritches_required);
 
 ## Collections
 
-When the on-by-default `"collections"` feature is enabled, a fork of some of the
-`std` library's collections are available in the `collections` module. These
+When the `"collections"` cargo feature is enabled, a fork of some of the `std`
+library's collections are available in the `collections` module. These
 collection types are modified to allocate their space inside `bumpalo::Bump`
 arenas.
 

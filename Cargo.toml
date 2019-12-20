@@ -18,14 +18,18 @@ bench = false
 name = "benches"
 path = "benches/benches.rs"
 harness = false
+required-features = ["collections"]
 
 [dev-dependencies]
 quickcheck = "0.8.2"
 criterion = "0.3.0"
 
 [features]
-default = ["collections"]
+default = []
 collections = []
+
+[package.metadata.docs.rs]
+all-features = true
 
 # [profile.bench]
 # debug = true
