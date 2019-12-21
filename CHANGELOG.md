@@ -70,13 +70,13 @@ Released 2019-12-20.
   now "downwards", from high addresses towards lower addresses.
 
   Additionally, the order in which we iterate over allocated chunks has changed!
-  We used to iterate over chunks from oldest chunk to newest chunk, and now we
+  We used to iterate over chunks from oldest chunk to youngest chunk, and now we
   do the opposite: the youngest chunks are iterated over first, and the oldest
   chunks are iterated over last.
 
   If you were using `Bump::each_allocated_chunk` to iterate over data that you
   had previously allocated, and *you want to iterate in order of
-  youngest-to-oldest allocation*, you need to reverse the chunks iterator and
+  oldest-to-youngest allocation*, you need to reverse the chunks iterator and
   also reverse the order in which you loop through the data within a chunk!
 
   For example, if you had this code:
@@ -85,7 +85,7 @@ Released 2019-12-20.
   unsafe {
       bump.each_allocated_chunk(|chunk| {
           for byte in chunk {
-              // Touch each byte in youngest-to-oldest allocation order...
+              // Touch each byte in oldest-to-youngest allocation order...
           }
       });
   }
@@ -99,7 +99,7 @@ Released 2019-12-20.
   for chunk in chunks {
       for byte in chunk.iter().rev() {
           let byte = unsafe { byte.assume_init() };
-          // Touch each byte in youngest-to-oldest allocation order...
+          // Touch each byte in oldest-to-youngest allocation order...
       }
   }
   ```
