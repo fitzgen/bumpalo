@@ -980,6 +980,42 @@ impl Bump {
         }
     }
 
+    /// Calculates the number of bytes currently allocated across all chunks.
+    ///
+    /// If you allocate types of different alignments or types with
+    /// larger-than-typical alignment in the same arena, some padding
+    /// bytes might get allocated in the bump arena. Note that those padding
+    /// bytes will add to this method's resulting sum, so you cannot rely
+    /// on it only counting the sum of the sizes of the things
+    /// you've allocated in the arena.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let _x = bump.alloc_slice_fill_default::<u32>(5);
+    /// let bytes = bump.allocated_bytes();
+    /// assert!(bytes >= core::mem::size_of::<u32>() * 5);
+    /// ```
+    pub fn allocated_bytes(&self) -> usize {
+        let mut footer = Some(self.current_chunk_footer.get());
+
+        let mut bytes = 0;
+
+        while let Some(f) = footer {
+            let foot = unsafe { f.as_ref() };
+
+            let ptr = foot.ptr.get().as_ptr() as usize;
+            debug_assert!(ptr <= foot as *const _ as usize);
+
+            bytes += foot as *const _ as usize - ptr;
+
+            footer = foot.prev.get();
+        }
+
+        bytes
+    }
+
     #[inline]
     unsafe fn is_last_allocation(&self, ptr: NonNull<u8>) -> bool {
         let footer = self.current_chunk_footer.get();
