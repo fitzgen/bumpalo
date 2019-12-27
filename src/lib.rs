@@ -980,7 +980,14 @@ impl Bump {
         }
     }
 
-    /// Calculates the number of bytes currently allocated across all chunks
+    /// Calculates the number of bytes currently allocated across all chunks.
+    ///
+    /// If you allocate types of different alignments or types with
+    /// larger-than-typical alignment in the same arena, some padding
+    /// bytes might get allocated in the bump arena. Note that those padding
+    /// bytes will add to this method's resulting sum, so you cannot rely
+    /// on it only counting the sum of the sizes of the things
+    /// you've allocated in the arena.
     ///
     /// ## Example
     ///
