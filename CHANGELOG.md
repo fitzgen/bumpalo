@@ -28,6 +28,17 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.1.0
+
+Released 2019-12-27.
+
+### Added
+
+* Added the `Bump::allocated_bytes` diagnostic method for counting the total
+  number of bytes a `Bump` has allocated.
+
+--------------------------------------------------------------------------------
+
 # 3.0.0
 
 Released 2019-12-20.
