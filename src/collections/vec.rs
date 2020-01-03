@@ -264,7 +264,7 @@ macro_rules! vec {
         $( v.push($x); )*
         v
     }};
-    (in $bump:expr; $(, $x:expr,)*) => (bumpalo::vec![in $bump; $($x),*])
+    (in $bump:expr; $($x:expr,)*) => (bumpalo::vec![in $bump; $($x),*])
 }
 
 /// A contiguous growable array type, written `Vec<'bump, T>` but pronounced 'vector'.
