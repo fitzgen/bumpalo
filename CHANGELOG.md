@@ -28,6 +28,17 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.1.1
+
+Released 2020-01-03.
+
+### Fixed
+
+* The `bumpalo::collections::vec!` macro did not used to accept a trailing
+  comma like `vec![in bump; 1, 2,]`, but it does now.
+
+--------------------------------------------------------------------------------
+
 ## 3.1.0
 
 Released 2019-12-27.
