@@ -95,7 +95,11 @@ macro_rules! format {
         let mut s = $crate::collections::String::new_in(bump);
         let _ = write!(&mut s, $fmt, $($args),*);
         s
-    }}
+    }};
+
+    ( in $bump:expr, $fmt:expr, $($args:expr,)* ) => {
+        $crate::format!(in $bump, $fmt, $($args),*)
+    };
 }
 
 /// A UTF-8 encoded, growable string.

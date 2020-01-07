@@ -1,8 +1,5 @@
 #![cfg(feature = "collections")]
-use bumpalo::{
-    collections::{vec, Vec},
-    Bump,
-};
+use bumpalo::{collections::Vec, vec, Bump};
 use std::cell::Cell;
 
 #[test]
@@ -17,7 +14,7 @@ fn push_a_bunch_of_items() {
 #[test]
 fn trailing_comma_in_vec_macro() {
     let b = Bump::new();
-    let mut v = vec![in b; 1, 2, 3,];
+    let v = vec![in &b; 1, 2, 3,];
     assert_eq!(v, [1, 2, 3]);
 }
 
