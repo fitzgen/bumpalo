@@ -10,6 +10,9 @@ readme = "./README.md"
 repository = "https://github.com/fitzgen/bumpalo"
 version = "3.1.2"
 
+[package.metadata.docs.rs]
+all-features = true
+
 [lib]
 path = "src/lib.rs"
 bench = false
@@ -21,15 +24,12 @@ harness = false
 required-features = ["collections"]
 
 [dev-dependencies]
-quickcheck = "0.8.2"
+quickcheck = "0.9.0"
 criterion = "0.3.0"
 
 [features]
 default = []
 collections = []
-
-[package.metadata.docs.rs]
-all-features = true
 
 # [profile.bench]
 # debug = true
