@@ -28,6 +28,17 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.1.2
+
+Released 2020-01-07.
+
+### Fixed
+
+* The `bumpalo::collections::format!` macro did not used to accept a trailing
+  comma like `format!(in bump; "{}", 1,)`, but it does now.
+
+--------------------------------------------------------------------------------
+
 ## 3.1.1
 
 Released 2020-01-03.
