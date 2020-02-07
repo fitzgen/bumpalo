@@ -775,12 +775,39 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
     /// let slice = v.into_bump_slice();
     /// assert_eq!(slice, [1, 2, 3]);
     /// ```
-    pub fn into_bump_slice(mut self) -> &'bump [T] {
+    pub fn into_bump_slice(self) -> &'bump [T] {
         unsafe {
-            let ptr = self.as_mut_ptr();
+            let ptr = self.as_ptr();
             let len = self.len();
             mem::forget(self);
             slice::from_raw_parts(ptr, len)
+        }
+    }
+
+    /// Converts the vector into `&'bump mut [T]`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bumpalo::{Bump, collections::Vec};
+    ///
+    /// let b = Bump::new();
+    /// let v = bumpalo::vec![in &b; 1, 2, 3];
+    ///
+    /// let mut slice = v.into_bump_slice_mut();
+    ///
+    /// slice[0] = 3;
+    /// slice[2] = 1;
+    ///
+    /// assert_eq!(slice, [3, 2, 1]);
+    /// ```
+    pub fn into_bump_slice_mut(mut self) -> &'bump mut [T] {
+        let ptr = self.as_mut_ptr();
+        let len = self.len();
+        mem::forget(self);
+
+        unsafe {
+            slice::from_raw_parts_mut(ptr, len)
         }
     }
 
