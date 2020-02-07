@@ -28,6 +28,17 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.2.0
+
+Released 209-2-07.
+
+### Added
+
+* Added the `bumpalo::collections::Vec::into_bump_slice_mut` method to turn a
+  `bumpalo::collections::Vec<'bump, T>` into a `&'bump mut [T]`.
+
+--------------------------------------------------------------------------------
+
 ## 3.1.2
 
 Released 2020-01-07.
