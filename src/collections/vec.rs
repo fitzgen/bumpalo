@@ -85,6 +85,7 @@
 
 use super::raw_vec::RawVec;
 use crate::Bump;
+use crate::collections::CollectionAllocErr;
 use core::cmp::Ordering;
 use core::fmt;
 use core::hash::{self, Hash};
@@ -736,6 +737,22 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
     /// ```
     pub fn reserve_exact(&mut self, additional: usize) {
         self.buf.reserve_exact(self.len, additional);
+    }
+
+    /// TODO
+    pub fn try_reserve(
+        &mut self,
+        additional: usize,
+    ) -> Result<(), CollectionAllocErr> {
+        self.buf.try_reserve(self.len, additional)
+    }
+
+    /// TODO
+    pub fn try_reserve_exact(
+        &mut self,
+        additional: usize,
+    ) -> Result<(), CollectionAllocErr> {
+        self.buf.try_reserve_exact(self.len, additional)
     }
 
     /// Shrinks the capacity of the vector as much as possible.

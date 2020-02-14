@@ -320,7 +320,8 @@ impl Bump {
             None,
             Some(unsafe { layout_from_size_align(capacity, 1) }),
             None,
-        );
+        ).unwrap_or_else(|| oom());
+
         Bump {
             current_chunk_footer: Cell::new(chunk_footer),
         }
@@ -335,16 +336,17 @@ impl Bump {
         old_size_with_footer: Option<usize>,
         requested_layout: Option<Layout>,
         prev: Option<NonNull<ChunkFooter>>,
-    ) -> NonNull<ChunkFooter> {
+    ) -> Option<NonNull<ChunkFooter>> {
         unsafe {
             // As a sane default, we want our new allocation to be about twice as
             // big as the previous allocation
             let mut new_size_without_footer =
                 if let Some(old_size_with_footer) = old_size_with_footer {
                     let old_size_without_footer = old_size_with_footer - FOOTER_SIZE;
-                    old_size_without_footer
-                        .checked_mul(2)
-                        .unwrap_or_else(|| oom())
+                    match old_size_without_footer.checked_mul(2) {
+                        Some(size) => size,
+                        None => return None,
+                    }
                 } else {
                     DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER
                 };
@@ -372,8 +374,7 @@ impl Bump {
                 new_size_without_footer =
                     (new_size_without_footer + OVERHEAD).next_power_of_two() - OVERHEAD;
             } else {
-                new_size_without_footer = round_up_to(new_size_without_footer + OVERHEAD, 0x1000)
-                    .unwrap_or_else(|| oom())
+                new_size_without_footer = round_up_to(new_size_without_footer + OVERHEAD, 0x1000)?
                     - OVERHEAD;
             }
 
@@ -387,7 +388,7 @@ impl Bump {
             debug_assert!(size >= old_size_with_footer.unwrap_or(0) * 2);
 
             let data = alloc(layout);
-            let data = NonNull::new(data).unwrap_or_else(|| oom());
+            let data = NonNull::new(data)?;
 
             // The `ChunkFooter` is at the end of the chunk.
             let footer_ptr = data.as_ptr() as usize + new_size_without_footer;
@@ -409,7 +410,7 @@ impl Bump {
                 },
             );
 
-            NonNull::new_unchecked(footer_ptr)
+            Some(NonNull::new_unchecked(footer_ptr))
         }
     }
 
@@ -807,10 +808,21 @@ impl Bump {
     /// [`std::ptr::write`](https://doc.rust-lang.org/stable/std/ptr/fn.write.html).
     #[inline(always)]
     pub fn alloc_layout(&self, layout: Layout) -> NonNull<u8> {
+        self.try_alloc_layout(layout).unwrap_or_else(|_| oom())
+    }
+
+    /// Attempts to allocate space for an object with the given `Layout` or else returns
+    /// an `Err`.
+    ///
+    /// The returned pointer points at uninitialized memory, and should be
+    /// initialized with
+    /// [`std::ptr::write`](https://doc.rust-lang.org/stable/std/ptr/fn.write.html).
+    #[inline(always)]
+    pub fn try_alloc_layout(&self, layout: Layout) -> Result<NonNull<u8>, alloc::AllocErr> {
         if let Some(p) = self.try_alloc_layout_fast(layout) {
-            p
+            Ok(p)
         } else {
-            self.alloc_layout_slow(layout)
+            self.alloc_layout_slow(layout).ok_or(alloc::AllocErr {})
         }
     }
 
@@ -844,7 +856,7 @@ impl Bump {
     // Slow path allocation for when we need to allocate a new chunk from the
     // parent bump set because there isn't enough room in our current chunk.
     #[inline(never)]
-    fn alloc_layout_slow(&self, layout: Layout) -> NonNull<u8> {
+    fn alloc_layout_slow(&self, layout: Layout) -> Option<NonNull<u8>> {
         unsafe {
             let size = layout.size();
 
@@ -855,7 +867,7 @@ impl Bump {
                 Some(current_layout.size()),
                 Some(layout),
                 Some(current_footer),
-            );
+            )?;
             debug_assert_eq!(
                 new_footer.as_ref().data.as_ptr() as usize % layout.align(),
                 0
@@ -882,7 +894,7 @@ impl Bump {
             new_footer.ptr.set(ptr);
 
             // Return a pointer to the freshly allocated region in this chunk.
-            ptr
+            Some(ptr)
         }
     }
 
@@ -1066,7 +1078,7 @@ fn oom() -> ! {
 unsafe impl<'a> alloc::Alloc for &'a Bump {
     #[inline(always)]
     unsafe fn alloc(&mut self, layout: Layout) -> Result<NonNull<u8>, alloc::AllocErr> {
-        Ok(self.alloc_layout(layout))
+        self.try_alloc_layout(layout)
     }
 
     #[inline]
@@ -1129,7 +1141,7 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
 
         // Fallback: do a fresh allocation and copy the existing data into it.
         let new_layout = layout_from_size_align(new_size, layout.align());
-        let new_ptr = self.alloc_layout(new_layout);
+        let new_ptr = self.try_alloc_layout(new_layout)?;
         ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), old_size);
         Ok(new_ptr)
     }
