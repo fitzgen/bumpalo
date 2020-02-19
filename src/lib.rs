@@ -307,6 +307,18 @@ impl Bump {
         Self::with_capacity(0)
     }
 
+    /// Attempt to construct a new arena to bump allocate into.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::try_new();
+    /// # let _ = bump.unwrap();
+    /// ```
+    pub fn try_new() -> Result<Bump, ()> {
+        Bump::try_with_capacity(0)
+    }
+
     /// Construct a new arena with the specified capacity to bump allocate into.
     ///
     /// ## Example
@@ -327,6 +339,26 @@ impl Bump {
         }
     }
 
+    /// Attempt to construct a new arena with the specified capacity to bump allocate into.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::try_with_capacity(100);
+    /// # let _ = bump.unwrap();
+    /// ```
+    pub fn try_with_capacity(capacity: usize) -> Result<Self, ()> {
+        let chunk_footer = Self::new_chunk(
+            None,
+            Some(unsafe { layout_from_size_align(capacity, 1) }),
+            None,
+        ).ok_or(())?;
+
+        Ok(Bump {
+            current_chunk_footer: Cell::new(chunk_footer),
+        })
+    }
+
     /// Allocate a new chunk and return its initialized footer.
     ///
     /// If given, `layouts` is a tuple of the current chunk size and the
@@ -343,10 +375,7 @@ impl Bump {
             let mut new_size_without_footer =
                 if let Some(old_size_with_footer) = old_size_with_footer {
                     let old_size_without_footer = old_size_with_footer - FOOTER_SIZE;
-                    match old_size_without_footer.checked_mul(2) {
-                        Some(size) => size,
-                        None => return None,
-                    }
+                    old_size_without_footer.checked_mul(2)?
                 } else {
                     DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER
                 };
