@@ -60,11 +60,19 @@ fn test_alt_allocations() -> Result<(), Box<dyn Error>> {
     let mut rng = rand::thread_rng();
     let layout = Layout::from_size_align(2, 2)?;
 
-    for i in 0..NUM_TESTS {
+    for _ in 0..NUM_TESTS {
         if rng.gen() {
             GLOBAL_ALLOCATOR.toggle_state();
         } else if GLOBAL_ALLOCATOR.is_returning_null() {
-            assert!(bump.try_alloc_layout(layout).is_err());
+            let is_err = bump.try_alloc_layout(layout).is_err();
+
+            // assert! may allocate on failure, so we must re-enable allocations
+            // prior to asserting
+            GLOBAL_ALLOCATOR.toggle_state();
+
+            assert!(is_err);
+
+            GLOBAL_ALLOCATOR.toggle_state();
         } else {
             assert!(bump.try_alloc_layout(layout).is_ok());
         }
