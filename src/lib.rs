@@ -315,7 +315,7 @@ impl Bump {
     /// let bump = bumpalo::Bump::try_new();
     /// # let _ = bump.unwrap();
     /// ```
-    pub fn try_new() -> Result<Bump, ()> {
+    pub fn try_new() -> Result<Bump, alloc::AllocErr> {
         Bump::try_with_capacity(0)
     }
 
@@ -328,15 +328,7 @@ impl Bump {
     /// # let _ = bump;
     /// ```
     pub fn with_capacity(capacity: usize) -> Bump {
-        let chunk_footer = Self::new_chunk(
-            None,
-            Some(unsafe { layout_from_size_align(capacity, 1) }),
-            None,
-        ).unwrap_or_else(|| oom());
-
-        Bump {
-            current_chunk_footer: Cell::new(chunk_footer),
-        }
+        Bump::try_with_capacity(capacity).unwrap_or_else(|_| oom())
     }
 
     /// Attempt to construct a new arena with the specified capacity to bump allocate into.
@@ -347,12 +339,12 @@ impl Bump {
     /// let bump = bumpalo::Bump::try_with_capacity(100);
     /// # let _ = bump.unwrap();
     /// ```
-    pub fn try_with_capacity(capacity: usize) -> Result<Self, ()> {
+    pub fn try_with_capacity(capacity: usize) -> Result<Self, alloc::AllocErr> {
         let chunk_footer = Self::new_chunk(
             None,
             Some(unsafe { layout_from_size_align(capacity, 1) }),
             None,
-        ).ok_or(())?;
+        ).ok_or(alloc::AllocErr {})?;
 
         Ok(Bump {
             current_chunk_footer: Cell::new(chunk_footer),
