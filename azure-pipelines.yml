@@ -61,5 +61,5 @@ jobs:
           rust_version: stable
       - bash: |
           set -ex
-          cargo check --benches --all-features
+          cargo check --benches --features "collections"
         displayName: "Run cargo check"
