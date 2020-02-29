@@ -17,7 +17,11 @@ use core::cmp;
 use core::mem;
 use core::ptr::{self, NonNull};
 
-use crate::alloc::{handle_alloc_error, Alloc, Layout, UnstableLayoutMethods};
+// This is used on stable, do not emit not used warning with nightly feature
+#[allow(unused_imports)]
+use crate::alloc::UnstableLayoutMethods;
+
+use crate::alloc::{handle_alloc_error, AllocRef, Layout};
 use crate::collections::CollectionAllocErr;
 use crate::collections::CollectionAllocErr::*;
 // use boxed::Box;
@@ -105,7 +109,7 @@ impl<'a, T> RawVec<'a, T> {
                 let result = if zeroed {
                     a.alloc_zeroed(layout)
                 } else {
-                    Alloc::alloc(&mut a, layout)
+                    AllocRef::alloc(&mut a, layout)
                 };
                 match result {
                     Ok(ptr) => ptr.cast(),
@@ -232,7 +236,7 @@ impl<'a, T> RawVec<'a, T> {
             // 0, getting to here necessarily means the RawVec is overfull.
             assert!(elem_size != 0, "capacity overflow");
 
-            let (new_cap, uniq) = match self.current_layout() {
+            let (new_cap, ptr) = match self.current_layout() {
                 Some(cur) => {
                     // Since we guarantee that we never allocate more than
                     // isize::MAX bytes, `elem_size * self.cap <= isize::MAX` as
@@ -260,13 +264,18 @@ impl<'a, T> RawVec<'a, T> {
                     // skip to 4 because tiny Vec's are dumb; but not if that
                     // would cause overflow
                     let new_cap = if elem_size > (!0) / 8 { 1 } else { 4 };
-                    match self.a.alloc_array::<T>(new_cap) {
+                    let layout = Layout::array::<T>(new_cap).unwrap();
+                    match AllocRef::alloc(&mut self.a, layout) {
                         Ok(ptr) => (new_cap, ptr),
-                        Err(_) => handle_alloc_error(Layout::array::<T>(new_cap).unwrap()),
+                        Err(_) => handle_alloc_error(layout),
                     }
+                    //match self.a.alloc_array::<T>(new_cap) {
+                    //    Ok(ptr) => (new_cap, ptr),
+                    //    Err(_) => handle_alloc_error(Layout::array::<T>(new_cap).unwrap()),
+                    //}
                 }
             };
-            self.ptr = uniq;
+            self.ptr = ptr.cast().into();
             self.cap = new_cap;
         }
     }
@@ -612,7 +621,7 @@ impl<'a, T> RawVec<'a, T> {
                     debug_assert!(new_layout.align() == layout.align());
                     self.a.realloc(self.ptr.cast(), layout, new_layout.size())
                 }
-                None => Alloc::alloc(&mut self.a, new_layout),
+                None => AllocRef::alloc(&mut self.a, new_layout),
             };
 
             if let (Err(AllocErr), Infallible) = (&res, fallibility) {

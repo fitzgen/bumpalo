@@ -102,18 +102,14 @@ Bumpalo is a `no_std` crate. It depends only on the `alloc` and `core` crates.
 #![deny(missing_debug_implementations)]
 #![deny(missing_docs)]
 #![no_std]
-
-#![cfg_attr(feature = "nightly", feature(allocator_api))]
+#![cfg_attr(feature = "nightly", feature(allocator_api, alloc_layout_extra))]
 
 extern crate alloc as core_alloc;
 
 #[cfg(feature = "collections")]
 pub mod collections;
 
-#[cfg(not(feature = "nightly"))]
 mod alloc;
-#[cfg(feature = "nightly")]
-use core_alloc::alloc as alloc;
 
 use core::cell::Cell;
 use core::iter;
@@ -256,7 +252,7 @@ const OVERHEAD: usize = (MALLOC_OVERHEAD + FOOTER_SIZE + (CHUNK_ALIGN - 1)) & !(
 // Choose a relatively small default initial chunk size, since we double chunk
 // sizes as we grow bump arenas to amortize costs of hitting the global
 // allocator.
-const FIRST_ALLOCATION_GOAL: usize = (1 << 9);
+const FIRST_ALLOCATION_GOAL: usize = 1 << 9;
 
 // The actual size of the first allocation is going to be a bit smaller
 // than the goal. We need to make room for the footer, and we also need

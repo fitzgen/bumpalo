@@ -806,9 +806,7 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
         let len = self.len();
         mem::forget(self);
 
-        unsafe {
-            slice::from_raw_parts_mut(ptr, len)
-        }
+        unsafe { slice::from_raw_parts_mut(ptr, len) }
     }
 
     /// Shortens the vector, keeping the first `len` elements and dropping
