@@ -30,6 +30,7 @@ criterion = "0.3.0"
 [features]
 default = []
 collections = []
+nightly = []
 
 # [profile.bench]
 # debug = true

@@ -215,7 +215,7 @@ impl fmt::Display for CannotReallocInPlace {
 /// Note that this list may get tweaked over time as clarifications are made in
 /// the future.
 // #[unstable(feature = "allocator_api", issue = "32838")]
-pub unsafe trait Alloc {
+pub unsafe trait AllocRef {
     // (Note: some existing allocators have unspecified but well-defined
     // behavior in response to a zero size allocation request ;
     // e.g. in C, `malloc` of 0 will either return a null pointer or a

@@ -103,12 +103,17 @@ Bumpalo is a `no_std` crate. It depends only on the `alloc` and `core` crates.
 #![deny(missing_docs)]
 #![no_std]
 
+#![cfg_attr(feature = "nightly", feature(allocator_api))]
+
 extern crate alloc as core_alloc;
 
 #[cfg(feature = "collections")]
 pub mod collections;
 
+#[cfg(not(feature = "nightly"))]
 mod alloc;
+#[cfg(feature = "nightly")]
+use core_alloc::alloc as alloc;
 
 use core::cell::Cell;
 use core::iter;
@@ -1071,7 +1076,7 @@ fn oom() -> ! {
     panic!("out of memory")
 }
 
-unsafe impl<'a> alloc::Alloc for &'a Bump {
+unsafe impl<'a> alloc::AllocRef for &'a Bump {
     #[inline(always)]
     unsafe fn alloc(&mut self, layout: Layout) -> Result<NonNull<u8>, alloc::AllocErr> {
         Ok(self.alloc_layout(layout))
@@ -1155,7 +1160,7 @@ mod tests {
     #[test]
     #[allow(clippy::cognitive_complexity)]
     fn test_realloc() {
-        use crate::alloc::Alloc;
+        use crate::alloc::AllocRef;
 
         unsafe {
             const CAPACITY: usize = 1024 - OVERHEAD;
