@@ -1130,7 +1130,7 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
             if let Some(p) =
                 self.try_alloc_layout_fast(layout_from_size_align(delta, layout.align()))
             {
-                ptr::copy(ptr.as_ptr(), p.as_ptr(), new_size);
+                ptr::copy(ptr.as_ptr(), p.as_ptr(), old_size);
                 return Ok(p);
             }
         }
@@ -1198,6 +1198,25 @@ mod tests {
             let q = (&b).realloc(p, layout, 2).unwrap();
             assert!(q.as_ptr() as usize != p.as_ptr() as usize - 1);
             b.reset();
+        }
+    }
+
+    #[test]
+    fn invalid_read() {
+        use alloc::Alloc;
+
+        let mut b = &Bump::new();
+
+        unsafe {
+            let l1 = Layout::from_size_align(12000, 4).unwrap();
+            let p1 = Alloc::alloc(&mut b, l1).unwrap();
+
+            let l2 = Layout::from_size_align(1000, 4).unwrap();
+            Alloc::alloc(&mut b, l2).unwrap();
+
+            let p1 = b.realloc(p1, l1, 24000).unwrap();
+            let l3 = Layout::from_size_align(24000, 4).unwrap();
+            b.realloc(p1, l3, 48000).unwrap();
         }
     }
 }
