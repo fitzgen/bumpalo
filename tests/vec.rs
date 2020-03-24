@@ -50,7 +50,7 @@ fn recursive_vecs() {
 fn test_into_bump_slice_mut() {
     let b = Bump::new();
     let v = bumpalo::vec![in &b; 1, 2, 3];
-    let mut slice = v.into_bump_slice_mut();
+    let slice = v.into_bump_slice_mut();
 
     slice[0] = 3;
     slice[2] = 1;
