@@ -251,7 +251,7 @@ const OVERHEAD: usize = (MALLOC_OVERHEAD + FOOTER_SIZE + (CHUNK_ALIGN - 1)) & !(
 // Choose a relatively small default initial chunk size, since we double chunk
 // sizes as we grow bump arenas to amortize costs of hitting the global
 // allocator.
-const FIRST_ALLOCATION_GOAL: usize = (1 << 9);
+const FIRST_ALLOCATION_GOAL: usize = 1 << 9;
 
 // The actual size of the first allocation is going to be a bit smaller
 // than the goal. We need to make room for the footer, and we also need
