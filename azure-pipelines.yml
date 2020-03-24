@@ -23,7 +23,8 @@ jobs:
       - bash: |
           set -ex
           export RUST_BACKTRACE=1
-          export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER=valgrind
+          # Don't leak-check, as Rust globals tend to cause false positives.
+          export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER="valgrind --suppressions=valgrind.supp --leak-check=no --error-exitcode=1"
           cargo test
           cargo test --all-features
         displayName: "Run `cargo test` under Valgrind"

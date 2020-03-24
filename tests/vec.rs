@@ -57,3 +57,29 @@ fn test_into_bump_slice_mut() {
 
     assert_eq!(slice, [3, 2, 1]);
 }
+
+quickcheck::quickcheck! {
+    fn vec_resizes_causing_reallocs(sizes: std::vec::Vec<usize>) -> () {
+        // Exercise `realloc` by doing a bunch of `resize`s followed by
+        // `shrink_to_fit`s.
+
+        let b = Bump::new();
+        let mut v = bumpalo::vec![in &b];
+
+        for len in sizes {
+            // We don't want to get too big and OOM.
+            const MAX_SIZE: usize = 1 << 15;
+
+            // But we want allocations to get fairly close to the minimum chunk
+            // size, so that we are exercising both realloc'ing within a chunk
+            // and when we need new chunks.
+            const MIN_SIZE: usize = 1 << 7;
+
+            let len = std::cmp::min(len, MAX_SIZE);
+            let len = std::cmp::max(len, MIN_SIZE);
+
+            v.resize(len, 0);
+            v.shrink_to_fit();
+        }
+    }
+}
