@@ -72,7 +72,7 @@ Released 2020-03-24.
 
 ## 3.2.0
 
-Released 209-2-07.
+Released 2020-02-07.
 
 ### Added
 
