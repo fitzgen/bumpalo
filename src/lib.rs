@@ -816,6 +816,10 @@ impl Bump {
 
     #[inline(always)]
     fn try_alloc_layout_fast(&self, layout: Layout) -> Option<NonNull<u8>> {
+        // We don't need to check for ZSTs here since they will automatically
+        // be handled properly: the pointer will be bumped by zero bytes,
+        // modulo alignment. This keeps the fast path optimized for non-ZSTs,
+        // which are much more common.
         unsafe {
             let footer = self.current_chunk_footer.get();
             let footer = footer.as_ref();
