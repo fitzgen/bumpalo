@@ -16,10 +16,11 @@ fn alloc_slice_fill_zero() {
     b.alloc_slice_fill_copy(0, 42u64);
     b.alloc_slice_fill_clone(0, &"hello".to_string());
     b.alloc_slice_fill_default::<String>(0);
-    b.alloc(MyZeroSizedType);
+    let ptr2 = b.alloc(MyZeroSizedType);
+    assert_eq!(ptr1.as_ptr() as usize & !7, ptr2 as *mut _ as usize);
 
-    let ptr2 = b.alloc_layout(layout);
-    assert_eq!(ptr1.as_ptr() as usize, ptr2.as_ptr() as usize + 1);
+    let ptr3 = b.alloc_layout(layout);
+    assert_eq!(ptr2 as *mut _ as usize, ptr3.as_ptr() as usize + 1);
 }
 
 #[test]
