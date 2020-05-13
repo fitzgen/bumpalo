@@ -1,12 +1,10 @@
 use bumpalo::Bump;
-#[cfg(feature = "collections")]
-use bumpalo::collections::Vec;
 use rand::Rng;
-
 use std::alloc::{GlobalAlloc, Layout, System};
-use std::error::Error;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+/// A custom allocator that wraps the system allocator, but lets us force
+/// allocation failures for testing.
 struct Allocator(AtomicBool);
 
 impl Allocator {
@@ -14,27 +12,35 @@ impl Allocator {
         self.0.load(Ordering::SeqCst)
     }
 
-    fn toggle_state(&self) {
-        let current = self.0.load(Ordering::SeqCst);
-
-        self.0.store(!current, Ordering::SeqCst)
+    fn set_returning_null(&self, returning_null: bool) {
+        self.0.store(returning_null, Ordering::SeqCst);
     }
 
-    fn scoped_success<F>(&self, callback: F)
+    fn toggle_returning_null(&self) {
+        self.set_returning_null(!self.is_returning_null());
+    }
+
+    #[allow(dead_code)] // Silence warnings for non-"collections" builds.
+    fn with_successful_allocs<F, T>(&self, callback: F) -> T
     where
-        F: FnOnce(),
+        F: FnOnce() -> T,
     {
-        let returning_null = self.is_returning_null();
+        let old_returning_null = self.is_returning_null();
+        self.set_returning_null(false);
+        let result = callback();
+        self.set_returning_null(old_returning_null);
+        result
+    }
 
-        if returning_null {
-            self.toggle_state()
-        }
-
-        callback();
-
-        if returning_null {
-            self.toggle_state()
-        }
+    fn with_alloc_failures<F, T>(&self, callback: F) -> T
+    where
+        F: FnOnce() -> T,
+    {
+        let old_returning_null = self.is_returning_null();
+        self.set_returning_null(true);
+        let result = callback();
+        self.set_returning_null(old_returning_null);
+        result
     }
 }
 
@@ -43,117 +49,130 @@ unsafe impl GlobalAlloc for Allocator {
         if self.is_returning_null() {
             core::ptr::null_mut()
         } else {
-            SYSTEM_ALLOCATOR.alloc(layout)
+            System.alloc(layout)
         }
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        if !self.is_returning_null() {
-            SYSTEM_ALLOCATOR.dealloc(ptr, layout);
-        }
+        System.dealloc(ptr, layout);
     }
 
-    unsafe fn realloc(
-        &self,
-        ptr: *mut u8,
-        layout: Layout,
-        new_size: usize
-    ) -> *mut u8 {
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
         if self.is_returning_null() {
             core::ptr::null_mut()
         } else {
-            SYSTEM_ALLOCATOR.realloc(ptr, layout, new_size)
+            System.realloc(ptr, layout, new_size)
         }
     }
 }
 
 #[global_allocator]
 static GLOBAL_ALLOCATOR: Allocator = Allocator(AtomicBool::new(false));
-static SYSTEM_ALLOCATOR: System = System;
 
-macro_rules! toggling_assert {
+/// `assert!` may allocate on failure (e.g. for string formatting and boxing
+/// panic info), so we must re-enable allocations during assertions.
+macro_rules! assert {
     ($cond:expr $(, $args:tt)*) => {
-        let result = $cond;
-
-        // assert! may allocate on failure, so we must re-enable allocations
-        // prior to asserting
-        GLOBAL_ALLOCATOR.scoped_success(|| assert!(result $(, $args)*))
+        if !$cond {
+            GLOBAL_ALLOCATOR.set_returning_null(false);
+            panic!(concat!("Assertion failed: ", stringify!($cond)));
+        }
     };
 }
 
-#[test]
-fn test_try_alloc_layout() -> Result<(), Box<dyn Error>> {
-    const NUM_TESTS: usize = 32;
-
-    if !GLOBAL_ALLOCATOR.is_returning_null() {
-        GLOBAL_ALLOCATOR.toggle_state();
+/// NB: We provide our own `main` rather than using the default test harness's
+/// so that we can ensure that tests are executed serially, and no background
+/// threads get tripped up by us disabling the global allocator, or anything
+/// like that.
+fn main() {
+    macro_rules! test {
+        ($name:expr, $test:expr $(,)*) => {
+            ($name, $test as fn())
+        };
     }
 
-    toggling_assert!(Bump::try_new().is_err());
+    let tests = [
+        test!("Bump::try_new fails when global allocator fails", || {
+            GLOBAL_ALLOCATOR.with_alloc_failures(|| {
+                assert!(Bump::try_new().is_err());
+            });
+        }),
+        test!(
+            "test try_alloc_layout with and without global allocation failures",
+            || {
+                const NUM_TESTS: usize = 5000;
+                const MAX_BYTES_ALLOCATED: usize = 65536;
 
-    GLOBAL_ALLOCATOR.toggle_state();
+                let mut bump = Bump::try_new().unwrap();
+                let mut bytes_allocated = bump.chunk_capacity();
 
-    let bump = Bump::try_new().unwrap();
+                // Bump preallocates space in the initial chunk, so we need to
+                // use up this block prior to the actual test
+                let layout = Layout::from_size_align(bump.chunk_capacity(), 1).unwrap();
+                assert!(bump.try_alloc_layout(layout).is_ok());
 
-    // Bump preallocates space in the initial chunk, so we need to
-    // use up this block prior to the actual test
-    let layout = Layout::from_size_align(bump.chunk_capacity(), 1)?;
+                let mut rng = rand::thread_rng();
 
-    toggling_assert!(bump.try_alloc_layout(layout).is_ok());
+                for _ in 0..NUM_TESTS {
+                    if rng.gen() {
+                        GLOBAL_ALLOCATOR.toggle_returning_null();
+                    }
 
-    let mut rng = rand::thread_rng();
+                    let layout = Layout::from_size_align(bump.chunk_capacity() + 1, 1).unwrap();
+                    if GLOBAL_ALLOCATOR.is_returning_null() {
+                        assert!(bump.try_alloc_layout(layout).is_err());
+                    } else {
+                        assert!(bump.try_alloc_layout(layout).is_ok());
+                        bytes_allocated += bump.chunk_capacity();
+                    }
 
-    for _ in 0..NUM_TESTS {
-        let layout = Layout::from_size_align(bump.chunk_capacity() + 1, 1)?;
+                    if bytes_allocated >= MAX_BYTES_ALLOCATED {
+                        bump = GLOBAL_ALLOCATOR.with_successful_allocs(|| Bump::try_new().unwrap());
+                        bytes_allocated = bump.chunk_capacity();
+                    }
+                }
+            },
+        ),
+        #[cfg(feature = "collections")]
+        test!("test Vec::try_reserve and Vec::try_reserve_exact", || {
+            use bumpalo::collections::Vec;
 
-        if rng.gen() {
-            GLOBAL_ALLOCATOR.toggle_state();
-        } else if GLOBAL_ALLOCATOR.is_returning_null() {
-            toggling_assert!(bump.try_alloc_layout(layout).is_err());
-        } else {
-            toggling_assert!(bump.try_alloc_layout(layout).is_ok());
-        }
+            let bump = Bump::try_new().unwrap();
+
+            GLOBAL_ALLOCATOR.with_alloc_failures(|| {
+                let mut vec = Vec::<u8>::new_in(&bump);
+                let chunk_cap = bump.chunk_capacity();
+
+                // Will always succeed since this size gets pre-allocated in Bump::try_new()
+                assert!(vec.try_reserve(chunk_cap).is_ok());
+                assert!(vec.try_reserve_exact(chunk_cap).is_ok());
+
+                // Fails to allocate futher since allocator returns null
+                assert!(vec.try_reserve(chunk_cap + 1).is_err());
+                assert!(vec.try_reserve_exact(chunk_cap + 1).is_err());
+            });
+
+            GLOBAL_ALLOCATOR.with_successful_allocs(|| {
+                let mut vec = Vec::<u8>::new_in(&bump);
+                let chunk_cap = bump.chunk_capacity();
+
+                // Will always succeed since this size gets pre-allocated in Bump::try_new()
+                assert!(vec.try_reserve(chunk_cap).is_ok());
+                assert!(vec.try_reserve_exact(chunk_cap).is_ok());
+
+                // Succeeds to allocate further
+                assert!(vec.try_reserve(chunk_cap + 1).is_ok());
+                assert!(vec.try_reserve_exact(chunk_cap + 1).is_ok());
+            });
+        }),
+    ];
+
+    for (name, test) in tests.iter() {
+        assert!(!GLOBAL_ALLOCATOR.is_returning_null());
+
+        eprintln!("=== {} ===", name);
+        test();
+
+        GLOBAL_ALLOCATOR.set_returning_null(false);
     }
-
-    #[cfg(feature = "collections")]
-    {
-        if GLOBAL_ALLOCATOR.is_returning_null() {
-            GLOBAL_ALLOCATOR.toggle_state();
-        }
-
-        let bump = Bump::try_new().unwrap();
-
-        if !GLOBAL_ALLOCATOR.is_returning_null() {
-            GLOBAL_ALLOCATOR.toggle_state();
-        }
-
-        let mut vec = Vec::<u8>::new_in(&bump);
-
-        let chunk_cap = bump.chunk_capacity();
-
-        // Will always succeed since this size gets pre-allocated in Bump::try_new()
-        toggling_assert!(vec.try_reserve(chunk_cap).is_ok());
-        toggling_assert!(vec.try_reserve_exact(chunk_cap).is_ok());
-        // Fails to allocate futher since allocator returns null
-        toggling_assert!(vec.try_reserve(chunk_cap + 1).is_err());
-        toggling_assert!(vec.try_reserve_exact(chunk_cap + 1).is_err());
-
-        GLOBAL_ALLOCATOR.toggle_state();
-
-        let mut vec = Vec::<u8>::new_in(&bump);
-
-        // Will always succeed since this size gets pre-allocated in Bump::try_new()
-        toggling_assert!(vec.try_reserve(chunk_cap).is_ok());
-        toggling_assert!(vec.try_reserve_exact(chunk_cap).is_ok());
-        // Succeeds to allocate further
-        toggling_assert!(vec.try_reserve(chunk_cap + 1).is_ok());
-        toggling_assert!(vec.try_reserve_exact(chunk_cap + 1).is_ok());
-    }
-
-    // Reset the allocator for the test harness to use
-    if GLOBAL_ALLOCATOR.is_returning_null() {
-        GLOBAL_ALLOCATOR.toggle_state();
-    }
-
-    Ok(())
 }

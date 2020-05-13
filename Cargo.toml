@@ -23,6 +23,11 @@ path = "benches/benches.rs"
 harness = false
 required-features = ["collections"]
 
+[[test]]
+name = "try_alloc"
+path = "tests/try_alloc.rs"
+harness = false
+
 [dev-dependencies]
 quickcheck = "0.9.0"
 criterion = "0.3.0"

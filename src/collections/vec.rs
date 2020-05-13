@@ -84,8 +84,8 @@
 //! [`vec!`]: ../../macro.vec.html
 
 use super::raw_vec::RawVec;
-use crate::Bump;
 use crate::collections::CollectionAllocErr;
+use crate::Bump;
 use core::cmp::Ordering;
 use core::fmt;
 use core::hash::{self, Hash};
@@ -759,10 +759,7 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
     /// vec.try_reserve(10).unwrap();
     /// assert!(vec.capacity() >= 11);
     /// ```
-    pub fn try_reserve(
-        &mut self,
-        additional: usize,
-    ) -> Result<(), CollectionAllocErr> {
+    pub fn try_reserve(&mut self, additional: usize) -> Result<(), CollectionAllocErr> {
         self.buf.try_reserve(self.len, additional)
     }
 
@@ -789,10 +786,7 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
     /// vec.try_reserve_exact(10).unwrap();
     /// assert!(vec.capacity() >= 11);
     /// ```
-    pub fn try_reserve_exact(
-        &mut self,
-        additional: usize,
-    ) -> Result<(), CollectionAllocErr> {
+    pub fn try_reserve_exact(&mut self, additional: usize) -> Result<(), CollectionAllocErr> {
         self.buf.try_reserve_exact(self.len, additional)
     }
 

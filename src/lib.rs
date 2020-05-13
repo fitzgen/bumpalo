@@ -344,7 +344,8 @@ impl Bump {
             None,
             Some(unsafe { layout_from_size_align(capacity, 1) }),
             None,
-        ).ok_or(alloc::AllocErr {})?;
+        )
+        .ok_or(alloc::AllocErr {})?;
 
         Ok(Bump {
             current_chunk_footer: Cell::new(chunk_footer),
@@ -395,8 +396,8 @@ impl Bump {
                 new_size_without_footer =
                     (new_size_without_footer + OVERHEAD).next_power_of_two() - OVERHEAD;
             } else {
-                new_size_without_footer = round_up_to(new_size_without_footer + OVERHEAD, 0x1000)?
-                    - OVERHEAD;
+                new_size_without_footer =
+                    round_up_to(new_size_without_footer + OVERHEAD, 0x1000)? - OVERHEAD;
             }
 
             debug_assert_eq!(align % CHUNK_ALIGN, 0);
@@ -874,7 +875,18 @@ impl Bump {
         }
     }
 
-    /// Gets the remaining capacity in the current chunk.
+    /// Gets the remaining capacity in the current chunk (in bytes).
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use bumpalo::Bump;
+    ///
+    /// let bump = Bump::with_capacity(100);
+    ///
+    /// let capacity = bump.chunk_capacity();
+    /// assert!(capacity >= 100);
+    /// ```
     pub fn chunk_capacity(&self) -> usize {
         let current_footer = self.current_chunk_footer.get();
         let current_footer = unsafe { current_footer.as_ref() };
