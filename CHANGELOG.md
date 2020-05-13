@@ -28,6 +28,19 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.30
+
+Released 2020-05-13.
+
+### Added
+
+* Added fallible allocation methods to `Bump`: `try_new`, `try_with_capacity`,
+  and `try_alloc_layout`.
+
+* Added `bumpalo::collections::Vec::try_reserve[_exact]`
+
+--------------------------------------------------------------------------------
+
 ## 3.2.1
 
 Released 2020-03-24.
