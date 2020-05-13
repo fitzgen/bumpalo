@@ -85,11 +85,27 @@ macro_rules! toggling_assert {
 fn test_try_alloc_layout() -> Result<(), Box<dyn Error>> {
     const NUM_TESTS: usize = 32;
 
+    if !GLOBAL_ALLOCATOR.is_returning_null() {
+        GLOBAL_ALLOCATOR.toggle_state();
+    }
+
+    toggling_assert!(Bump::try_new().is_err());
+
+    GLOBAL_ALLOCATOR.toggle_state();
+
     let bump = Bump::try_new().unwrap();
+
+    // Bump preallocates space in the initial chunk, so we need to
+    // use up this block prior to the actual test
+    let layout = Layout::from_size_align(bump.chunk_capacity(), 1)?;
+
+    toggling_assert!(bump.try_alloc_layout(layout).is_ok());
+
     let mut rng = rand::thread_rng();
-    let layout = Layout::from_size_align(2, 2)?;
 
     for _ in 0..NUM_TESTS {
+        let layout = Layout::from_size_align(bump.chunk_capacity() + 1, 1)?;
+
         if rng.gen() {
             GLOBAL_ALLOCATOR.toggle_state();
         } else if GLOBAL_ALLOCATOR.is_returning_null() {
@@ -99,28 +115,45 @@ fn test_try_alloc_layout() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    Ok(())
-}
+    #[cfg(feature = "collections")]
+    {
+        if GLOBAL_ALLOCATOR.is_returning_null() {
+            GLOBAL_ALLOCATOR.toggle_state();
+        }
 
-#[test]
-#[cfg(feature = "collections")]
-fn test_try_reserve() {
-    if GLOBAL_ALLOCATOR.is_returning_null() {
-        GLOBAL_ALLOCATOR.toggle_state()
+        let bump = Bump::try_new().unwrap();
+
+        if !GLOBAL_ALLOCATOR.is_returning_null() {
+            GLOBAL_ALLOCATOR.toggle_state();
+        }
+
+        let mut vec = Vec::<u8>::new_in(&bump);
+
+        let chunk_cap = bump.chunk_capacity();
+
+        // Will always succeed since this size gets pre-allocated in Bump::try_new()
+        toggling_assert!(vec.try_reserve(chunk_cap).is_ok());
+        toggling_assert!(vec.try_reserve_exact(chunk_cap).is_ok());
+        // Fails to allocate futher since allocator returns null
+        toggling_assert!(vec.try_reserve(chunk_cap + 1).is_err());
+        toggling_assert!(vec.try_reserve_exact(chunk_cap + 1).is_err());
+
+        GLOBAL_ALLOCATOR.toggle_state();
+
+        let mut vec = Vec::<u8>::new_in(&bump);
+
+        // Will always succeed since this size gets pre-allocated in Bump::try_new()
+        toggling_assert!(vec.try_reserve(chunk_cap).is_ok());
+        toggling_assert!(vec.try_reserve_exact(chunk_cap).is_ok());
+        // Succeeds to allocate further
+        toggling_assert!(vec.try_reserve(chunk_cap + 1).is_ok());
+        toggling_assert!(vec.try_reserve_exact(chunk_cap + 1).is_ok());
     }
 
-    let bump = Bump::try_new();
+    // Reset the allocator for the test harness to use
+    if GLOBAL_ALLOCATOR.is_returning_null() {
+        GLOBAL_ALLOCATOR.toggle_state();
+    }
 
-    toggling_assert!(bump.is_ok());
-
-    let bump = bump.unwrap();
-    let mut vec = Vec::<u8>::new_in(&bump);
-
-    toggling_assert!(vec.try_reserve(10).is_ok());
-    toggling_assert!(vec.try_reserve_exact(10).is_ok());
-
-    GLOBAL_ALLOCATOR.toggle_state();
-
-    toggling_assert!(vec.try_reserve(10).is_err());
-    toggling_assert!(vec.try_reserve_exact(10).is_err());
+    Ok(())
 }

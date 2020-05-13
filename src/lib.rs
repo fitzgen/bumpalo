@@ -319,7 +319,7 @@ impl Bump {
         Bump::try_with_capacity(0)
     }
 
-    /// Construct a new arena with the specified capacity to bump allocate into.
+    /// Construct a new arena with the specified byte capacity to bump allocate into.
     ///
     /// ## Example
     ///
@@ -331,7 +331,7 @@ impl Bump {
         Bump::try_with_capacity(capacity).unwrap_or_else(|_| oom())
     }
 
-    /// Attempt to construct a new arena with the specified capacity to bump allocate into.
+    /// Attempt to construct a new arena with the specified byte capacity to bump allocate into.
     ///
     /// ## Example
     ///
@@ -874,8 +874,16 @@ impl Bump {
         }
     }
 
-    // Slow path allocation for when we need to allocate a new chunk from the
-    // parent bump set because there isn't enough room in our current chunk.
+    /// Gets the remaining capacity in the current chunk.
+    pub fn chunk_capacity(&self) -> usize {
+        let current_footer = self.current_chunk_footer.get();
+        let current_footer = unsafe { current_footer.as_ref() };
+
+        current_footer as *const _ as usize - current_footer.data.as_ptr() as usize
+    }
+
+    /// Slow path allocation for when we need to allocate a new chunk from the
+    /// parent bump set because there isn't enough room in our current chunk.
     #[inline(never)]
     fn alloc_layout_slow(&self, layout: Layout) -> Option<NonNull<u8>> {
         unsafe {
