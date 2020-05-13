@@ -84,6 +84,7 @@
 //! [`vec!`]: ../../macro.vec.html
 
 use super::raw_vec::RawVec;
+use crate::collections::CollectionAllocErr;
 use crate::Bump;
 use core::cmp::Ordering;
 use core::fmt;
@@ -736,6 +737,57 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
     /// ```
     pub fn reserve_exact(&mut self, additional: usize) {
         self.buf.reserve_exact(self.len, additional);
+    }
+
+    /// Attempts to reserve capacity for at least `additional` more elements to be inserted
+    /// in the given `Vec<'bump, T>`. The collection may reserve more space to avoid
+    /// frequent reallocations. After calling `try_reserve`, capacity will be
+    /// greater than or equal to `self.len() + additional`. Does nothing if
+    /// capacity is already sufficient.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity overflows `usize`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bumpalo::{Bump, collections::Vec};
+    ///
+    /// let b = Bump::new();
+    /// let mut vec = bumpalo::vec![in &b; 1];
+    /// vec.try_reserve(10).unwrap();
+    /// assert!(vec.capacity() >= 11);
+    /// ```
+    pub fn try_reserve(&mut self, additional: usize) -> Result<(), CollectionAllocErr> {
+        self.buf.try_reserve(self.len, additional)
+    }
+
+    /// Attempts to reserve the minimum capacity for exactly `additional` more elements to
+    /// be inserted in the given `Vec<'bump, T>`. After calling `try_reserve_exact`,
+    /// capacity will be greater than or equal to `self.len() + additional`.
+    /// Does nothing if the capacity is already sufficient.
+    ///
+    /// Note that the allocator may give the collection more space than it
+    /// requests. Therefore capacity can not be relied upon to be precisely
+    /// minimal. Prefer `try_reserve` if future insertions are expected.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity overflows `usize`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bumpalo::{Bump, collections::Vec};
+    ///
+    /// let b = Bump::new();
+    /// let mut vec = bumpalo::vec![in &b; 1];
+    /// vec.try_reserve_exact(10).unwrap();
+    /// assert!(vec.capacity() >= 11);
+    /// ```
+    pub fn try_reserve_exact(&mut self, additional: usize) -> Result<(), CollectionAllocErr> {
+        self.buf.try_reserve_exact(self.len, additional)
     }
 
     /// Shrinks the capacity of the vector as much as possible.
