@@ -37,6 +37,8 @@ Released 2020-05-13.
 * Added fallible allocation methods to `Bump`: `try_new`, `try_with_capacity`,
   and `try_alloc_layout`.
 
+* Added `Bump::chunk_capacity`
+
 * Added `bumpalo::collections::Vec::try_reserve[_exact]`
 
 --------------------------------------------------------------------------------
