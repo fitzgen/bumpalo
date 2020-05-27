@@ -1540,6 +1540,38 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
     }
 }
 
+#[cfg(feature = "boxed")]
+impl<'bump, T> Vec<'bump, T> {
+    /// Converts the vector into [`Box<[T]>`][owned slice].
+    ///
+    /// Note that this will drop any excess capacity.
+    ///
+    /// [owned slice]: ../boxed/struct.Box.html
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bumpalo::{Bump, collections::Vec, vec};
+    ///
+    /// let b = Bump::new();
+    ///
+    /// let v = vec![in &b; 1, 2, 3];
+    ///
+    /// let slice = v.into_boxed_slice();
+    /// ```
+    pub fn into_boxed_slice(mut self) -> crate::boxed::Box<'bump, [T]> {
+        use crate::boxed::Box;
+
+        // Unlike `alloc::vec::Vec` shrinking here isn't necessary as `bumpalo::boxed::Box` doesn't own memory.
+        unsafe {
+            let slice = slice::from_raw_parts_mut(self.as_mut_ptr(), self.len);
+            let output: Box<'bump, [T]> = Box::from_raw(slice);
+            mem::forget(self);
+            output
+        }
+    }
+}
+
 impl<'bump, T: 'bump + Clone> Vec<'bump, T> {
     /// Resizes the `Vec` in-place so that `len` is equal to `new_len`.
     ///
@@ -2019,13 +2051,12 @@ impl<'bump, T: 'bump> AsMut<[T]> for Vec<'bump, T> {
     }
 }
 
-// // note: test pulls in libstd, which causes errors here
-// #[cfg(not(test))]
-// impl<'bump, T: 'bump> From<Vec<'bump, T>> for Box<[T]> {
-//     fn from(v: Vec<'bump, T>) -> Box<[T]> {
-//         v.into_boxed_slice()
-//     }
-// }
+#[cfg(feature = "boxed")]
+impl<'bump, T: 'bump> From<Vec<'bump, T>> for crate::boxed::Box<'bump, [T]> {
+    fn from(v: Vec<'bump, T>) -> crate::boxed::Box<'bump, [T]> {
+        v.into_boxed_slice()
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Clone-on-write

@@ -16,6 +16,7 @@ use crate::Bump;
 use core::cmp;
 use core::mem;
 use core::ptr::{self, NonNull};
+use core::slice;
 
 use crate::alloc::{handle_alloc_error, Alloc, Layout, UnstableLayoutMethods};
 use crate::collections::CollectionAllocErr;
@@ -55,6 +56,10 @@ pub struct RawVec<'a, T> {
     cap: usize,
     a: &'a Bump,
 }
+
+/// `RawVec<T>` in `Sync` if `T` is.
+/// This is valid as `RawVec` doesn't access inner `Bump` in `&self` methods.
+unsafe impl<'a, T> Sync for RawVec<'a, T> where T: Sync {}
 
 impl<'a, T> RawVec<'a, T> {
     /// Like `new` but parameterized over the choice of allocator for
@@ -557,6 +562,29 @@ impl<'a, T> RawVec<'a, T> {
             }
             self.cap = amount;
         }
+    }
+}
+
+#[cfg(feature = "boxed")]
+impl<'a, T> RawVec<'a, T> {
+    /// Converts the entire buffer into `Box<[T]>`.
+    ///
+    /// Note that this will correctly reconstitute any `cap` changes
+    /// that may have been performed. (See description of type for details.)
+    ///
+    /// # Undefined Behavior
+    ///
+    /// All elements of `RawVec<T>` must be initialized. Notice that
+    /// the rules around uninitialized boxed values are not finalized yet,
+    /// but until they are, it is advisable to avoid them.
+    pub unsafe fn into_box(self) -> crate::boxed::Box<'a, [T]> {
+        use crate::boxed::Box;
+
+        // NOTE: not calling `cap()` here; actually using the real `cap` field!
+        let slice = slice::from_raw_parts_mut(self.ptr(), self.cap);
+        let output: Box<'a, [T]> = Box::from_raw(slice);
+        mem::forget(self);
+        output
     }
 }
 
