@@ -80,6 +80,7 @@
 //! [dereferencing]: https://doc.rust-lang.org/std/ops/trait.Deref.html
 //! [`Box`]: struct.Box.html
 //! [`Box<T>`]: struct.Box.html
+//! [`Box<'a, T>`]: struct.Box.html
 //! [`Box::<T>::from_raw(value)`]: struct.Box.html#method.from_raw
 //! [`Box::<T>::into_raw`]: struct.Box.html#method.into_raw
 //! [`Bump`]: ../struct.Bump.html
@@ -412,7 +413,7 @@ impl<'a, T: ?Sized> Box<'a, T> {
     /// Simple usage:
     ///
     /// ```
-    /// use bumpalo::{Bump, boxed::Box, vec};
+    /// use bumpalo::{Bump, boxed::Box};
     ///
     /// let b = Bump::new();
     ///
@@ -422,18 +423,18 @@ impl<'a, T: ?Sized> Box<'a, T> {
     /// assert_eq!(*reference, 42);
     /// ```
     ///
-    /// Unsized data:
-    ///
-    /// ```
-    /// use bumpalo::{Bump, boxed::Box, vec};
-    ///
-    /// let b = Bump::new();
-    ///
-    /// let x = vec![in &b; 1, 2, 3].into_boxed_slice();
-    /// let reference = Box::leak(x);
-    /// reference[0] = 4;
-    /// assert_eq!(*reference, [4, 2, 3]);
-    /// ```
+    #[cfg_attr(feature = "collections", doc = r##"
+    ```
+    use bumpalo::{Bump, boxed::Box, vec};
+
+    let b = Bump::new();
+
+    let x = vec![in &b; 1, 2, 3].into_boxed_slice();
+    let reference = Box::leak(x);
+    reference[0] = 4;
+    assert_eq!(*reference, [4, 2, 3]);
+    ```
+    "##)]
     #[inline]
     pub fn leak(b: Box<'a, T>) -> &'a mut T {
         unsafe { &mut *Box::into_raw(b) }
@@ -458,6 +459,12 @@ impl<'a, T: ?Sized> Drop for Box<'a, T> {
             // `Box` owns value of `T`, but not memory behind it.
             core::ptr::drop_in_place(self.0);
         }
+    }
+}
+
+impl<'a, T> Default for Box<'a, [T]> {
+    fn default() -> Box<'a, [T]> {
+        Box(&mut [])
     }
 }
 
