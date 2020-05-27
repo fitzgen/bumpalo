@@ -16,7 +16,6 @@ use crate::Bump;
 use core::cmp;
 use core::mem;
 use core::ptr::{self, NonNull};
-use core::slice;
 
 use crate::alloc::{handle_alloc_error, Alloc, Layout, UnstableLayoutMethods};
 use crate::collections::CollectionAllocErr;
@@ -581,7 +580,7 @@ impl<'a, T> RawVec<'a, T> {
         use crate::boxed::Box;
 
         // NOTE: not calling `cap()` here; actually using the real `cap` field!
-        let slice = slice::from_raw_parts_mut(self.ptr(), self.cap);
+        let slice = core::slice::from_raw_parts_mut(self.ptr(), self.cap);
         let output: Box<'a, [T]> = Box::from_raw(slice);
         mem::forget(self);
         output
