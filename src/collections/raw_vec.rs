@@ -56,10 +56,6 @@ pub struct RawVec<'a, T> {
     a: &'a Bump,
 }
 
-/// `RawVec<T>` in `Sync` if `T` is.
-/// This is valid as `RawVec` doesn't access inner `Bump` in `&self` methods.
-unsafe impl<'a, T> Sync for RawVec<'a, T> where T: Sync {}
-
 impl<'a, T> RawVec<'a, T> {
     /// Like `new` but parameterized over the choice of allocator for
     /// the returned RawVec.
