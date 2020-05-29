@@ -88,6 +88,7 @@ use core_alloc::borrow::Cow;
 /// assert_eq!(s, "Hello, World!")
 /// ```
 #[macro_export]
+#[cfg_attr(doc, doc(cfg(feature = "collections")))]
 macro_rules! format {
     ( in $bump:expr, $fmt:expr, $($args:expr),* ) => {{
         use std::fmt::Write;

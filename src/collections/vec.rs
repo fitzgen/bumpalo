@@ -246,6 +246,7 @@ where
 /// [`Vec`]: ../collections/vec/struct.Vec.html
 /// [`Clone`]: https://doc.rust-lang.org/nightly/std/clone/trait.Clone.html
 #[macro_export]
+#[cfg_attr(doc, doc(cfg(feature = "collections")))]
 macro_rules! vec {
     (in $bump:expr; $elem:expr; $n:expr) => {{
         let n = $n;
@@ -858,9 +859,7 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
         let len = self.len();
         mem::forget(self);
 
-        unsafe {
-            slice::from_raw_parts_mut(ptr, len)
-        }
+        unsafe { slice::from_raw_parts_mut(ptr, len) }
     }
 
     /// Shortens the vector, keeping the first `len` elements and dropping

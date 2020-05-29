@@ -423,18 +423,19 @@ impl<'a, T: ?Sized> Box<'a, T> {
     /// assert_eq!(*reference, 42);
     /// ```
     ///
-    #[cfg_attr(feature = "collections", doc = r##"
-    ```
-    use bumpalo::{Bump, boxed::Box, vec};
-
-    let b = Bump::new();
-
-    let x = vec![in &b; 1, 2, 3].into_boxed_slice();
-    let reference = Box::leak(x);
-    reference[0] = 4;
-    assert_eq!(*reference, [4, 2, 3]);
-    ```
-    "##)]
+    ///```
+    /// # #[cfg(feature = "collections")]
+    /// # {
+    ///use bumpalo::{Bump, boxed::Box, vec};
+    ///
+    ///let b = Bump::new();
+    ///
+    ///let x = vec![in &b; 1, 2, 3].into_boxed_slice();
+    ///let reference = Box::leak(x);
+    ///reference[0] = 4;
+    ///assert_eq!(*reference, [4, 2, 3]);
+    /// # }
+    ///```
     #[inline]
     pub fn leak(b: Box<'a, T>) -> &'a mut T {
         unsafe { &mut *Box::into_raw(b) }

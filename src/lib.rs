@@ -32,6 +32,12 @@ pointer back to the start of the arena's memory chunk. This makes mass
 deallocation *extremely* fast, but allocated objects' `Drop` implementations are
 not invoked.
 
+[`bumpalo::boxed::Box`] can be used to wrap values allocated in the `Bump` arena and
+call drop when the wrapper goes out of scope. Similar to how [`std::boxed::Box`] works.
+
+[`bumpalo::boxed::Box`]: ./boxed/struct.Box.html
+[`std::boxed::Box`]: https://doc.rust-lang.org/std/boxed/struct.Box.html
+
 ## What happens when the memory chunk is full?
 
 This implementation will allocate a new memory chunk from the global allocator
@@ -93,6 +99,31 @@ Eventually [all `std` collection types will be parameterized by an
 allocator](https://github.com/rust-lang/rust/issues/42774) and we can remove
 this `collections` module and use the `std` versions.
 
+## Boxed
+
+When the `"boxed"` cargo feature is enabled, a fork of `std::boxed::Box`
+library is available in the `boxed` module. This `Box` type is modified to allocate
+its space inside `bumpalo::Bump` arenas.
+
+```rust
+# #[cfg(feature = "boxed")]
+# {
+use bumpalo::{Bump, boxed::Box};
+
+// Create a new bump arena.
+let bump = Bump::new();
+
+// Create a boxed `String` whose storage is backed by the bump arena. The
+// box cannot outlive its backing arena, and this property is enforced with
+// Rust's lifetime rules.
+let mut s = Box::new_in(String::from("The quick brown fox jumps over the lazy dog"), &bump);
+
+// Push a char at the end.
+s.push('!');
+
+# }
+```
+
 ## `#![no_std]` Support
 
 Bumpalo is a `no_std` crate. It depends only on the `alloc` and `core` crates.
@@ -101,13 +132,16 @@ Bumpalo is a `no_std` crate. It depends only on the `alloc` and `core` crates.
 
 #![deny(missing_debug_implementations)]
 #![deny(missing_docs)]
+#![cfg_attr(doc, feature(doc_cfg))]
 #![no_std]
 
 extern crate alloc as core_alloc;
 
 #[cfg(feature = "boxed")]
+#[cfg_attr(doc, doc(cfg(feature = "boxed")))]
 pub mod boxed;
 #[cfg(feature = "collections")]
+#[cfg_attr(doc, doc(cfg(feature = "collections")))]
 pub mod collections;
 
 mod alloc;
@@ -143,15 +177,22 @@ use core_alloc::alloc::{alloc, dealloc, Layout};
 ///
 /// * calling [`drop_in_place`][drop_in_place] or using
 ///   [`std::mem::ManuallyDrop`][manuallydrop] to manually drop these types,
-/// * using `bumpalo::collections::Vec` instead of `std::vec::Vec`, or
+/// * using [`bumpalo::collections::Vec`] instead of [`std::vec::Vec`]
+/// * using [`bumpalo::boxed::Box::new_in`] instead of [`Bump::alloc`],
+///   that will drop wrapped values similarly to [`std::boxed::Box`].
 /// * simply avoiding allocating these problematic types within a `Bump`.
 ///
 /// Note that not calling `Drop` is memory safe! Destructors are never
 /// guaranteed to run in Rust, you can't rely on them for enforcing memory
 /// safety.
 ///
-/// [drop_in_place]: https://doc.rust-lang.org/stable/std/ptr/fn.drop_in_place.html
-/// [manuallydrop]: https://doc.rust-lang.org/stable/std/mem/struct.ManuallyDrop.html
+/// [drop_in_place]: https://doc.rust-lang.org/std/ptr/fn.drop_in_place.html
+/// [manuallydrop]: https://doc.rust-lang.org/std/mem/struct.ManuallyDrop.html
+/// [`bumpalo::collections::Vec`]: ./collections/struct.Vec.html
+/// [`std::vec::Vec`]: https://doc.rust-lang.org/std/vec/struct.Vec.html
+/// [`bumpalo::boxed::Box::new_in`]: ./boxed/struct.Box.html#method.new_in
+/// [`Bump::alloc`]: ./struct.Bump.html#method.alloc
+/// [`std::boxed::Box`]: https://doc.rust-lang.org/std/boxed/struct.Box.html
 ///
 /// ## Example
 ///
@@ -829,7 +870,7 @@ impl Bump {
     ///
     /// The returned pointer points at uninitialized memory, and should be
     /// initialized with
-    /// [`std::ptr::write`](https://doc.rust-lang.org/stable/std/ptr/fn.write.html).
+    /// [`std::ptr::write`](https://doc.rust-lang.org/std/ptr/fn.write.html).
     #[inline(always)]
     pub fn alloc_layout(&self, layout: Layout) -> NonNull<u8> {
         self.try_alloc_layout(layout).unwrap_or_else(|_| oom())
@@ -840,7 +881,7 @@ impl Bump {
     ///
     /// The returned pointer points at uninitialized memory, and should be
     /// initialized with
-    /// [`std::ptr::write`](https://doc.rust-lang.org/stable/std/ptr/fn.write.html).
+    /// [`std::ptr::write`](https://doc.rust-lang.org/std/ptr/fn.write.html).
     #[inline(always)]
     pub fn try_alloc_layout(&self, layout: Layout) -> Result<NonNull<u8>, alloc::AllocErr> {
         if let Some(p) = self.try_alloc_layout_fast(layout) {
