@@ -132,16 +132,13 @@ Bumpalo is a `no_std` crate. It depends only on the `alloc` and `core` crates.
 
 #![deny(missing_debug_implementations)]
 #![deny(missing_docs)]
-#![cfg_attr(doc, feature(doc_cfg))]
 #![no_std]
 
 extern crate alloc as core_alloc;
 
 #[cfg(feature = "boxed")]
-#[cfg_attr(doc, doc(cfg(feature = "boxed")))]
 pub mod boxed;
 #[cfg(feature = "collections")]
-#[cfg_attr(doc, doc(cfg(feature = "collections")))]
 pub mod collections;
 
 mod alloc;

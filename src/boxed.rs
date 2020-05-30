@@ -94,6 +94,7 @@ use {
             any::Any,
             borrow,
             cmp::Ordering,
+            convert::TryFrom,
             future::Future,
             hash::{Hash, Hasher},
             iter::FusedIterator,
@@ -131,163 +132,11 @@ impl<'a, T> Box<'a, T> {
         Box(a.alloc(x))
     }
 
-    /// Constructs a new box with uninitialized contents.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use bumpalo::{Bump, boxed::Box};
-    ///
-    /// let b = Bump::new();
-    ///
-    /// let mut five = Box::<u32>::new_uninit_in(&b);
-    ///
-    /// let five = unsafe {
-    ///     // Deferred initialization:
-    ///     five.as_mut_ptr().write(5);
-    ///
-    ///     five.assume_init()
-    /// };
-    ///
-    /// assert_eq!(*five, 5)
-    /// ```
-    pub fn new_uninit_in(a: &'a Bump) -> Box<'a, mem::MaybeUninit<T>> {
-        Box(a.alloc_with(|| mem::MaybeUninit::uninit()))
-    }
-
-    /// Constructs a new `Box` with uninitialized contents, with the memory
-    /// being filled with `0` bytes.
-    ///
-    /// See [`MaybeUninit::zeroed`][zeroed] for examples of correct and incorrect usage
-    /// of this method.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use bumpalo::{Bump, boxed::Box};
-    ///
-    /// let b = Bump::new();
-    ///
-    /// let zero = Box::<u32>::new_zeroed_in(&b);
-    /// let zero = unsafe { zero.assume_init() };
-    ///
-    /// assert_eq!(*zero, 0)
-    /// ```
-    ///
-    /// [zeroed]: https://doc.rust-lang.org/std/mem/union.MaybeUninit.html#method.zeroed
-    pub fn new_zeroed_in(a: &'a Bump) -> Box<'a, mem::MaybeUninit<T>> {
-        Box(a.alloc_with(|| mem::MaybeUninit::zeroed()))
-    }
-
     /// Constructs a new `Pin<Box<T>>`. If `T` does not implement `Unpin`, then
     /// `x` will be pinned in memory and unable to be moved.
     #[inline(always)]
     pub fn pin_in(x: T, a: &'a Bump) -> Pin<Box<'a, T>> {
         Box(a.alloc(x)).into()
-    }
-}
-
-impl<'a, T> Box<'a, [T]> {
-    /// Constructs a new boxed slice with uninitialized contents.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use bumpalo::{Bump, boxed::Box};
-    ///
-    /// let b = Bump::new();
-    ///
-    /// let mut values = Box::<[u32]>::new_uninit_slice_in(3, &b);
-    ///
-    /// let values = unsafe {
-    ///     // Deferred initialization:
-    ///     values[0].as_mut_ptr().write(1);
-    ///     values[1].as_mut_ptr().write(2);
-    ///     values[2].as_mut_ptr().write(3);
-    ///
-    ///     values.assume_init()
-    /// };
-    ///
-    /// assert_eq!(*values, [1, 2, 3])
-    /// ```
-    pub fn new_uninit_slice_in(len: usize, a: &'a Bump) -> Box<'a, [mem::MaybeUninit<T>]> {
-        Box(a.alloc_slice_fill_with(len, |_| mem::MaybeUninit::uninit()))
-    }
-}
-
-impl<'a, T> Box<'a, mem::MaybeUninit<T>> {
-    /// Converts to `Box<T>`.
-    ///
-    /// # Safety
-    ///
-    /// As with [`MaybeUninit::assume_init`],
-    /// it is up to the caller to guarantee that the value
-    /// really is in an initialized state.
-    /// Calling this when the content is not yet fully initialized
-    /// causes immediate undefined behavior.
-    ///
-    /// [`MaybeUninit::assume_init`]: https://doc.rust-lang.org/std/mem/union.MaybeUninit.html#method.assume_init
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use bumpalo::{Bump, boxed::Box};
-    ///
-    /// let b = Bump::new();
-    ///
-    /// let mut five = Box::<u32>::new_uninit_in(&b);
-    ///
-    /// let five: Box<u32> = unsafe {
-    ///     // Deferred initialization:
-    ///     five.as_mut_ptr().write(5);
-    ///
-    ///     five.assume_init()
-    /// };
-    ///
-    /// assert_eq!(*five, 5)
-    /// ```
-    #[inline]
-    pub unsafe fn assume_init(self) -> Box<'a, T> {
-        Box::from_raw(Box::into_raw(self) as *mut T)
-    }
-}
-
-impl<'a, T> Box<'a, [mem::MaybeUninit<T>]> {
-    /// Converts to `Box<[T]>`.
-    ///
-    /// # Safety
-    ///
-    /// As with [`MaybeUninit::assume_init`],
-    /// it is up to the caller to guarantee that the values
-    /// really are in an initialized state.
-    /// Calling this when the content is not yet fully initialized
-    /// causes immediate undefined behavior.
-    ///
-    /// [`MaybeUninit::assume_init`]: https://doc.rust-lang.org/std/mem/union.MaybeUninit.html#method.assume_init
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use bumpalo::{Bump, boxed::Box};
-    ///
-    /// let b = Bump::new();
-    ///
-    /// let mut values = Box::<[u32]>::new_uninit_slice_in(3, &b);
-    ///
-    /// let values = unsafe {
-    ///     // Deferred initialization:
-    ///     values[0].as_mut_ptr().write(1);
-    ///     values[1].as_mut_ptr().write(2);
-    ///     values[2].as_mut_ptr().write(3);
-    ///
-    ///     values.assume_init()
-    /// };
-    ///
-    /// assert_eq!(*values, [1, 2, 3])
-    /// ```
-    #[inline]
-    pub unsafe fn assume_init(self) -> Box<'a, [T]> {
-        Box::from_raw(Box::into_raw(self) as *mut [T])
     }
 }
 
@@ -440,18 +289,6 @@ impl<'a, T: ?Sized> Box<'a, T> {
     pub fn leak(b: Box<'a, T>) -> &'a mut T {
         unsafe { &mut *Box::into_raw(b) }
     }
-
-    /// Converts a `Box<T>` into a `Pin<Box<T>>`
-    ///
-    /// This conversion does not allocate on the heap and happens in place.
-    ///
-    /// This is also available via [`From`].
-    pub fn into_pin(boxed: Box<'a, T>) -> Pin<Box<'a, T>> {
-        // It's not possible to move or replace the insides of a `Pin<Box<T>>`
-        // when `T: !Unpin`,  so it's safe to pin it directly without any
-        // additional requirements.
-        unsafe { Pin::new_unchecked(boxed) }
-    }
 }
 
 impl<'a, T: ?Sized> Drop for Box<'a, T> {
@@ -465,7 +302,16 @@ impl<'a, T: ?Sized> Drop for Box<'a, T> {
 
 impl<'a, T> Default for Box<'a, [T]> {
     fn default() -> Box<'a, [T]> {
+        // It should be OK to `drop_in_place` empty slice of anything.
         Box(&mut [])
+    }
+}
+
+impl<'a> Default for Box<'a, str> {
+    fn default() -> Box<'a, str> {
+        // Empty slice is valid string.
+        // It should be OK to `drop_in_place` empty str.
+        unsafe { Box::from_raw(Box::into_raw(Box::<[u8]>::default()) as *mut str) }
     }
 }
 
@@ -568,7 +414,10 @@ impl<'a, T: ?Sized> From<Box<'a, T>> for Pin<Box<'a, T>> {
     ///
     /// This conversion does not allocate on the heap and happens in place.
     fn from(boxed: Box<'a, T>) -> Self {
-        Box::into_pin(boxed)
+        // It's not possible to move or replace the insides of a `Pin<Box<T>>`
+        // when `T: !Unpin`,  so it's safe to pin it directly without any
+        // additional requirements.
+        unsafe { Pin::new_unchecked(boxed) }
     }
 }
 
@@ -705,6 +554,32 @@ impl<'a, I: ExactSizeIterator + ?Sized> ExactSizeIterator for Box<'a, I> {
 
 impl<'a, I: FusedIterator + ?Sized> FusedIterator for Box<'a, I> {}
 
+#[cfg(feature = "collections")]
+impl<'a, A> Box<'a, [A]> {
+    /// Creates a value from an iterator.
+    /// This method is adapted version of `FromIterator::from_iter`.
+    /// It cannot be made as that trait implementation given different signature.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    /// ```
+    /// use bumpalo::{Bump, boxed::Box, vec};
+    ///
+    /// let b = Bump::new();
+    ///
+    /// let five_fives = std::iter::repeat(5).take(5);
+    /// let slice = Box::from_iter_in(five_fives, &b);
+    /// assert_eq!(vec![in &b; 5, 5, 5, 5, 5], &*slice);
+    /// ```
+    pub fn from_iter_in<T: IntoIterator<Item = A>>(iter: T, a: &'a Bump) -> Self {
+        use crate::collections::Vec;
+        let mut vec = Vec::new_in(a);
+        vec.extend(iter);
+        vec.into_boxed_slice()
+    }
+}
+
 impl<'a, T: ?Sized> borrow::Borrow<T> for Box<'a, T> {
     fn borrow(&self) -> &T {
         &**self
@@ -737,4 +612,41 @@ impl<'a, F: ?Sized + Future + Unpin> Future for Box<'a, F> {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         F::poll(Pin::new(&mut *self), cx)
     }
+}
+
+macro_rules! array_impls {
+    ($($N: expr)+) => {
+        $(
+            /// This impl replaces unsize coersion.
+            impl<'a, T> From<Box<'a, [T; $N]>> for Box<'a, [T]> {
+                fn from(mut arr: Box<'a, [T; $N]>) -> Box<'a, [T]> {
+                    let ptr = core::ptr::slice_from_raw_parts_mut(arr.as_mut_ptr(), $N);
+                    mem::forget(arr);
+                    unsafe { Box::from_raw(ptr) }
+                }
+            }
+
+
+            /// This impl replaces unsize coersion.
+            impl<'a, T> TryFrom<Box<'a, [T]>> for Box<'a, [T; $N]> {
+                type Error = Box<'a, [T]>;
+                fn try_from(mut slice: Box<'a, [T]>) -> Result<Box<'a, [T; $N]>, Box<'a, [T]>> {
+                    if slice.len() == $N {
+                        let ptr = slice.as_mut_ptr() as *mut [T; $N];
+                        mem::forget(slice);
+                        Ok(unsafe { Box::from_raw(ptr) })
+                    } else {
+                        Err(slice)
+                    }
+                }
+            }
+        )+
+    }
+}
+
+array_impls! {
+     0  1  2  3  4  5  6  7  8  9
+    10 11 12 13 14 15 16 17 18 19
+    20 21 22 23 24 25 26 27 28 29
+    30 31 32
 }
