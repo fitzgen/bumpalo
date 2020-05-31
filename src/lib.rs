@@ -134,7 +134,8 @@ Bumpalo is a `no_std` crate. It depends only on the `alloc` and `core` crates.
 #![deny(missing_docs)]
 #![no_std]
 
-extern crate alloc as core_alloc;
+#[doc(hidden)]
+pub extern crate alloc as core_alloc;
 
 #[cfg(feature = "boxed")]
 pub mod boxed;
