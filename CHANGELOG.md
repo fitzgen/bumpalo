@@ -28,6 +28,19 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.4.0
+
+Released 2020-06-01.
+
+### Added
+
+* Added the `bumpalo::boxed::Box<T>` type. It is an owned pointer referencing a
+  bump-allocated value, and it runs `T`'s `Drop` implementation on the
+  referenced value when dropped. This type can be used by enabling the `"boxed"`
+  cargo feature flag.
+
+--------------------------------------------------------------------------------
+
 ## 3.3.0
 
 Released 2020-05-13.
