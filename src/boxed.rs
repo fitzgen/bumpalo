@@ -28,6 +28,38 @@
 //! let val: u8 = *boxed;
 //! ```
 //!
+//! Running `Drop` implementations on bump-allocated values:
+//!
+//! ```rust
+//! use bumpalo::{Bump, boxed::Box};
+//! use std::sync::atomic::{AtomicUsize, Ordering};
+//!
+//! static NUM_DROPPED: AtomicUsize = AtomicUsize::new(0);
+//!
+//! struct CountDrops;
+//!
+//! impl Drop for CountDrops {
+//!     fn drop(&mut self) {
+//!         NUM_DROPPED.fetch_add(1, Ordering::SeqCst);
+//!     }
+//! }
+//!
+//! // Create a new bump arena.
+//! let bump = Bump::new();
+//!
+//! // Create a `CountDrops` inside the bump arena.
+//! let mut c = Box::new_in(CountDrops, &bump);
+//!
+//! // No `CountDrops` have been dropped yet.
+//! assert_eq!(NUM_DROPPED.load(Ordering::SeqCst), 0);
+//!
+//! // Drop our `Box<CountDrops>`.
+//! drop(c);
+//!
+//! // Its `Drop` implementation was run, and so `NUM_DROPS` has been incremented.
+//! assert_eq!(NUM_DROPPED.load(Ordering::SeqCst), 1);
+//! ```
+//!
 //! Creating a recursive data structure:
 //!
 //! ```
@@ -107,9 +139,10 @@ use {
     },
 };
 
-/// A pointer type for bump allocation.
+/// An owned pointer to a bump-allocated `T` value, that runs `Drop`
+/// implementations.
 ///
-/// See the [module-level documentation](../../boxed/index.html) for more.
+/// See the [module-level documentation][crate::boxed] for more details.
 #[repr(transparent)]
 pub struct Box<'a, T: ?Sized>(&'a mut T);
 
