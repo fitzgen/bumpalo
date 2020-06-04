@@ -142,3 +142,11 @@ assert_eq!(NUM_DROPPED.load(Ordering::SeqCst), 1);
 
 Bumpalo is a `no_std` crate. It depends only on the `alloc` and `core` crates.
 
+#### Minimum Supported Rust Version (MSRV)
+
+This crate is guaranteed to compile on stable Rust 1.44 and up. It might compile
+with older versions but that may change in any new patch release.
+
+We reserve the right to increment the MSRV on minor releases, however we will strive
+to only do so it when done deliberately and for good reasons.
+
