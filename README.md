@@ -6,7 +6,7 @@
 [![](https://docs.rs/bumpalo/badge.svg)](https://docs.rs/bumpalo/)
 [![](https://img.shields.io/crates/v/bumpalo.svg)](https://crates.io/crates/bumpalo)
 [![](https://img.shields.io/crates/d/bumpalo.svg)](https://crates.io/crates/bumpalo)
-[![Build Status](https://dev.azure.com/fitzgen/bumpalo/_apis/build/status/fitzgen.bumpalo?branchName=master)](https://dev.azure.com/fitzgen/bumpalo/_build/latest?definitionId=2&branchName=master)
+[![Build Status](https://github.com/fitzgen/bumpalo/workflows/Rust/badge.svg)](https://github.com/fitzgen/bumpalo/actions?query=workflow%3ARust)
 
 ![](https://github.com/fitzgen/bumpalo/raw/master/bumpalo.png)
 
