@@ -6,7 +6,7 @@
 [![](https://docs.rs/bumpalo/badge.svg)](https://docs.rs/bumpalo/)
 [![](https://img.shields.io/crates/v/bumpalo.svg)](https://crates.io/crates/bumpalo)
 [![](https://img.shields.io/crates/d/bumpalo.svg)](https://crates.io/crates/bumpalo)
-[![Build Status](https://dev.azure.com/fitzgen/bumpalo/_apis/build/status/fitzgen.bumpalo?branchName=master)](https://dev.azure.com/fitzgen/bumpalo/_build/latest?definitionId=2&branchName=master)
+[![Build Status](https://github.com/fitzgen/bumpalo/workflows/Rust/badge.svg)](https://github.com/fitzgen/bumpalo/actions?query=workflow%3ARust)
 
 ![](https://github.com/fitzgen/bumpalo/raw/master/bumpalo.png)
 
@@ -141,4 +141,12 @@ assert_eq!(NUM_DROPPED.load(Ordering::SeqCst), 1);
 ### `#![no_std]` Support
 
 Bumpalo is a `no_std` crate. It depends only on the `alloc` and `core` crates.
+
+#### Minimum Supported Rust Version (MSRV)
+
+This crate is guaranteed to compile on stable Rust 1.44 and up. It might compile
+with older versions but that may change in any new patch release.
+
+We reserve the right to increment the MSRV on minor releases, however we will strive
+to only do so it when done deliberately and for good reasons.
 

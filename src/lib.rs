@@ -5,7 +5,7 @@
 [![](https://docs.rs/bumpalo/badge.svg)](https://docs.rs/bumpalo/)
 [![](https://img.shields.io/crates/v/bumpalo.svg)](https://crates.io/crates/bumpalo)
 [![](https://img.shields.io/crates/d/bumpalo.svg)](https://crates.io/crates/bumpalo)
-[![Build Status](https://dev.azure.com/fitzgen/bumpalo/_apis/build/status/fitzgen.bumpalo?branchName=master)](https://dev.azure.com/fitzgen/bumpalo/_build/latest?definitionId=2&branchName=master)
+[![Build Status](https://github.com/fitzgen/bumpalo/workflows/Rust/badge.svg)](https://github.com/fitzgen/bumpalo/actions?query=workflow%3ARust)
 
 ![](https://github.com/fitzgen/bumpalo/raw/master/bumpalo.png)
 
@@ -146,6 +146,14 @@ assert_eq!(NUM_DROPPED.load(Ordering::SeqCst), 1);
 ## `#![no_std]` Support
 
 Bumpalo is a `no_std` crate. It depends only on the `alloc` and `core` crates.
+
+### Minimum Supported Rust Version (MSRV)
+
+This crate is guaranteed to compile on stable Rust 1.44 and up. It might compile
+with older versions but that may change in any new patch release.
+
+We reserve the right to increment the MSRV on minor releases, however we will strive
+to only do so it when done deliberately and for good reasons.
 
  */
 
@@ -317,27 +325,6 @@ const FIRST_ALLOCATION_GOAL: usize = 1 << 9;
 // than the goal. We need to make room for the footer, and we also need
 // take the alignment into account.
 const DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER: usize = FIRST_ALLOCATION_GOAL - OVERHEAD;
-
-#[inline]
-fn layout_for_array<T>(len: usize) -> Option<Layout> {
-    // TODO: use Layout::array once the rust feature `alloc_layout_extra`
-    // gets stabilized
-    //
-    // According to https://doc.rust-lang.org/reference/type-layout.html#size-and-alignment
-    // the size of a value is always a multiple of it's alignment. But that does not seem to match
-    // with https://doc.rust-lang.org/std/alloc/struct.Layout.html#method.from_size_align
-    //
-    // Let's be on the safe size and round up to the padding in any case.
-    //
-    // An interesting question is whether there needs to be padding at the end of
-    // the last object in the array. Again, we take the safe approach and include it.
-
-    let layout = Layout::new::<T>();
-    let size_rounded_up = round_up_to(layout.size(), layout.align())?;
-    let total_size = len.checked_mul(size_rounded_up)?;
-
-    Layout::from_size_align(total_size, layout.align()).ok()
-}
 
 /// Wrapper around `Layout::from_size_align` that adds debug assertions.
 #[inline]
@@ -770,7 +757,7 @@ impl Bump {
     where
         F: FnMut(usize) -> T,
     {
-        let layout = layout_for_array::<T>(len).unwrap_or_else(|| oom());
+        let layout = Layout::array::<T>(len).unwrap_or_else(|_| oom());
         let dst = self.alloc_layout(layout).cast::<T>();
 
         unsafe {
