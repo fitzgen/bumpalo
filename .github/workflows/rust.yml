@@ -8,15 +8,67 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 jobs:
   build:
+    strategy:
+      matrix:
+        rust_channel: ["stable", "beta", "nightly", "1.44.0"]
 
+    runs-on: ubuntu-latest
+    steps:
+    - name: Install rustup
+      run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile=minimal
+    - name: Install rust channel
+      run: rustup install ${{matrix.rust_channel}} && rustup default ${{matrix.rust_channel}}
+
+    - name: Install `cargo readme`
+      run: cargo install cargo-readme --vers "^3"
+
+    - uses: actions/checkout@v2
+
+    - name: Run tests (no features)
+      run: cargo test --verbose
+    - name: Run tests (all features)
+      run: cargo test --verbose --all-features
+
+  valgrind:
+    runs-on: ubuntu-latest
+
+    env:
+      # Don't leak-check, as Rust globals tend to cause false positives.
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "valgrind --suppressions=valgrind.supp --leak-check=no --error-exitcode=1"
+
+    steps:
+    - name: Install rustup
+      run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile=minimal
+    - name: Install rust stable
+      run: rustup install stable && rustup default stable
+
+    - name: Install `cargo readme`
+      run: cargo install cargo-readme --vers "^3"
+
+    - name: Install valgrind
+      run: sudo apt install valgrind
+
+    - uses: actions/checkout@v2
+
+    - name: Test under valgrind (no features)
+      run: cargo test --verbose
+    - name: Test under valgrind (all features)
+      run: cargo test --verbose --all-features
+
+  benches:
     runs-on: ubuntu-latest
 
     steps:
+    - name: Install rustup
+      run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile=minimal
+    - name: Install rust nightly
+      run: rustup install nightly && rustup default nightly
+
     - uses: actions/checkout@v2
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
+
+    - name: Check that benches build
+      run: cargo check --benches --all-features
