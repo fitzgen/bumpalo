@@ -82,7 +82,9 @@ impl UnstableLayoutMethods for Layout {
 }
 
 #[cfg(feature = "nightly")]
-pub use core_alloc::alloc::{handle_alloc_error, AllocErr, AllocRef, MemoryBlock, ReallocPlacement, AllocInit};
+pub use core_alloc::alloc::{
+    handle_alloc_error, AllocErr, AllocInit, AllocRef, MemoryBlock, ReallocPlacement,
+};
 
 #[cfg(not(feature = "nightly"))]
 pub use shim::*;
@@ -170,7 +172,13 @@ mod shim {
                     // SAFETY: the caller must guarantee that `offset` is smaller than or equal to `memory.size`,
                     // so the memory from `memory.ptr + offset` of length `memory.size - offset`
                     // is guaranteed to be contaned in `memory` and thus valid for writes.
-                    unsafe { memory.ptr.as_ptr().add(offset).write_bytes(0, memory.size - offset) }
+                    unsafe {
+                        memory
+                            .ptr
+                            .as_ptr()
+                            .add(offset)
+                            .write_bytes(0, memory.size - offset)
+                    }
                 }
             }
         }
@@ -489,5 +497,4 @@ mod shim {
             self
         }
     }
-
 }

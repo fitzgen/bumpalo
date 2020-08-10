@@ -21,7 +21,7 @@ use core::ptr::{self, NonNull};
 #[allow(unused_imports)]
 use crate::alloc::UnstableLayoutMethods;
 
-use crate::alloc::{handle_alloc_error, AllocRef, Layout, AllocInit, ReallocPlacement};
+use crate::alloc::{handle_alloc_error, AllocInit, AllocRef, Layout, ReallocPlacement};
 use crate::collections::CollectionAllocErr;
 use crate::collections::CollectionAllocErr::*;
 // use boxed::Box;
@@ -106,7 +106,11 @@ impl<'a, T> RawVec<'a, T> {
             } else {
                 let align = mem::align_of::<T>();
                 let layout = Layout::from_size_align(alloc_size, align).unwrap();
-                let zeroed = if zeroed { AllocInit::Zeroed } else { AllocInit::Uninitialized };
+                let zeroed = if zeroed {
+                    AllocInit::Zeroed
+                } else {
+                    AllocInit::Uninitialized
+                };
                 let result = AllocRef::alloc(&mut a, layout, zeroed);
                 match result {
                     Ok(block) => block.ptr.cast(),
@@ -248,7 +252,13 @@ impl<'a, T> RawVec<'a, T> {
                     let new_cap = 2 * self.cap;
                     let new_size = new_cap * elem_size;
                     alloc_guard(new_size).unwrap_or_else(|_| capacity_overflow());
-                    let block_res = self.a.grow(self.ptr.cast(), cur, new_size, ReallocPlacement::MayMove, AllocInit::Uninitialized);
+                    let block_res = self.a.grow(
+                        self.ptr.cast(),
+                        cur,
+                        new_size,
+                        ReallocPlacement::MayMove,
+                        AllocInit::Uninitialized,
+                    );
                     match block_res {
                         Ok(block) => (new_cap, block.ptr.cast()),
                         Err(_) => handle_alloc_error(Layout::from_size_align_unchecked(
@@ -313,7 +323,13 @@ impl<'a, T> RawVec<'a, T> {
             let new_cap = 2 * self.cap;
             let new_size = new_cap * elem_size;
             alloc_guard(new_size).unwrap_or_else(|_| capacity_overflow());
-            match self.a.grow(self.ptr.cast(), old_layout, new_size, ReallocPlacement::InPlace, AllocInit::Uninitialized) {
+            match self.a.grow(
+                self.ptr.cast(),
+                old_layout,
+                new_size,
+                ReallocPlacement::InPlace,
+                AllocInit::Uninitialized,
+            ) {
                 Ok(_) => {
                     // We can't directly divide `size`.
                     self.cap = new_cap;
@@ -493,10 +509,13 @@ impl<'a, T> RawVec<'a, T> {
             let new_layout = Layout::new::<T>().repeat(new_cap).unwrap().0;
             // FIXME: may crash and burn on over-reserve
             alloc_guard(new_layout.size()).unwrap_or_else(|_| capacity_overflow());
-            match self
-                .a
-                .grow(self.ptr.cast(), old_layout, new_layout.size(), ReallocPlacement::InPlace, AllocInit::Uninitialized)
-            {
+            match self.a.grow(
+                self.ptr.cast(),
+                old_layout,
+                new_layout.size(),
+                ReallocPlacement::InPlace,
+                AllocInit::Uninitialized,
+            ) {
                 Ok(_) => {
                     self.cap = new_cap;
                     true
@@ -554,7 +573,12 @@ impl<'a, T> RawVec<'a, T> {
                 let new_size = elem_size * amount;
                 let align = mem::align_of::<T>();
                 let old_layout = Layout::from_size_align_unchecked(old_size, align);
-                match self.a.shrink(self.ptr.cast(), old_layout, new_size, ReallocPlacement::MayMove) {
+                match self.a.shrink(
+                    self.ptr.cast(),
+                    old_layout,
+                    new_size,
+                    ReallocPlacement::MayMove,
+                ) {
                     Ok(block) => self.ptr = block.ptr.cast(),
                     Err(_) => {
                         handle_alloc_error(Layout::from_size_align_unchecked(new_size, align))
@@ -639,7 +663,13 @@ impl<'a, T> RawVec<'a, T> {
             let res = match self.current_layout() {
                 Some(layout) => {
                     debug_assert!(new_layout.align() == layout.align());
-                    self.a.grow(self.ptr.cast(), layout, new_layout.size(), ReallocPlacement::MayMove, AllocInit::Uninitialized)
+                    self.a.grow(
+                        self.ptr.cast(),
+                        layout,
+                        new_layout.size(),
+                        ReallocPlacement::MayMove,
+                        AllocInit::Uninitialized,
+                    )
                 }
                 None => AllocRef::alloc(&mut self.a, new_layout, AllocInit::Uninitialized),
             };
