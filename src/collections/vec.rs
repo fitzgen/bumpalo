@@ -84,6 +84,7 @@
 //! [`vec!`]: ../../macro.vec.html
 
 use super::raw_vec::RawVec;
+use crate::collections::CollectionAllocErr;
 use crate::Bump;
 use core::cmp::Ordering;
 use core::fmt;
@@ -738,6 +739,57 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
         self.buf.reserve_exact(self.len, additional);
     }
 
+    /// Attempts to reserve capacity for at least `additional` more elements to be inserted
+    /// in the given `Vec<'bump, T>`. The collection may reserve more space to avoid
+    /// frequent reallocations. After calling `try_reserve`, capacity will be
+    /// greater than or equal to `self.len() + additional`. Does nothing if
+    /// capacity is already sufficient.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity overflows `usize`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bumpalo::{Bump, collections::Vec};
+    ///
+    /// let b = Bump::new();
+    /// let mut vec = bumpalo::vec![in &b; 1];
+    /// vec.try_reserve(10).unwrap();
+    /// assert!(vec.capacity() >= 11);
+    /// ```
+    pub fn try_reserve(&mut self, additional: usize) -> Result<(), CollectionAllocErr> {
+        self.buf.try_reserve(self.len, additional)
+    }
+
+    /// Attempts to reserve the minimum capacity for exactly `additional` more elements to
+    /// be inserted in the given `Vec<'bump, T>`. After calling `try_reserve_exact`,
+    /// capacity will be greater than or equal to `self.len() + additional`.
+    /// Does nothing if the capacity is already sufficient.
+    ///
+    /// Note that the allocator may give the collection more space than it
+    /// requests. Therefore capacity can not be relied upon to be precisely
+    /// minimal. Prefer `try_reserve` if future insertions are expected.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity overflows `usize`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bumpalo::{Bump, collections::Vec};
+    ///
+    /// let b = Bump::new();
+    /// let mut vec = bumpalo::vec![in &b; 1];
+    /// vec.try_reserve_exact(10).unwrap();
+    /// assert!(vec.capacity() >= 11);
+    /// ```
+    pub fn try_reserve_exact(&mut self, additional: usize) -> Result<(), CollectionAllocErr> {
+        self.buf.try_reserve_exact(self.len, additional)
+    }
+
     /// Shrinks the capacity of the vector as much as possible.
     ///
     /// It will drop down as close as possible to the length but the allocator
@@ -931,6 +983,8 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
     ///
     /// - `new_len` must be less than or equal to [`capacity()`].
     /// - The elements at `old_len..new_len` must be initialized.
+    ///
+    /// [`capacity()`]: struct.Vec.html#method.capacity
     ///
     /// # Examples
     ///
@@ -1486,6 +1540,38 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
     }
 }
 
+#[cfg(feature = "boxed")]
+impl<'bump, T> Vec<'bump, T> {
+    /// Converts the vector into [`Box<[T]>`][owned slice].
+    ///
+    /// Note that this will drop any excess capacity.
+    ///
+    /// [owned slice]: ../boxed/struct.Box.html
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bumpalo::{Bump, collections::Vec, vec};
+    ///
+    /// let b = Bump::new();
+    ///
+    /// let v = vec![in &b; 1, 2, 3];
+    ///
+    /// let slice = v.into_boxed_slice();
+    /// ```
+    pub fn into_boxed_slice(mut self) -> crate::boxed::Box<'bump, [T]> {
+        use crate::boxed::Box;
+
+        // Unlike `alloc::vec::Vec` shrinking here isn't necessary as `bumpalo::boxed::Box` doesn't own memory.
+        unsafe {
+            let slice = slice::from_raw_parts_mut(self.as_mut_ptr(), self.len);
+            let output: Box<'bump, [T]> = Box::from_raw(slice);
+            mem::forget(self);
+            output
+        }
+    }
+}
+
 impl<'bump, T: 'bump + Clone> Vec<'bump, T> {
     /// Resizes the `Vec` in-place so that `len` is equal to `new_len`.
     ///
@@ -1965,13 +2051,12 @@ impl<'bump, T: 'bump> AsMut<[T]> for Vec<'bump, T> {
     }
 }
 
-// // note: test pulls in libstd, which causes errors here
-// #[cfg(not(test))]
-// impl<'bump, T: 'bump> From<Vec<'bump, T>> for Box<[T]> {
-//     fn from(v: Vec<'bump, T>) -> Box<[T]> {
-//         v.into_boxed_slice()
-//     }
-// }
+#[cfg(feature = "boxed")]
+impl<'bump, T: 'bump> From<Vec<'bump, T>> for crate::boxed::Box<'bump, [T]> {
+    fn from(v: Vec<'bump, T>) -> crate::boxed::Box<'bump, [T]> {
+        v.into_boxed_slice()
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Clone-on-write

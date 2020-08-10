@@ -28,9 +28,79 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.4.0
+
+Released 2020-06-01.
+
+### Added
+
+* Added the `bumpalo::boxed::Box<T>` type. It is an owned pointer referencing a
+  bump-allocated value, and it runs `T`'s `Drop` implementation on the
+  referenced value when dropped. This type can be used by enabling the `"boxed"`
+  cargo feature flag.
+
+--------------------------------------------------------------------------------
+
+## 3.3.0
+
+Released 2020-05-13.
+
+### Added
+
+* Added fallible allocation methods to `Bump`: `try_new`, `try_with_capacity`,
+  and `try_alloc_layout`.
+
+* Added `Bump::chunk_capacity`
+
+* Added `bumpalo::collections::Vec::try_reserve[_exact]`
+
+--------------------------------------------------------------------------------
+
+## 3.2.1
+
+Released 2020-03-24.
+
+### Security
+
+* When `realloc`ing, if we allocate new space, we need to copy the old
+  allocation's bytes into the new space. There are `old_size` number of bytes in
+  the old allocation, but we were accidentally copying `new_size` number of
+  bytes, which could lead to copying bytes into the realloc'd space from past
+  the chunk that we're bump allocating out of, from unknown memory.
+
+  If an attacker can cause `realloc`s, and can read the `realoc`ed data back,
+  this could allow them to read things from other regions of memory that they
+  shouldn't be able to. For example, if some crypto keys happened to live in
+  memory right after a chunk we were bump allocating out of, this could allow
+  the attacker to read the crypto keys.
+
+  Beyond just fixing the bug and adding a regression test, I've also taken two
+  additional steps:
+
+  1. While we were already running the testsuite under `valgrind` in CI, because
+     `valgrind` exits with the same code that the program did, if there are
+     invalid reads/writes that happen not to trigger a segfault, the program can
+     still exit OK and we will be none the wiser. I've enabled the
+     `--error-exitcode=1` flag for `valgrind` in CI so that tests eagerly fail
+     in these scenarios.
+
+  2. I've written a quickcheck test to exercise `realloc`. Without the bug fix
+     in this patch, this quickcheck immediately triggers invalid reads when run
+     under `valgrind`. We didn't previously have quickchecks that exercised
+     `realloc` beacuse `realloc` isn't publicly exposed directly, and instead
+     can only be indirectly called. This new quickcheck test exercises `realloc`
+     via `bumpalo::collections::Vec::resize` and
+     `bumpalo::collections::Vec::shrink_to_fit` calls.
+
+  This bug was introduced in version 3.0.0.
+
+  See [#69](https://github.com/fitzgen/bumpalo/issues/69) for details.
+
+--------------------------------------------------------------------------------
+
 ## 3.2.0
 
-Released 209-2-07.
+Released 2020-02-07.
 
 ### Added
 

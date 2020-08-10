@@ -21,7 +21,7 @@ use core::ptr::{self, NonNull};
 #[allow(unused_imports)]
 use crate::alloc::UnstableLayoutMethods;
 
-use crate::alloc::{handle_alloc_error, AllocRef, Layout};
+use crate::alloc::{handle_alloc_error, AllocRef, Layout, AllocInit, ReallocPlacement};
 use crate::collections::CollectionAllocErr;
 use crate::collections::CollectionAllocErr::*;
 // use boxed::Box;
@@ -106,13 +106,10 @@ impl<'a, T> RawVec<'a, T> {
             } else {
                 let align = mem::align_of::<T>();
                 let layout = Layout::from_size_align(alloc_size, align).unwrap();
-                let result = if zeroed {
-                    a.alloc_zeroed(layout)
-                } else {
-                    AllocRef::alloc(&mut a, layout)
-                };
+                let zeroed = if zeroed { AllocInit::Zeroed } else { AllocInit::Uninitialized };
+                let result = AllocRef::alloc(&mut a, layout, zeroed);
                 match result {
-                    Ok(ptr) => ptr.cast(),
+                    Ok(block) => block.ptr.cast(),
                     Err(_) => handle_alloc_error(layout),
                 }
             };
@@ -251,9 +248,9 @@ impl<'a, T> RawVec<'a, T> {
                     let new_cap = 2 * self.cap;
                     let new_size = new_cap * elem_size;
                     alloc_guard(new_size).unwrap_or_else(|_| capacity_overflow());
-                    let ptr_res = self.a.realloc(self.ptr.cast(), cur, new_size);
-                    match ptr_res {
-                        Ok(ptr) => (new_cap, ptr.cast()),
+                    let block_res = self.a.grow(self.ptr.cast(), cur, new_size, ReallocPlacement::MayMove, AllocInit::Uninitialized);
+                    match block_res {
+                        Ok(block) => (new_cap, block.ptr.cast()),
                         Err(_) => handle_alloc_error(Layout::from_size_align_unchecked(
                             new_size,
                             cur.align(),
@@ -265,8 +262,8 @@ impl<'a, T> RawVec<'a, T> {
                     // would cause overflow
                     let new_cap = if elem_size > (!0) / 8 { 1 } else { 4 };
                     let layout = Layout::array::<T>(new_cap).unwrap();
-                    match AllocRef::alloc(&mut self.a, layout) {
-                        Ok(ptr) => (new_cap, ptr),
+                    match AllocRef::alloc(&mut self.a, layout, AllocInit::Uninitialized) {
+                        Ok(block) => (new_cap, block.ptr),
                         Err(_) => handle_alloc_error(layout),
                     }
                     //match self.a.alloc_array::<T>(new_cap) {
@@ -316,7 +313,7 @@ impl<'a, T> RawVec<'a, T> {
             let new_cap = 2 * self.cap;
             let new_size = new_cap * elem_size;
             alloc_guard(new_size).unwrap_or_else(|_| capacity_overflow());
-            match self.a.grow_in_place(self.ptr.cast(), old_layout, new_size) {
+            match self.a.grow(self.ptr.cast(), old_layout, new_size, ReallocPlacement::InPlace, AllocInit::Uninitialized) {
                 Ok(_) => {
                     // We can't directly divide `size`.
                     self.cap = new_cap;
@@ -498,7 +495,7 @@ impl<'a, T> RawVec<'a, T> {
             alloc_guard(new_layout.size()).unwrap_or_else(|_| capacity_overflow());
             match self
                 .a
-                .grow_in_place(self.ptr.cast(), old_layout, new_layout.size())
+                .grow(self.ptr.cast(), old_layout, new_layout.size(), ReallocPlacement::InPlace, AllocInit::Uninitialized)
             {
                 Ok(_) => {
                     self.cap = new_cap;
@@ -557,8 +554,8 @@ impl<'a, T> RawVec<'a, T> {
                 let new_size = elem_size * amount;
                 let align = mem::align_of::<T>();
                 let old_layout = Layout::from_size_align_unchecked(old_size, align);
-                match self.a.realloc(self.ptr.cast(), old_layout, new_size) {
-                    Ok(p) => self.ptr = p.cast(),
+                match self.a.shrink(self.ptr.cast(), old_layout, new_size, ReallocPlacement::MayMove) {
+                    Ok(block) => self.ptr = block.ptr.cast(),
                     Err(_) => {
                         handle_alloc_error(Layout::from_size_align_unchecked(new_size, align))
                     }
@@ -566,6 +563,29 @@ impl<'a, T> RawVec<'a, T> {
             }
             self.cap = amount;
         }
+    }
+}
+
+#[cfg(feature = "boxed")]
+impl<'a, T> RawVec<'a, T> {
+    /// Converts the entire buffer into `Box<[T]>`.
+    ///
+    /// Note that this will correctly reconstitute any `cap` changes
+    /// that may have been performed. (See description of type for details.)
+    ///
+    /// # Undefined Behavior
+    ///
+    /// All elements of `RawVec<T>` must be initialized. Notice that
+    /// the rules around uninitialized boxed values are not finalized yet,
+    /// but until they are, it is advisable to avoid them.
+    pub unsafe fn into_box(self) -> crate::boxed::Box<'a, [T]> {
+        use crate::boxed::Box;
+
+        // NOTE: not calling `cap()` here; actually using the real `cap` field!
+        let slice = core::slice::from_raw_parts_mut(self.ptr(), self.cap);
+        let output: Box<'a, [T]> = Box::from_raw(slice);
+        mem::forget(self);
+        output
     }
 }
 
@@ -619,16 +639,20 @@ impl<'a, T> RawVec<'a, T> {
             let res = match self.current_layout() {
                 Some(layout) => {
                     debug_assert!(new_layout.align() == layout.align());
-                    self.a.realloc(self.ptr.cast(), layout, new_layout.size())
+                    self.a.grow(self.ptr.cast(), layout, new_layout.size(), ReallocPlacement::MayMove, AllocInit::Uninitialized)
                 }
-                None => AllocRef::alloc(&mut self.a, new_layout),
+                None => AllocRef::alloc(&mut self.a, new_layout, AllocInit::Uninitialized),
             };
 
             if let (Err(AllocErr), Infallible) = (&res, fallibility) {
                 handle_alloc_error(new_layout);
             }
 
-            self.ptr = res?.cast();
+            let block = res?;
+            self.ptr = block.ptr.cast();
+            // TODO cap to true size not calculated:
+            // block.size
+            // but is this right?
             self.cap = new_cap;
 
             Ok(())

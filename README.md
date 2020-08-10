@@ -6,7 +6,7 @@
 [![](https://docs.rs/bumpalo/badge.svg)](https://docs.rs/bumpalo/)
 [![](https://img.shields.io/crates/v/bumpalo.svg)](https://crates.io/crates/bumpalo)
 [![](https://img.shields.io/crates/d/bumpalo.svg)](https://crates.io/crates/bumpalo)
-[![Build Status](https://dev.azure.com/fitzgen/bumpalo/_apis/build/status/fitzgen.bumpalo?branchName=master)](https://dev.azure.com/fitzgen/bumpalo/_build/latest?definitionId=2&branchName=master)
+[![Build Status](https://github.com/fitzgen/bumpalo/workflows/Rust/badge.svg)](https://github.com/fitzgen/bumpalo/actions?query=workflow%3ARust)
 
 ![](https://github.com/fitzgen/bumpalo/raw/master/bumpalo.png)
 
@@ -32,6 +32,13 @@ To deallocate all the objects in the arena at once, we can simply reset the bump
 pointer back to the start of the arena's memory chunk. This makes mass
 deallocation *extremely* fast, but allocated objects' `Drop` implementations are
 not invoked.
+
+> **However:** [`bumpalo::boxed::Box<T>`][crate::boxed::Box] can be used to wrap
+> `T` values allocated in the `Bump` arena, and calls `T`'s `Drop`
+> implementation when the `Box<T>` wrapper goes out of scope. This is similar to
+> how [`std::boxed::Box`] works, except without deallocating its backing memory.
+
+[`std::boxed::Box`]: https://doc.rust-lang.org/std/boxed/struct.Box.html
 
 ### What happens when the memory chunk is full?
 
@@ -91,7 +98,55 @@ Eventually [all `std` collection types will be parameterized by an
 allocator](https://github.com/rust-lang/rust/issues/42774) and we can remove
 this `collections` module and use the `std` versions.
 
+### `bumpalo::boxed::Box`
+
+When the `"boxed"` cargo feature is enabled, a fork of `std::boxed::Box` library
+is available in the `boxed` module. This `Box` type is modified to allocate its
+space inside `bumpalo::Bump` arenas.
+
+**A `Box<T>` runs `T`'s drop implementation when the `Box<T>` is dropped.** You
+can use this to work around the fact that `Bump` does not drop values allocated
+in its space itself.
+
+```rust
+use bumpalo::{Bump, boxed::Box};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static NUM_DROPPED: AtomicUsize = AtomicUsize::new(0);
+
+struct CountDrops;
+
+impl Drop for CountDrops {
+    fn drop(&mut self) {
+        NUM_DROPPED.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+// Create a new bump arena.
+let bump = Bump::new();
+
+// Create a `CountDrops` inside the bump arena.
+let mut c = Box::new_in(CountDrops, &bump);
+
+// No `CountDrops` have been dropped yet.
+assert_eq!(NUM_DROPPED.load(Ordering::SeqCst), 0);
+
+// Drop our `Box<CountDrops>`.
+drop(c);
+
+// Its `Drop` implementation was run, and so `NUM_DROPS` has been incremented.
+assert_eq!(NUM_DROPPED.load(Ordering::SeqCst), 1);
+```
+
 ### `#![no_std]` Support
 
 Bumpalo is a `no_std` crate. It depends only on the `alloc` and `core` crates.
+
+#### Minimum Supported Rust Version (MSRV)
+
+This crate is guaranteed to compile on stable Rust 1.44 and up. It might compile
+with older versions but that may change in any new patch release.
+
+We reserve the right to increment the MSRV on minor releases, however we will strive
+to only do so it when done deliberately and for good reasons.
 

@@ -90,7 +90,7 @@ use core_alloc::borrow::Cow;
 #[macro_export]
 macro_rules! format {
     ( in $bump:expr, $fmt:expr, $($args:expr),* ) => {{
-        use std::fmt::Write;
+        use $crate::core_alloc::fmt::Write;
         let bump = $bump;
         let mut s = $crate::collections::String::new_in(bump);
         let _ = write!(&mut s, $fmt, $($args),*);
