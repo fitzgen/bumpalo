@@ -157,6 +157,8 @@ to only do so it when done deliberately and for good reasons.
 
  */
 
+#![feature(nonnull_slice_from_raw_parts, slice_ptr_get)]
+
 #![deny(missing_debug_implementations)]
 #![deny(missing_docs)]
 #![no_std]
@@ -1173,18 +1175,11 @@ unsafe impl<'a> alloc::AllocRef for &'a Bump {
     fn alloc(
         &mut self,
         layout: Layout,
-        init: alloc::AllocInit,
-    ) -> Result<alloc::MemoryBlock, alloc::AllocErr> {
+    ) -> Result<NonNull<[u8]>, alloc::AllocErr> {
         let ptr = self.try_alloc_layout(layout)?;
         let size = layout.size();
 
-        if init == alloc::AllocInit::Zeroed {
-            unsafe {
-                ptr::write_bytes(ptr.as_ptr(), 0, size);
-            }
-        }
-
-        Ok(alloc::MemoryBlock { ptr, size })
+        Ok(NonNull::slice_from_raw_parts(ptr, size))
     }
 
     #[inline]
@@ -1203,24 +1198,18 @@ unsafe impl<'a> alloc::AllocRef for &'a Bump {
         ptr: NonNull<u8>,
         layout: Layout,
         new_size: usize,
-        placement: alloc::ReallocPlacement,
-        init: alloc::AllocInit,
-    ) -> Result<alloc::MemoryBlock, alloc::AllocErr> {
+    ) -> Result<NonNull<[u8]>, alloc::AllocErr> {
         let old_size = layout.size();
         let delta = new_size - old_size;
 
         if old_size == 0 {
-            return self.alloc(layout, init);
+            return self.alloc(layout);
         }
 
         debug_assert!(
             new_size >= old_size,
             "`new_size` must be greater than or equal to `layout.size()`"
         );
-
-        if placement == alloc::ReallocPlacement::InPlace {
-            return Err(alloc::AllocErr);
-        }
 
         if self.is_last_allocation(ptr) {
             // Try to allocate the delta size within this same block so we can
@@ -1230,14 +1219,7 @@ unsafe impl<'a> alloc::AllocRef for &'a Bump {
             {
                 ptr::copy(ptr.as_ptr(), p.as_ptr(), old_size);
 
-                if init == alloc::AllocInit::Zeroed {
-                    ptr::write_bytes(p.as_ptr().add(old_size), 0, delta);
-                }
-
-                return Ok(alloc::MemoryBlock {
-                    ptr: p,
-                    size: new_size,
-                });
+                return Ok(NonNull::slice_from_raw_parts(p, new_size));
             }
         }
 
@@ -1246,14 +1228,7 @@ unsafe impl<'a> alloc::AllocRef for &'a Bump {
         let new_ptr = self.try_alloc_layout(new_layout)?;
         ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), old_size);
 
-        if init == alloc::AllocInit::Zeroed {
-            ptr::write_bytes(new_ptr.as_ptr().add(old_size), 0, delta);
-        }
-
-        Ok(alloc::MemoryBlock {
-            ptr: new_ptr,
-            size: new_size,
-        })
+        Ok(NonNull::slice_from_raw_parts(new_ptr, new_size))
     }
 
     #[inline]
@@ -1262,8 +1237,7 @@ unsafe impl<'a> alloc::AllocRef for &'a Bump {
         ptr: NonNull<u8>,
         layout: Layout,
         new_size: usize,
-        placement: alloc::ReallocPlacement,
-    ) -> Result<alloc::MemoryBlock, alloc::AllocErr> {
+    ) -> Result<NonNull<[u8]>, alloc::AllocErr> {
         let old_size = layout.size();
 
         debug_assert!(
@@ -1276,8 +1250,6 @@ unsafe impl<'a> alloc::AllocRef for &'a Bump {
             // is worth it: we are actually going to recover "enough" space
             // and we can do a non-overlapping copy.
             && new_size <= old_size / 2
-            // If we're not allowed to move, we can't do anything.
-            && placement == alloc::ReallocPlacement::MayMove
         {
             let delta = old_size - new_size;
             let footer = self.current_chunk_footer.get();
@@ -1289,15 +1261,9 @@ unsafe impl<'a> alloc::AllocRef for &'a Bump {
             // NB: we know it is non-overlapping because of the size check
             // in the `if` condition.
             ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), new_size);
-            Ok(alloc::MemoryBlock {
-                ptr: new_ptr,
-                size: new_size,
-            })
+            Ok(NonNull::slice_from_raw_parts(new_ptr, new_size))
         } else {
-            Ok(alloc::MemoryBlock {
-                ptr: ptr,
-                size: old_size,
-            })
+            Ok(NonNull::slice_from_raw_parts(ptr, old_size))
         }
     }
 }
