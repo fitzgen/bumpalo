@@ -1280,7 +1280,7 @@ mod tests {
     #[test]
     #[allow(clippy::cognitive_complexity)]
     fn test_realloc() {
-        use crate::alloc::{AllocInit, AllocRef, ReallocPlacement};
+        use crate::alloc::AllocRef;
 
         unsafe {
             const CAPACITY: usize = 1024 - OVERHEAD;
@@ -1290,9 +1290,9 @@ mod tests {
             let layout = Layout::from_size_align(100, 1).unwrap();
             let p = b.alloc_layout(layout);
             let q = (&b)
-                .shrink(p, layout, 51, ReallocPlacement::MayMove)
+                .shrink(p, layout, 51)
                 .unwrap()
-                .ptr;
+                .as_non_null_ptr();
             assert_eq!(p, q);
             b.reset();
 
@@ -1300,9 +1300,9 @@ mod tests {
             let layout = Layout::from_size_align(100, 1).unwrap();
             let p = b.alloc_layout(layout);
             let q = (&b)
-                .shrink(p, layout, 50, ReallocPlacement::MayMove)
+                .shrink(p, layout, 50)
                 .unwrap()
-                .ptr;
+                .as_non_null_ptr();
             assert!(p != q);
             b.reset();
 
@@ -1314,11 +1314,9 @@ mod tests {
                     p,
                     layout,
                     11,
-                    ReallocPlacement::MayMove,
-                    AllocInit::Uninitialized,
                 )
                 .unwrap()
-                .ptr;
+                .as_non_null_ptr();
             assert_eq!(q.as_ptr() as usize, p.as_ptr() as usize - 1);
             b.reset();
 
@@ -1331,11 +1329,9 @@ mod tests {
                     p,
                     layout,
                     CAPACITY + 1,
-                    ReallocPlacement::MayMove,
-                    AllocInit::Uninitialized,
                 )
                 .unwrap()
-                .ptr;
+                .as_non_null_ptr();
             assert!(q.as_ptr() as usize != p.as_ptr() as usize - CAPACITY);
             b = Bump::with_capacity(CAPACITY);
 
@@ -1349,11 +1345,9 @@ mod tests {
                     p,
                     layout,
                     2,
-                    ReallocPlacement::MayMove,
-                    AllocInit::Uninitialized,
                 )
                 .unwrap()
-                .ptr;
+                .as_non_null_ptr();
             assert!(q.as_ptr() as usize != p.as_ptr() as usize - 1);
             b.reset();
         }
@@ -1361,36 +1355,32 @@ mod tests {
 
     #[test]
     fn invalid_read() {
-        use alloc::{AllocInit, AllocRef, ReallocPlacement};
+        use alloc::AllocRef;
 
         let mut b = &Bump::new();
 
         unsafe {
             let l1 = Layout::from_size_align(12000, 4).unwrap();
-            let p1 = AllocRef::alloc(&mut b, l1, AllocInit::Uninitialized)
+            let p1 = AllocRef::alloc(&mut b, l1)
                 .unwrap()
-                .ptr;
+                .as_non_null_ptr();
 
             let l2 = Layout::from_size_align(1000, 4).unwrap();
-            AllocRef::alloc(&mut b, l2, AllocInit::Uninitialized).unwrap();
+            AllocRef::alloc(&mut b, l2).unwrap();
 
             let p1 = b
                 .grow(
                     p1,
                     l1,
                     24000,
-                    ReallocPlacement::MayMove,
-                    AllocInit::Uninitialized,
                 )
                 .unwrap()
-                .ptr;
+                .as_non_null_ptr();
             let l3 = Layout::from_size_align(24000, 4).unwrap();
             b.grow(
                 p1,
                 l3,
                 48000,
-                ReallocPlacement::MayMove,
-                AllocInit::Uninitialized,
             )
             .unwrap();
         }

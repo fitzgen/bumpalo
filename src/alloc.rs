@@ -174,7 +174,6 @@ mod shim {
     ///   method of the allocator.
     ///
     /// [*currently allocated*]: #currently-allocated-memory
-    #[unstable(feature = "allocator_api", issue = "32838")]
     pub unsafe trait AllocRef {
         /// Attempts to allocate a block of memory.
         ///
@@ -218,7 +217,7 @@ mod shim {
         fn alloc_zeroed(&mut self, layout: Layout) -> Result<NonNull<[u8]>, AllocErr> {
             let ptr = self.alloc(layout)?;
             // SAFETY: `alloc` returns a valid memory block
-            unsafe { ptr.as_non_null_ptr().as_ptr().write_bytes(0, ptr.len()) }
+            unsafe { ptr.as_non_null_ptr().as_ptr().write_bytes(0, ptr.as_ref().len()) }
             Ok(ptr)
         }
 
