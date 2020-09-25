@@ -142,6 +142,14 @@ assert_eq!(NUM_DROPPED.load(Ordering::SeqCst), 1);
 
 Bumpalo is a `no_std` crate. It depends only on the `alloc` and `core` crates.
 
+### Thread support
+
+The `Bump` is `!Send`, which makes it hard to use in certain situations around threads ‒ for
+example in `rayon`.
+
+The [`bumpalo-herd`](https://crates.io/crates/bumpalo-herd) crate provides a pool of `Bump`
+allocators for use in such situations.
+
 #### Minimum Supported Rust Version (MSRV)
 
 This crate is guaranteed to compile on stable Rust 1.44 and up. It might compile
