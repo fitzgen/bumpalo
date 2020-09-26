@@ -168,11 +168,11 @@ pub extern crate alloc as core_alloc;
 pub mod boxed;
 #[cfg(feature = "collections")]
 pub mod collections;
+pub mod iter;
 
 mod alloc;
 
 use core::cell::Cell;
-use core::iter;
 use core::marker::PhantomData;
 use core::mem;
 use core::ptr::{self, NonNull};
@@ -1159,7 +1159,7 @@ impl<'a> Iterator for ChunkIter<'a> {
     }
 }
 
-impl<'a> iter::FusedIterator for ChunkIter<'a> {}
+impl<'a> core::iter::FusedIterator for ChunkIter<'a> {}
 
 #[inline(never)]
 #[cold]

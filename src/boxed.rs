@@ -590,7 +590,7 @@ impl<'a, I: FusedIterator + ?Sized> FusedIterator for Box<'a, I> {}
 #[cfg(feature = "collections")]
 impl<'a, A> Box<'a, [A]> {
     /// Creates a value from an iterator.
-    /// This method is adapted version of `FromIterator::from_iter`.
+    /// This method is an adapted version of `FromIterator::from_iter`.
     /// It cannot be made as that trait implementation given different signature.
     ///
     /// # Examples
@@ -610,6 +610,18 @@ impl<'a, A> Box<'a, [A]> {
         let mut vec = Vec::new_in(a);
         vec.extend(iter);
         vec.into_boxed_slice()
+    }
+}
+
+#[cfg(feature = "collections")]
+#[deny(unconditional_recursion)]
+impl<'a, A> crate::iter::FromIteratorIn<'a, A> for Box<'a, [A]> {
+    #[inline]
+    fn from_iter_in<T>(iter: T, a: &'a Bump) -> Self
+    where
+        T: IntoIterator<Item = A>,
+    {
+        Self::from_iter_in(iter, a)
     }
 }
 

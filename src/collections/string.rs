@@ -61,6 +61,7 @@
 
 use crate::collections::str::lossy;
 use crate::collections::vec::Vec;
+use crate::iter::FromIteratorIn;
 use crate::Bump;
 use core::char::decode_utf16;
 use core::fmt;
@@ -1826,6 +1827,17 @@ impl<'a, 'bump> Extend<Cow<'a, str>> for String<'bump> {
         for s in iter {
             self.push_str(&s)
         }
+    }
+}
+
+impl<'bump, T> FromIteratorIn<'bump, T> for String<'bump>
+where
+    Self: Extend<T>,
+{
+    fn from_iter_in<I: IntoIterator<Item = T>>(iter: I, bump: &'bump Bump) -> Self {
+        let mut s = String::new_in(bump);
+        s.extend(iter);
+        s
     }
 }
 

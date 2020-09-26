@@ -85,6 +85,7 @@
 
 use super::raw_vec::RawVec;
 use crate::collections::CollectionAllocErr;
+use crate::iter::FromIteratorIn;
 use crate::Bump;
 use core::cmp::Ordering;
 use core::fmt;
@@ -1892,6 +1893,14 @@ impl<'bump, T: 'bump> Extend<T> for Vec<'bump, T> {
         for t in iter {
             self.push(t);
         }
+    }
+}
+
+impl<'bump, T> FromIteratorIn<'bump, T> for Vec<'bump, T> {
+    fn from_iter_in<I: IntoIterator<Item = T>>(iter: I, bump: &'bump Bump) -> Self {
+        let mut v = Vec::new_in(bump);
+        v.extend(iter);
+        v
     }
 }
 
