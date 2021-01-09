@@ -234,6 +234,7 @@ pub mod collections;
 mod alloc;
 
 use core::cell::Cell;
+use core::fmt::Display;
 use core::iter;
 use core::marker::PhantomData;
 use core::mem;
@@ -243,6 +244,32 @@ use core::str;
 use core_alloc::alloc::{alloc, dealloc, Layout};
 #[cfg(feature = "allocator_api")]
 use core_alloc::alloc::{AllocError, Allocator};
+
+/// An error returned from [`Bump::try_alloc_try_with`].
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum AllocOrInitError<E> {
+    /// Indicates that the initial allocation failed.
+    Alloc(alloc::AllocErr),
+    /// Indicates that the initializer failed with the contained error after
+    /// allocation.
+    ///
+    /// It is possible but not guaranteed that the allocated memory has been
+    /// released back to the allocator at this point.
+    Init(E),
+}
+impl<E> From<alloc::AllocErr> for AllocOrInitError<E> {
+    fn from(e: alloc::AllocErr) -> Self {
+        Self::Alloc(e)
+    }
+}
+impl<E: Display> Display for AllocOrInitError<E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            AllocOrInitError::Alloc(err) => err.fmt(f),
+            AllocOrInitError::Init(err) => write!(f, "initialization failed: {}", err),
+        }
+    }
+}
 
 /// An arena to bump allocate into.
 ///
@@ -299,6 +326,75 @@ use core_alloc::alloc::{AllocError, Allocator};
 /// let mut s = bump.alloc("bumpalo");
 /// *s = "the bump allocator; and also is a buffalo";
 /// ```
+///
+/// ## The `_with` Method Suffix
+///
+/// Calling one of the generic `…alloc(x)` methods is essentially equivalent to
+/// the matching [`…alloc_with(|| x)`](?search=alloc_with). However if you use
+/// `…alloc_with`, then the closure will not be invoked until after allocating
+/// space for storing `x` on the heap.
+///
+/// This can be useful in certain edge-cases related to compiler optimizations.
+/// When evaluating for example `bump.alloc(x)`, semantically `x` is first put
+/// on the stack and then moved onto the heap. In some cases, the compiler is
+/// able to optimize this into constructing `x` directly on the heap, however
+/// in many cases it does not.
+///
+/// The `*alloc_with` functions try to help the compiler be smarter. In most
+/// cases doing for example `bump.try_alloc_with(|| x)` on release mode will be
+/// enough to help the compiler realize that this optimization is valid and
+/// to construct `x` directly onto the heap.
+///
+/// ### Warning
+///
+/// These functions critically depend on compiler optimizations to achieve their
+/// desired effect. This means that it is not an effective tool when compiling
+/// without optimizations on.
+///
+/// Even when optimizations are on, these functions do not **guarantee** that
+/// the value is constructed on the heap. To the best of our knowledge no such
+/// guarantee can be made in stable Rust as of 1.44.
+///
+/// ### The `_try_with` Method Suffix
+///
+/// The generic [`…alloc_try_with(|| x)`](?search=_try_with) methods behave
+/// like the purely `_with` suffixed methods explained above. However, they
+/// allow for fallible initialization by accepting a closure that returns a
+/// [`Result`] and will attempt to undo the initial allocation if this closure
+/// returns [`Err`].
+///
+/// #### Warning
+///
+/// If the inner closure returns [`Ok`], space for the entire [`Result`] remains
+/// allocated inside `self`. This can be a problem especially if the [`Err`]
+/// variant is larger, but even otherwise there may be overhead for the
+/// [`Result`]'s discriminant.
+///
+/// <p><details><summary>Undoing the allocation in the <code>Err</code> case
+/// always fails if <code>f</code> successfully made any additional allocations
+/// in <code>self</code>.</summary>
+///
+/// For example, the following will always leak also space for the [`Result`]
+/// into this `Bump`, even though the inner reference isn't kept and the [`Err`]
+/// payload is returned semantically by value:
+///
+/// ```rust
+/// let bump = bumpalo::Bump::new();
+///
+/// let r: Result<&mut [u8; 1000], ()> = bump.alloc_try_with(|| {
+///     let _ = bump.alloc(0_u8);
+///     Err(())
+/// });
+///
+/// assert!(r.is_err());
+/// ```
+///
+///</details></p>
+///
+/// Since [`Err`] payloads are first placed on the heap and then moved to the
+/// stack, `bump.…alloc_try_with(|| x)?` is likely to execute more slowly than
+/// the matching `bump.…alloc(x?)` in case of initialization failure. If this
+/// happens frequently, using the plain un-suffixed method may perform better.
 #[derive(Debug)]
 pub struct Bump {
     // The current chunk we are bump allocating within.
@@ -614,7 +710,7 @@ impl Bump {
     ///
     /// ## Panics
     ///
-    /// Panics if reserving space for `T` would cause an overflow.
+    /// Panics if reserving space for `T` fails.
     ///
     /// ## Example
     ///
@@ -629,38 +725,37 @@ impl Bump {
         self.alloc_with(|| val)
     }
 
+    /// Try to allocate an object in this `Bump` and return an exclusive
+    /// reference to it.
+    ///
+    /// ## Errors
+    ///
+    /// Errors if reserving space for `T` fails.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.try_alloc("hello");
+    /// assert_eq!(x, Ok(&mut"hello"));
+    /// ```
+    #[inline(always)]
+    #[allow(clippy::mut_from_ref)]
+    pub fn try_alloc<T>(&self, val: T) -> Result<&mut T, alloc::AllocErr> {
+        self.try_alloc_with(|| val)
+    }
+
     /// Pre-allocate space for an object in this `Bump`, initializes it using
     /// the closure, then returns an exclusive reference to it.
     ///
-    /// Calling `bump.alloc(x)` is essentially equivalent to calling
-    /// `bump.alloc_with(|| x)`. However if you use `alloc_with`, then the
-    /// closure will not be invoked until after allocating space for storing
-    /// `x` on the heap.
-    ///
-    /// This can be useful in certain edge-cases related to compiler
-    /// optimizations. When evaluating `bump.alloc(x)`, semantically `x` is
-    /// first put on the stack and then moved onto the heap. In some cases,
-    /// the compiler is able to optimize this into constructing `x` directly
-    /// on the heap, however in many cases it does not.
-    ///
-    /// The function `alloc_with` tries to help the compiler be smarter. In
-    /// most cases doing `bump.alloc_with(|| x)` on release mode will be
-    /// enough to help the compiler to realize this optimization is valid
-    /// and construct `x` directly onto the heap.
-    ///
-    /// ## Warning
-    ///
-    /// This function critically depends on compiler optimizations to achieve
-    /// its desired effect. This means that it is not an effective tool when
-    /// compiling without optimizations on.
-    ///
-    /// Even when optimizations are on, this function does not **guarantee**
-    /// that the value is constructed on the heap. To the best of our
-    /// knowledge no such guarantee can be made in stable Rust as of 1.33.
+    /// See [The `_with` Method Suffix](#the-_with-method-suffix) for a
+    /// discussion on the differences between the `_with` suffixed methods and
+    /// those methods without it, their performance characteristics, and when
+    /// you might or might not choose a `_with` suffixed method.
     ///
     /// ## Panics
     ///
-    /// Panics if reserving space for `T` would cause an overflow.
+    /// Panics if reserving space for `T` fails.
     ///
     /// ## Example
     ///
@@ -703,12 +798,277 @@ impl Bump {
         }
     }
 
+    /// Tries to pre-allocate space for an object in this `Bump`, initializes
+    /// it using the closure, then returns an exclusive reference to it.
+    ///
+    /// See [The `_with` Method Suffix](#the-_with-method-suffix) for a
+    /// discussion on the differences between the `_with` suffixed methods and
+    /// those methods without it, their performance characteristics, and when
+    /// you might or might not choose a `_with` suffixed method.
+    ///
+    /// ## Errors
+    ///
+    /// Errors if reserving space for `T` fails.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.try_alloc_with(|| "hello");
+    /// assert_eq!(x, Ok(&mut "hello"));
+    /// ```
+    #[inline(always)]
+    #[allow(clippy::mut_from_ref)]
+    pub fn try_alloc_with<F, T>(&self, f: F) -> Result<&mut T, alloc::AllocErr>
+    where
+        F: FnOnce() -> T,
+    {
+        #[inline(always)]
+        unsafe fn inner_writer<T, F>(ptr: *mut T, f: F)
+        where
+            F: FnOnce() -> T,
+        {
+            // This function is translated as:
+            // - allocate space for a T on the stack
+            // - call f() with the return value being put onto this stack space
+            // - memcpy from the stack to the heap
+            //
+            // Ideally we want LLVM to always realize that doing a stack
+            // allocation is unnecessary and optimize the code so it writes
+            // directly into the heap instead. It seems we get it to realize
+            // this most consistently if we put this critical line into it's
+            // own function instead of inlining it into the surrounding code.
+            ptr::write(ptr, f())
+        }
+
+        //SAFETY: Self-contained:
+        // `p` is allocated for `T` and then a `T` is written.
+        let layout = Layout::new::<T>();
+        let p = self.try_alloc_layout(layout)?;
+        let p = p.as_ptr() as *mut T;
+
+        unsafe {
+            inner_writer(p, f);
+            Ok(&mut *p)
+        }
+    }
+
+    /// Pre-allocates space for a [`Result`] in this `Bump`, initializes it using
+    /// the closure, then returns an exclusive reference to its `T` if [`Ok`].
+    ///
+    /// Iff the allocation fails, the closure is not run.
+    ///
+    /// Iff [`Err`], an allocator rewind is *attempted* and the `E` instance is
+    /// moved out of the allocator to be consumed or dropped as normal.
+    ///
+    /// See [The `_with` Method Suffix](#the-_with-method-suffix) for a
+    /// discussion on the differences between the `_with` suffixed methods and
+    /// those methods without it, their performance characteristics, and when
+    /// you might or might not choose a `_with` suffixed method.
+    ///
+    /// For caveats specific to fallible initialization, see
+    /// [The `_try_with` Method Suffix](#the-_try_with-method-suffix).
+    ///
+    /// ## Errors
+    ///
+    /// Iff the allocation succeeds but `f` fails, that error is forwarded by value.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for `Result<T, E>` fails.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.alloc_try_with(|| Ok("hello"))?;
+    /// assert_eq!(*x, "hello");
+    /// # Result::<_, ()>::Ok(())
+    /// ```
+    #[inline(always)]
+    #[allow(clippy::mut_from_ref)]
+    pub fn alloc_try_with<F, T, E>(&self, f: F) -> Result<&mut T, E>
+    where
+        F: FnOnce() -> Result<T, E>,
+    {
+        let rewind_footer = self.current_chunk_footer.get();
+        let rewind_ptr = unsafe { rewind_footer.as_ref() }.ptr.get();
+        let mut inner_result_ptr = NonNull::from(self.alloc_with(f));
+        let inner_result_address = inner_result_ptr.as_ptr() as usize;
+        match unsafe { inner_result_ptr.as_mut() } {
+            Ok(t) => Ok(unsafe {
+                //SAFETY:
+                // The `&mut Result<T, E>` returned by `alloc_with` may be
+                // lifetime-limited by `E`, but the derived `&mut T` still has
+                // the same validity as in `alloc_with` since the error variant
+                // is already ruled out here.
+
+                // We could conditionally truncate the allocation here, but
+                // since it grows backwards, it seems unlikely that we'd get
+                // any more than the `Result`'s discriminant this way, if
+                // anything at all.
+                &mut *(t as *mut _)
+            }),
+            Err(e) => unsafe {
+                // If this result was the last allocation in this arena, we can
+                // reclaim its space. In fact, sometimes we can do even better
+                // than simply calling `dealloc` on the result pointer: we can
+                // reclaim any alignment padding we might have added (which
+                // `dealloc` cannot do) if we didn't allocate a new chunk for
+                // this result.
+                if self.is_last_allocation(NonNull::new_unchecked(inner_result_address as *mut _)) {
+                    let current_footer_p = self.current_chunk_footer.get();
+                    let current_ptr = &current_footer_p.as_ref().ptr;
+                    if current_footer_p == rewind_footer {
+                        // It's still the same chunk, so reset the bump pointer
+                        // to its original value upon entry to this method
+                        // (reclaiming any alignment padding we may have
+                        // added).
+                        current_ptr.set(rewind_ptr);
+                    } else {
+                        // We allocated a new chunk for this result.
+                        //
+                        // We know the result is the only allocation in this
+                        // chunk: Any additional allocations since the start of
+                        // this method could only have happened when running
+                        // the initializer function, which is called *after*
+                        // reserving space for this result. Therefore, since we
+                        // already determined via the check above that this
+                        // result was the last allocation, there must not have
+                        // been any other allocations, and this result is the
+                        // only allocation in this chunk.
+                        //
+                        // Because this is the only allocation in this chunk,
+                        // we can reset the chunk's bump finger to the start of
+                        // the chunk.
+                        current_ptr.set(current_footer_p.as_ref().data);
+                    }
+                }
+                //SAFETY:
+                // As we received `E` semantically by value from `f`, we can
+                // just copy that value here as long as we avoid a double-drop
+                // (which can't happen as any specific references to the `E`'s
+                // data in `self` are destroyed when this function returns).
+                //
+                // The order between this and the deallocation doesn't matter
+                // because `Self: !Sync`.
+                Err(ptr::read(e as *const _))
+            },
+        }
+    }
+
+    /// Tries to pre-allocates space for a [`Result`] in this `Bump`,
+    /// initializes it using the closure, then returns an exclusive reference
+    /// to its `T` if all [`Ok`].
+    ///
+    /// Iff the allocation fails, the closure is not run.
+    ///
+    /// Iff the closure returns [`Err`], an allocator rewind is *attempted* and
+    /// the `E` instance is moved out of the allocator to be consumed or dropped
+    /// as normal.
+    ///
+    /// See [The `_with` Method Suffix](#the-_with-method-suffix) for a
+    /// discussion on the differences between the `_with` suffixed methods and
+    /// those methods without it, their performance characteristics, and when
+    /// you might or might not choose a `_with` suffixed method.
+    ///
+    /// For caveats specific to fallible initialization, see
+    /// [The `_try_with` Method Suffix](#the-_try_with-method-suffix).
+    ///
+    /// ## Errors
+    ///
+    /// Errors with the [`Alloc`](`AllocOrInitError::Alloc`) variant iff
+    /// reserving space for `Result<T, E>` fails.
+    ///
+    /// Iff the allocation succeeds but `f` fails, that error is forwarded by
+    /// value inside the [`Init`](`AllocOrInitError::Init`) variant.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.try_alloc_try_with(|| Ok("hello"))?;
+    /// assert_eq!(*x, "hello");
+    /// # Result::<_, bumpalo::AllocOrInitError<()>>::Ok(())
+    /// ```
+    #[inline(always)]
+    #[allow(clippy::mut_from_ref)]
+    pub fn try_alloc_try_with<F, T, E>(&self, f: F) -> Result<&mut T, AllocOrInitError<E>>
+    where
+        F: FnOnce() -> Result<T, E>,
+    {
+        let rewind_footer = self.current_chunk_footer.get();
+        let rewind_ptr = unsafe { rewind_footer.as_ref() }.ptr.get();
+        let mut inner_result_ptr = NonNull::from(self.try_alloc_with(f)?);
+        let inner_result_address = inner_result_ptr.as_ptr() as usize;
+        match unsafe { inner_result_ptr.as_mut() } {
+            Ok(t) => Ok(unsafe {
+                //SAFETY:
+                // The `&mut Result<T, E>` returned by `alloc_with` may be
+                // lifetime-limited by `E`, but the derived `&mut T` still has
+                // the same validity as in `alloc_with` since the error variant
+                // is already ruled out here.
+
+                // We could conditionally truncate the allocation here, but
+                // since it grows backwards, it seems unlikely that we'd get
+                // any more than the `Result`'s discriminant this way, if
+                // anything at all.
+                &mut *(t as *mut _)
+            }),
+            Err(e) => unsafe {
+                // If this result was the last allocation in this arena, we can
+                // reclaim its space. In fact, sometimes we can do even better
+                // than simply calling `dealloc` on the result pointer: we can
+                // reclaim any alignment padding we might have added (which
+                // `dealloc` cannot do) if we didn't allocate a new chunk for
+                // this result.
+                if self.is_last_allocation(NonNull::new_unchecked(inner_result_address as *mut _)) {
+                    let current_footer_p = self.current_chunk_footer.get();
+                    let current_ptr = &current_footer_p.as_ref().ptr;
+                    if current_footer_p == rewind_footer {
+                        // It's still the same chunk, so reset the bump pointer
+                        // to its original value upon entry to this method
+                        // (reclaiming any alignment padding we may have
+                        // added).
+                        current_ptr.set(rewind_ptr);
+                    } else {
+                        // We allocated a new chunk for this result.
+                        //
+                        // We know the result is the only allocation in this
+                        // chunk: Any additional allocations since the start of
+                        // this method could only have happened when running
+                        // the initializer function, which is called *after*
+                        // reserving space for this result. Therefore, since we
+                        // already determined via the check above that this
+                        // result was the last allocation, there must not have
+                        // been any other allocations, and this result is the
+                        // only allocation in this chunk.
+                        //
+                        // Because this is the only allocation in this chunk,
+                        // we can reset the chunk's bump finger to the start of
+                        // the chunk.
+                        current_ptr.set(current_footer_p.as_ref().data);
+                    }
+                }
+                //SAFETY:
+                // As we received `E` semantically by value from `f`, we can
+                // just copy that value here as long as we avoid a double-drop
+                // (which can't happen as any specific references to the `E`'s
+                // data in `self` are destroyed when this function returns).
+                //
+                // The order between this and the deallocation doesn't matter
+                // because `Self: !Sync`.
+                Err(AllocOrInitError::Init(ptr::read(e as *const _)))
+            },
+        }
+    }
+
     /// `Copy` a slice into this `Bump` and return an exclusive reference to
     /// the copy.
     ///
     /// ## Panics
     ///
-    /// Panics if reserving space for the slice would cause an overflow.
+    /// Panics if reserving space for the slice fails.
     ///
     /// ## Example
     ///
@@ -737,7 +1097,7 @@ impl Bump {
     ///
     /// ## Panics
     ///
-    /// Panics if reserving space for the slice would cause an overflow.
+    /// Panics if reserving space for the slice fails.
     ///
     /// ## Example
     ///
@@ -779,7 +1139,7 @@ impl Bump {
     ///
     /// ## Panics
     ///
-    /// Panics if reserving space for the string would cause an overflow.
+    /// Panics if reserving space for the string fails.
     ///
     /// ## Example
     ///
@@ -806,7 +1166,7 @@ impl Bump {
     ///
     /// ## Panics
     ///
-    /// Panics if reserving space for the slice would cause an overflow.
+    /// Panics if reserving space for the slice fails.
     ///
     /// ## Example
     ///
@@ -842,7 +1202,7 @@ impl Bump {
     ///
     /// ## Panics
     ///
-    /// Panics if reserving space for the slice would cause an overflow.
+    /// Panics if reserving space for the slice fails.
     ///
     /// ## Example
     ///
@@ -864,7 +1224,7 @@ impl Bump {
     ///
     /// ## Panics
     ///
-    /// Panics if reserving space for the slice would cause an overflow.
+    /// Panics if reserving space for the slice fails.
     ///
     /// ## Example
     ///
@@ -889,7 +1249,7 @@ impl Bump {
     ///
     /// ## Panics
     ///
-    /// Panics if reserving space for the slice would cause an overflow, or if the supplied
+    /// Panics if reserving space for the slice fails, or if the supplied
     /// iterator returns fewer elements than it promised.
     ///
     /// ## Example
@@ -919,7 +1279,7 @@ impl Bump {
     ///
     /// ## Panics
     ///
-    /// Panics if reserving space for the slice would cause an overflow.
+    /// Panics if reserving space for the slice fails.
     ///
     /// ## Example
     ///
@@ -939,6 +1299,10 @@ impl Bump {
     /// The returned pointer points at uninitialized memory, and should be
     /// initialized with
     /// [`std::ptr::write`](https://doc.rust-lang.org/std/ptr/fn.write.html).
+    ///
+    /// # Panics
+    ///
+    /// Panics if reserving space matching `layout` fails.
     #[inline(always)]
     pub fn alloc_layout(&self, layout: Layout) -> NonNull<u8> {
         self.try_alloc_layout(layout).unwrap_or_else(|_| oom())
@@ -950,6 +1314,10 @@ impl Bump {
     /// The returned pointer points at uninitialized memory, and should be
     /// initialized with
     /// [`std::ptr::write`](https://doc.rust-lang.org/std/ptr/fn.write.html).
+    ///
+    /// # Errors
+    ///
+    /// Errors if reserving space matching `layout` fails.
     #[inline(always)]
     pub fn try_alloc_layout(&self, layout: Layout) -> Result<NonNull<u8>, alloc::AllocErr> {
         if let Some(p) = self.try_alloc_layout_fast(layout) {
