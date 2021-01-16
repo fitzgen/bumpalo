@@ -37,6 +37,7 @@ rand = "0.7"
 default = []
 collections = []
 boxed = []
+allocator_api = []
 
 # [profile.bench]
 # debug = true

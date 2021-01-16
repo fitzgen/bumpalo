@@ -168,6 +168,10 @@ to only do so it when done deliberately and for good reasons.
 #![deny(missing_debug_implementations)]
 #![deny(missing_docs)]
 #![no_std]
+#![cfg_attr(
+    feature = "allocator_api",
+    feature(allocator_api, nonnull_slice_from_raw_parts)
+)]
 
 #[doc(hidden)]
 pub extern crate alloc as core_alloc;
@@ -187,6 +191,8 @@ use core::ptr::{self, NonNull};
 use core::slice;
 use core::str;
 use core_alloc::alloc::{alloc, dealloc, Layout};
+#[cfg(feature = "allocator_api")]
+use core_alloc::alloc::{AllocError, Allocator};
 
 /// An arena to bump allocate into.
 ///
@@ -1244,6 +1250,24 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
         let new_ptr = self.try_alloc_layout(new_layout)?;
         ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), old_size);
         Ok(new_ptr)
+    }
+}
+
+#[cfg(feature = "allocator_api")]
+unsafe impl<'a> Allocator for &'a Bump {
+    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        self.try_alloc_layout(layout)
+            .map(|p| NonNull::slice_from_raw_parts(p, layout.size()))
+            .map_err(|_| AllocError)
+    }
+
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+        // If the pointer is the last allocation we made, we can reuse the bytes,
+        // otherwise they are simply leaked -- at least until somebody calls reset().
+        if self.is_last_allocation(ptr) {
+            let ptr = NonNull::new_unchecked(ptr.as_ptr().add(layout.size()));
+            self.current_chunk_footer.get().as_ref().ptr.set(ptr);
+        }
     }
 }
 
