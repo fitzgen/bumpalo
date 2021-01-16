@@ -98,6 +98,8 @@ Eventually [all `std` collection types will be parameterized by an
 allocator](https://github.com/rust-lang/rust/issues/42774) and we can remove
 this `collections` module and use the `std` versions.
 
+see `allocator_api` support below on nightly.
+
 ### `bumpalo::boxed::Box`
 
 When the `"boxed"` cargo feature is enabled, a fork of `std::boxed::Box` library
@@ -149,6 +151,10 @@ example in `rayon`.
 
 The [`bumpalo-herd`](https://crates.io/crates/bumpalo-herd) crate provides a pool of `Bump`
 allocators for use in such situations.
+
+### `allocator_api` support
+
+Bumpalo provides nightly' `allocator_api` support via the cargo feature `allocator_api`.
 
 #### Minimum Supported Rust Version (MSRV)
 
