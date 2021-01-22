@@ -98,7 +98,8 @@ Eventually [all `std` collection types will be parameterized by an
 allocator](https://github.com/rust-lang/rust/issues/42774) and we can remove
 this `collections` module and use the `std` versions.
 
-see `allocator_api` support below on nightly.
+For unstable, nightly-only support for custom allocators in `std`, see the
+`allocator_api` section below.
 
 ### `bumpalo::boxed::Box`
 
@@ -154,7 +155,33 @@ allocators for use in such situations.
 
 ### `allocator_api` support
 
-Bumpalo provides nightly' `allocator_api` support via the cargo feature `allocator_api`.
+Bumpalo provides nightly' `allocator_api` support via the cargo feature `allocator_api`:
+
+ - Enable support in Cargo.toml:
+```toml
+[dependencies]
+bumpalo = { version = "3.4.0", features = ["allocator_api"] }
+```
+
+ - Enable `allocator_api` in your `src/lib.rs`
+```rust
+#![feature(allocator_api)]
+```
+
+ - Allocator api usage with Bump:
+```rust
+#![feature(allocator_api)]
+use bumpalo::Bump;
+
+// Create a new bump arena.
+let bump = Bump::new();
+
+// Create a `Vec` inside the bump arena.
+let mut c = Vec::new_in(&bump);
+c.push(0);
+c.push(1);
+c.push(2);
+```
 
 #### Minimum Supported Rust Version (MSRV)
 
