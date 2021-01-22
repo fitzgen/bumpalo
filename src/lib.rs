@@ -1171,6 +1171,16 @@ impl Bump {
         let footer = footer.as_ref();
         footer.ptr.get() == ptr
     }
+
+    #[inline]
+    unsafe fn dealloc(&self, ptr: NonNull<u8>, layout: Layout) {
+        // If the pointer is the last allocation we made, we can reuse the bytes,
+        // otherwise they are simply leaked -- at least until somebody calls reset().
+        if self.is_last_allocation(ptr) {
+            let ptr = NonNull::new_unchecked(ptr.as_ptr().add(layout.size()));
+            self.current_chunk_footer.get().as_ref().ptr.set(ptr);
+        }
+    }
 }
 
 /// An iterator over each chunk of allocated memory that
@@ -1228,12 +1238,7 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
 
     #[inline]
     unsafe fn dealloc(&mut self, ptr: NonNull<u8>, layout: Layout) {
-        // If the pointer is the last allocation we made, we can reuse the bytes,
-        // otherwise they are simply leaked -- at least until somebody calls reset().
-        if self.is_last_allocation(ptr) {
-            let ptr = NonNull::new_unchecked(ptr.as_ptr().add(layout.size()));
-            self.current_chunk_footer.get().as_ref().ptr.set(ptr);
-        }
+        Bump::dealloc(self, ptr, layout)
     }
 
     #[inline]
@@ -1301,12 +1306,7 @@ unsafe impl<'a> Allocator for &'a Bump {
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        // If the pointer is the last allocation we made, we can reuse the bytes,
-        // otherwise they are simply leaked -- at least until somebody calls reset().
-        if self.is_last_allocation(ptr) {
-            let ptr = NonNull::new_unchecked(ptr.as_ptr().add(layout.size()));
-            self.current_chunk_footer.get().as_ref().ptr.set(ptr);
-        }
+        Bump::dealloc(self, ptr, layout)
     }
 }
 

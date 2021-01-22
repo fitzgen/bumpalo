@@ -9,4 +9,6 @@ fn push_a_bunch_of_items() {
     for x in 0..10_000 {
         v.push(x);
     }
+
+    drop(v);
 }
