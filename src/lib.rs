@@ -177,7 +177,8 @@ bumpalo = { version = "3.4.0", features = ["allocator_api"] }
 ```
 
  - Allocator api usage with Bump:
-```rust
+```
+# #![cfg_attr(feature = "allocator_api", feature(allocator_api))]
 # #[cfg(feature = "allocator_api")]
 # {
 #![feature(allocator_api)]
