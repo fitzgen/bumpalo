@@ -28,6 +28,63 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.5.0
+
+Released 2020-01-22.
+
+### Added
+
+* Added experimental, unstable support for the unstable, nightly Rust
+  `allocator_api` feature.
+
+  The `allocator_api` feature defines an `Allocator` trait and exposes custom
+  allocators for `std` types. Bumpalo has a matching `allocator_api` cargo
+  feature to enable implementing `Allocator` and using `Bump` with `std`
+  collections.
+
+  First, enable the `allocator_api` feature in your `Cargo.toml`:
+
+  ```toml
+  [dependencies]
+  bumpalo = { version = "3.4.0", features = ["allocator_api"] }
+  ```
+
+  Next, enable the `allocator_api` nightly Rust feature in your `src/lib.rs` or `src/main.rs`:
+
+  ```rust
+  # #[cfg(feature = "allocator_api")]
+  # {
+  #![feature(allocator_api)]
+  # }
+  ```
+
+  Finally, use `std` collections with `Bump`, so that their internal heap
+  allocations are made within the given bump arena:
+
+  ```
+  # #![cfg_attr(feature = "allocator_api", feature(allocator_api))]
+  # #[cfg(feature = "allocator_api")]
+  # {
+  #![feature(allocator_api)]
+  use bumpalo::Bump;
+
+  // Create a new bump arena.
+  let bump = Bump::new();
+
+  // Create a `Vec` whose elements are allocated within the bump arena.
+  let mut v = Vec::new_in(&bump);
+  v.push(0);
+  v.push(1);
+  v.push(2);
+  # }
+  ```
+
+  I'm very excited to see custom allocators in `std` coming along! Thanks to
+  Arthur Gautier for implementing support for the `allocator_api` feature for
+  Bumpalo.
+
+--------------------------------------------------------------------------------
+
 ## 3.4.0
 
 Released 2020-06-01.
