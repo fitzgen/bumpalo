@@ -158,17 +158,25 @@ example in `rayon`.
 The [`bumpalo-herd`](https://crates.io/crates/bumpalo-herd) crate provides a pool of `Bump`
 allocators for use in such situations.
 
-## `allocator_api` support
+## `feature(allocator_api)` support
 
-Bumpalo provides nightly' `allocator_api` support via the cargo feature `allocator_api`:
+The unsatble, nightly-only Rust `allocator_api` feature defines an `Allocator`
+trait and exposes custom allocators for `std` types. Bumpalo has a matching
+`allocator_api` cargo feature to enable implementing `Allocator` and using
+`Bump` with `std` collections. Note that, as `feature(allocator_api)` is
+unstable and only in nightly Rust, Bumpalo's matching `allocator_api` cargo
+feature should be considered unstable, and will not follow the semver
+conventions that the rest of the crate does.
 
- - Enable support in Cargo.toml:
+First, enable the `allocator_api` feature in your `Cargo.toml`:
+
 ```toml
 [dependencies]
 bumpalo = { version = "3.4.0", features = ["allocator_api"] }
 ```
 
- - Enable `allocator_api` in your `src/lib.rs`
+Next, enable the `allocator_api` nightly Rust feature in your `src/lib.rs` or `src/main.rs`:
+
 ```rust
 # #[cfg(feature = "allocator_api")]
 # {
@@ -176,7 +184,9 @@ bumpalo = { version = "3.4.0", features = ["allocator_api"] }
 # }
 ```
 
- - Allocator api usage with Bump:
+Finally, use `std` collections with `Bump`, so that their internal heap
+allocations are made within the given bump arena:
+
 ```
 # #![cfg_attr(feature = "allocator_api", feature(allocator_api))]
 # #[cfg(feature = "allocator_api")]
@@ -187,11 +197,11 @@ use bumpalo::Bump;
 // Create a new bump arena.
 let bump = Bump::new();
 
-// Create a `Vec` inside the bump arena.
-let mut c = Vec::new_in(&bump);
-c.push(0);
-c.push(1);
-c.push(2);
+// Create a `Vec` whose elements are allocated within the bump arena.
+let mut v = Vec::new_in(&bump);
+v.push(0);
+v.push(1);
+v.push(2);
 # }
 ```
 
@@ -201,7 +211,7 @@ This crate is guaranteed to compile on stable Rust 1.44 and up. It might compile
 with older versions but that may change in any new patch release.
 
 We reserve the right to increment the MSRV on minor releases, however we will strive
-to only do so it when done deliberately and for good reasons.
+to only do it deliberately and for good reasons.
 
  */
 
