@@ -100,6 +100,9 @@ Eventually [all `std` collection types will be parameterized by an
 allocator](https://github.com/rust-lang/rust/issues/42774) and we can remove
 this `collections` module and use the `std` versions.
 
+For unstable, nightly-only support for custom allocators in `std`, see the
+`allocator_api` section below.
+
 ## `bumpalo::boxed::Box`
 
 When the `"boxed"` cargo feature is enabled, a fork of `std::boxed::Box` library
@@ -155,6 +158,43 @@ example in `rayon`.
 The [`bumpalo-herd`](https://crates.io/crates/bumpalo-herd) crate provides a pool of `Bump`
 allocators for use in such situations.
 
+## `allocator_api` support
+
+Bumpalo provides nightly' `allocator_api` support via the cargo feature `allocator_api`:
+
+ - Enable support in Cargo.toml:
+```toml
+[dependencies]
+bumpalo = { version = "3.4.0", features = ["allocator_api"] }
+```
+
+ - Enable `allocator_api` in your `src/lib.rs`
+```rust
+# #[cfg(feature = "allocator_api")]
+# {
+#![feature(allocator_api)]
+# }
+```
+
+ - Allocator api usage with Bump:
+```
+# #![cfg_attr(feature = "allocator_api", feature(allocator_api))]
+# #[cfg(feature = "allocator_api")]
+# {
+#![feature(allocator_api)]
+use bumpalo::Bump;
+
+// Create a new bump arena.
+let bump = Bump::new();
+
+// Create a `Vec` inside the bump arena.
+let mut c = Vec::new_in(&bump);
+c.push(0);
+c.push(1);
+c.push(2);
+# }
+```
+
 ### Minimum Supported Rust Version (MSRV)
 
 This crate is guaranteed to compile on stable Rust 1.44 and up. It might compile
@@ -168,6 +208,10 @@ to only do so it when done deliberately and for good reasons.
 #![deny(missing_debug_implementations)]
 #![deny(missing_docs)]
 #![no_std]
+#![cfg_attr(
+    feature = "allocator_api",
+    feature(allocator_api, nonnull_slice_from_raw_parts)
+)]
 
 #[doc(hidden)]
 pub extern crate alloc as core_alloc;
@@ -187,6 +231,8 @@ use core::ptr::{self, NonNull};
 use core::slice;
 use core::str;
 use core_alloc::alloc::{alloc, dealloc, Layout};
+#[cfg(feature = "allocator_api")]
+use core_alloc::alloc::{AllocError, Allocator};
 
 /// An arena to bump allocate into.
 ///
@@ -1126,6 +1172,73 @@ impl Bump {
         let footer = footer.as_ref();
         footer.ptr.get() == ptr
     }
+
+    #[inline]
+    unsafe fn dealloc(&self, ptr: NonNull<u8>, layout: Layout) {
+        // If the pointer is the last allocation we made, we can reuse the bytes,
+        // otherwise they are simply leaked -- at least until somebody calls reset().
+        if self.is_last_allocation(ptr) {
+            let ptr = NonNull::new_unchecked(ptr.as_ptr().add(layout.size()));
+            self.current_chunk_footer.get().as_ref().ptr.set(ptr);
+        }
+    }
+
+    #[inline]
+    unsafe fn shrink(
+        &self,
+        ptr: NonNull<u8>,
+        layout: Layout,
+        new_size: usize,
+    ) -> Result<NonNull<u8>, alloc::AllocErr> {
+        let old_size = layout.size();
+        if self.is_last_allocation(ptr)
+                // Only reclaim the excess space (which requires a copy) if it
+                // is worth it: we are actually going to recover "enough" space
+                // and we can do a non-overlapping copy.
+                && new_size <= old_size / 2
+        {
+            let delta = old_size - new_size;
+            let footer = self.current_chunk_footer.get();
+            let footer = footer.as_ref();
+            footer
+                .ptr
+                .set(NonNull::new_unchecked(footer.ptr.get().as_ptr().add(delta)));
+            let new_ptr = footer.ptr.get();
+            // NB: we know it is non-overlapping because of the size check
+            // in the `if` condition.
+            ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), new_size);
+            return Ok(new_ptr);
+        } else {
+            return Ok(ptr);
+        }
+    }
+
+    #[inline]
+    unsafe fn grow(
+        &self,
+        ptr: NonNull<u8>,
+        layout: Layout,
+        new_size: usize,
+    ) -> Result<NonNull<u8>, alloc::AllocErr> {
+        let old_size = layout.size();
+        if self.is_last_allocation(ptr) {
+            // Try to allocate the delta size within this same block so we can
+            // reuse the currently allocated space.
+            let delta = new_size - old_size;
+            if let Some(p) =
+                self.try_alloc_layout_fast(layout_from_size_align(delta, layout.align()))
+            {
+                ptr::copy(ptr.as_ptr(), p.as_ptr(), old_size);
+                return Ok(p);
+            }
+        }
+
+        // Fallback: do a fresh allocation and copy the existing data into it.
+        let new_layout = layout_from_size_align(new_size, layout.align());
+        let new_ptr = self.try_alloc_layout(new_layout)?;
+        ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), old_size);
+        Ok(new_ptr)
+    }
 }
 
 /// An iterator over each chunk of allocated memory that
@@ -1183,12 +1296,7 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
 
     #[inline]
     unsafe fn dealloc(&mut self, ptr: NonNull<u8>, layout: Layout) {
-        // If the pointer is the last allocation we made, we can reuse the bytes,
-        // otherwise they are simply leaked -- at least until somebody calls reset().
-        if self.is_last_allocation(ptr) {
-            let ptr = NonNull::new_unchecked(ptr.as_ptr().add(layout.size()));
-            self.current_chunk_footer.get().as_ref().ptr.set(ptr);
-        }
+        Bump::dealloc(self, ptr, layout)
     }
 
     #[inline]
@@ -1201,49 +1309,51 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
         let old_size = layout.size();
 
         if old_size == 0 {
-            return self.alloc(layout);
+            return self.try_alloc_layout(layout);
         }
 
         if new_size <= old_size {
-            if self.is_last_allocation(ptr)
-                // Only reclaim the excess space (which requires a copy) if it
-                // is worth it: we are actually going to recover "enough" space
-                // and we can do a non-overlapping copy.
-                && new_size <= old_size / 2
-            {
-                let delta = old_size - new_size;
-                let footer = self.current_chunk_footer.get();
-                let footer = footer.as_ref();
-                footer
-                    .ptr
-                    .set(NonNull::new_unchecked(footer.ptr.get().as_ptr().add(delta)));
-                let new_ptr = footer.ptr.get();
-                // NB: we know it is non-overlapping because of the size check
-                // in the `if` condition.
-                ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), new_size);
-                return Ok(new_ptr);
-            } else {
-                return Ok(ptr);
-            }
+            self.shrink(ptr, layout, new_size)
+        } else {
+            self.grow(ptr, layout, new_size)
         }
+    }
+}
 
-        if self.is_last_allocation(ptr) {
-            // Try to allocate the delta size within this same block so we can
-            // reuse the currently allocated space.
-            let delta = new_size - old_size;
-            if let Some(p) =
-                self.try_alloc_layout_fast(layout_from_size_align(delta, layout.align()))
-            {
-                ptr::copy(ptr.as_ptr(), p.as_ptr(), old_size);
-                return Ok(p);
-            }
-        }
+#[cfg(feature = "allocator_api")]
+unsafe impl<'a> Allocator for &'a Bump {
+    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        self.try_alloc_layout(layout)
+            .map(|p| NonNull::slice_from_raw_parts(p, layout.size()))
+            .map_err(|_| AllocError)
+    }
 
-        // Fallback: do a fresh allocation and copy the existing data into it.
-        let new_layout = layout_from_size_align(new_size, layout.align());
-        let new_ptr = self.try_alloc_layout(new_layout)?;
-        ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), old_size);
-        Ok(new_ptr)
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+        Bump::dealloc(self, ptr, layout)
+    }
+
+    unsafe fn shrink(
+        &self,
+        ptr: NonNull<u8>,
+        old_layout: Layout,
+        new_layout: Layout,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+        let new_size = new_layout.size();
+        Bump::shrink(self, ptr, old_layout, new_size)
+            .map(|p| NonNull::slice_from_raw_parts(p, new_size))
+            .map_err(|_| AllocError)
+    }
+
+    unsafe fn grow(
+        &self,
+        ptr: NonNull<u8>,
+        old_layout: Layout,
+        new_layout: Layout,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+        let new_size = new_layout.size();
+        Bump::grow(self, ptr, old_layout, new_size)
+            .map(|p| NonNull::slice_from_raw_parts(p, new_size))
+            .map_err(|_| AllocError)
     }
 }
 

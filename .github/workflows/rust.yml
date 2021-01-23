@@ -15,6 +15,13 @@ jobs:
     strategy:
       matrix:
         rust_channel: ["stable", "beta", "nightly", "1.44.0"]
+        feature_set: ["--features collections,boxed"]
+        include:
+          - rust_channel: "nightly"
+            feature_set: "--all-features"
+        exclude:
+          - rust_channel: "nightly"
+            feature_set: "--features collections,boxed"
 
     runs-on: ubuntu-latest
     steps:
@@ -30,8 +37,8 @@ jobs:
 
     - name: Run tests (no features)
       run: cargo test --verbose
-    - name: Run tests (all features)
-      run: cargo test --verbose --all-features
+    - name: Run tests (features)
+      run: cargo test --verbose ${{matrix.feature_set}}
 
   valgrind:
     runs-on: ubuntu-latest
@@ -50,14 +57,14 @@ jobs:
       run: cargo install cargo-readme --vers "^3"
 
     - name: Install valgrind
-      run: sudo apt install valgrind
+      run: sudo apt update && sudo apt install valgrind
 
     - uses: actions/checkout@v2
 
     - name: Test under valgrind (no features)
       run: cargo test --verbose
-    - name: Test under valgrind (all features)
-      run: cargo test --verbose --all-features
+    - name: Test under valgrind (features)
+      run: cargo test --verbose --features collections,boxed
 
   benches:
     runs-on: ubuntu-latest
