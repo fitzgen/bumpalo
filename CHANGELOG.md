@@ -28,6 +28,34 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.6.0
+
+Released 2020-01-29.
+
+### Added
+
+* Added a few new flavors of allocation:
+
+  * `try_alloc` for fallible, by-value allocation
+
+  * `try_alloc_with` for fallible allocation with an infallible initializer
+    function
+
+  * `alloc_try_with` for infallible allocation with a fallible initializer
+    function
+
+  * `try_alloc_try_with` method for fallible allocation with a fallible
+    initializer function
+
+  We already have infallible, by-value allocation (`alloc`) and infallible
+  allocation with an infallible initializer (`alloc_with`). With these new
+  methods, we now have every combination covered.
+
+  Thanks to [Tamme Schichler](https://github.com/Tamschi) for contributing these
+  methods!
+
+--------------------------------------------------------------------------------
+
 ## 3.5.0
 
 Released 2020-01-22.
