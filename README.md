@@ -67,7 +67,9 @@ let scooter = bump.alloc(Doggo {
     scritches_required: true,
 });
 
+// Exclusive, mutable references to the just-allocated value are returned.
 assert!(scooter.scritches_required);
+scooter.age += 1;
 ```
 
 ### Collections
@@ -153,9 +155,9 @@ example in `rayon`.
 The [`bumpalo-herd`](https://crates.io/crates/bumpalo-herd) crate provides a pool of `Bump`
 allocators for use in such situations.
 
-### `feature(allocator_api)` support
+### Nightly Rust `feature(allocator_api)` Support
 
-The unsatble, nightly-only Rust `allocator_api` feature defines an `Allocator`
+The unstable, nightly-only Rust `allocator_api` feature defines an `Allocator`
 trait and exposes custom allocators for `std` types. Bumpalo has a matching
 `allocator_api` cargo feature to enable implementing `Allocator` and using
 `Bump` with `std` collections. Note that, as `feature(allocator_api)` is
