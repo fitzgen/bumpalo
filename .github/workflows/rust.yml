@@ -45,7 +45,7 @@ jobs:
 
     env:
       # Don't leak-check, as Rust globals tend to cause false positives.
-      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "valgrind --suppressions=valgrind.supp --leak-check=no --error-exitcode=1"
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "valgrind --suppressions=valgrind.supp --leak-check=no --error-exitcode=1 --gen-suppressions=all"
 
     steps:
     - name: Install rustup
