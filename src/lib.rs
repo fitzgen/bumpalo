@@ -66,7 +66,9 @@ let scooter = bump.alloc(Doggo {
     scritches_required: true,
 });
 
+// Exclusive, mutable references to the just-allocated value are returned.
 assert!(scooter.scritches_required);
+scooter.age += 1;
 ```
 
 ## Collections
@@ -158,9 +160,9 @@ example in `rayon`.
 The [`bumpalo-herd`](https://crates.io/crates/bumpalo-herd) crate provides a pool of `Bump`
 allocators for use in such situations.
 
-## `feature(allocator_api)` support
+## Nightly Rust `feature(allocator_api)` Support
 
-The unsatble, nightly-only Rust `allocator_api` feature defines an `Allocator`
+The unstable, nightly-only Rust `allocator_api` feature defines an `Allocator`
 trait and exposes custom allocators for `std` types. Bumpalo has a matching
 `allocator_api` cargo feature to enable implementing `Allocator` and using
 `Bump` with `std` collections. Note that, as `feature(allocator_api)` is
@@ -289,14 +291,19 @@ impl<E: Display> Display for AllocOrInitError<E> {
 /// then if you allocate that type with a `Bump`, you need to find a new way to
 /// clean up after it yourself.
 ///
-/// Potential solutions are
+/// Potential solutions are:
 ///
-/// * calling [`drop_in_place`][drop_in_place] or using
-///   [`std::mem::ManuallyDrop`][manuallydrop] to manually drop these types,
-/// * using [`bumpalo::collections::Vec`] instead of [`std::vec::Vec`]
-/// * using [`bumpalo::boxed::Box::new_in`] instead of [`Bump::alloc`],
-///   that will drop wrapped values similarly to [`std::boxed::Box`].
-/// * simply avoiding allocating these problematic types within a `Bump`.
+/// * Using [`bumpalo::boxed::Box::new_in`] instead of [`Bump::alloc`], that
+///   will drop wrapped values similarly to [`std::boxed::Box`]. Note that this
+///   requires enabling the `"boxed"` Cargo feature for this crate. **This is
+///   often the easiest solution.**
+///
+/// * Calling [`drop_in_place`][drop_in_place] or using
+///   [`std::mem::ManuallyDrop`][manuallydrop] to manually drop these types.
+///
+/// * Using [`bumpalo::collections::Vec`] instead of [`std::vec::Vec`].
+///
+/// * Avoiding allocating these problematic types within a `Bump`.
 ///
 /// Note that not calling `Drop` is memory safe! Destructors are never
 /// guaranteed to run in Rust, you can't rely on them for enforcing memory
@@ -327,7 +334,67 @@ impl<E: Display> Display for AllocOrInitError<E> {
 /// *s = "the bump allocator; and also is a buffalo";
 /// ```
 ///
-/// ## The `_with` Method Suffix
+/// ## Allocation Methods Come in Many Flavors
+///
+/// There are various allocation methods on `Bump`, the simplest being
+/// [`alloc`][Bump::alloc]. The others exist to satisfy some combination of
+/// fallible allocation and initialization. The allocation methods are
+/// summarized in the following table:
+///
+/// <table>
+///   <thead>
+///     <tr>
+///       <th></th>
+///       <th>Infallible Allocation</th>
+///       <th>Fallible Allocation</th>
+///     </tr>
+///   </thead>
+///     <tr>
+///       <th>By Value</th>
+///       <td><a href="#method.alloc"><code>alloc</code></a></td>
+///       <td><a href="#method.try_alloc"><code>try_alloc</code></a></td>
+///     </tr>
+///     <tr>
+///       <th>Infallible Initializer Function</th>
+///       <td><a href="#method.alloc_with"><code>alloc_with</code></a></td>
+///       <td><a href="#method.try_alloc_with"><code>try_alloc_with</code></a></td>
+///     </tr>
+///     <tr>
+///       <th>Fallible Initializer Function</th>
+///       <td><a href="#method.alloc_try_with"><code>alloc_try_with</code></a></td>
+///       <td><a href="#method.try_alloc_try_with"><code>try_alloc_try_with</code></a></td>
+///     </tr>
+///   <tbody>
+///   </tbody>
+/// </table>
+///
+/// ### Fallible Allocation: The `try_alloc_` Method Prefix
+///
+/// These allocation methods let you recover from out-of-memory (OOM)
+/// scenarioes, rather than raising a panic on OOM.
+///
+/// ```
+/// use bumpalo::Bump;
+///
+/// let bump = Bump::new();
+///
+/// match bump.try_alloc(MyStruct {
+///     // ...
+/// }) {
+///     Ok(my_struct) => {
+///         // Allocation succeeded.
+///     }
+///     Err(e) => {
+///         // Out of memory.
+///     }
+/// }
+///
+/// struct MyStruct {
+///     // ...
+/// }
+/// ```
+///
+/// ### Initializer Functions: The `_with` Method Suffix
 ///
 /// Calling one of the generic `…alloc(x)` methods is essentially equivalent to
 /// the matching [`…alloc_with(|| x)`](?search=alloc_with). However if you use
@@ -345,7 +412,7 @@ impl<E: Display> Display for AllocOrInitError<E> {
 /// enough to help the compiler realize that this optimization is valid and
 /// to construct `x` directly onto the heap.
 ///
-/// ### Warning
+/// #### Warning
 ///
 /// These functions critically depend on compiler optimizations to achieve their
 /// desired effect. This means that it is not an effective tool when compiling
@@ -355,7 +422,7 @@ impl<E: Display> Display for AllocOrInitError<E> {
 /// the value is constructed on the heap. To the best of our knowledge no such
 /// guarantee can be made in stable Rust as of 1.44.
 ///
-/// ### The `_try_with` Method Suffix
+/// ### Fallible Initialization: The `_try_with` Method Suffix
 ///
 /// The generic [`…alloc_try_with(|| x)`](?search=_try_with) methods behave
 /// like the purely `_with` suffixed methods explained above. However, they
