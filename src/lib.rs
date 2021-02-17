@@ -1800,6 +1800,17 @@ unsafe impl<'a> Allocator for &'a Bump {
             .map(|p| NonNull::slice_from_raw_parts(p, new_size))
             .map_err(|_| AllocError)
     }
+
+    unsafe fn grow_zeroed(
+        &self,
+        ptr: NonNull<u8>,
+        old_layout: Layout,
+        new_layout: Layout,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+        let mut ptr = self.grow(ptr, old_layout, new_layout)?;
+        ptr.as_mut()[old_layout.size()..].fill(0);
+        Ok(ptr)
+    }
 }
 
 #[cfg(test)]
