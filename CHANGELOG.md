@@ -28,6 +28,17 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.6.1
+
+Released 2020-02-18.
+
+### Added
+
+* Improved performance of `Bump`'s `Allocator::grow_zeroed` trait method
+  implementation. [#99](https://github.com/fitzgen/bumpalo/pull/99)
+
+--------------------------------------------------------------------------------
+
 ## 3.6.0
 
 Released 2020-01-29.
