@@ -96,16 +96,21 @@ fn allocator_grow_zeroed() {
     // Create a new bump arena.
     let ref bump = Bump::new();
 
-    // Make a first allocation
-    let first = Layout::from_size_align(4, 4).expect("create a layout");
-    let mut p = bump.allocate_zeroed(first).expect("allocate a first chunk");
+    // Make an initial allocation.
+    let first_layout = Layout::from_size_align(4, 4).expect("create a layout");
+    let mut p = bump
+        .allocate_zeroed(first_layout)
+        .expect("allocate a first chunk");
     let allocated = bump.allocated_bytes();
     unsafe { p.as_mut().fill(42) };
     let p = p.cast();
 
-    // Should we grow the last allocation, that just allocate new bytes, not more
-    let second = Layout::from_size_align(5, 8).expect("create a expanded layout");
-    let p = unsafe { bump.grow_zeroed(p, first, second) }.expect("allocate a second chunk");
+    // Grow the last allocation. This should just reserve a few more bytes
+    // within the current chunk, not allocate a whole new memory block within a
+    // new chunk.
+    let second_layout = Layout::from_size_align(8, 4).expect("create a expanded layout");
+    let p = unsafe { bump.grow_zeroed(p, first_layout, second_layout) }
+        .expect("should grow_zeroed okay");
     assert!(bump.allocated_bytes() <= allocated * 2);
-    assert_eq!(unsafe { p.as_ref() }, [42, 42, 42, 42, 0])
+    assert_eq!(unsafe { p.as_ref() }, [42, 42, 42, 42, 0, 0, 0, 0]);
 }
