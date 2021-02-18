@@ -2,9 +2,9 @@
 #![cfg(feature = "allocator_api")]
 use bumpalo::Bump;
 
-use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
+use std::alloc::{AllocError, Allocator, Layout};
 use std::ptr::NonNull;
-use std::alloc::{Layout, AllocError, Allocator};
+use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 
 #[derive(Debug)]
 struct AllocatorDebug {
@@ -26,8 +26,6 @@ impl AllocatorDebug {
         }
     }
 }
-
-
 
 unsafe impl Allocator for AllocatorDebug {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
@@ -63,7 +61,6 @@ unsafe impl Allocator for AllocatorDebug {
         let ref bump = self.bump;
         bump.grow(ptr, old_layout, new_layout)
     }
-
 }
 
 #[test]
@@ -92,4 +89,23 @@ fn allocator_api_push_a_bunch_of_items() {
     assert_eq!(b.deallocs.load(Relaxed), 0);
     drop(v);
     assert_eq!(b.deallocs.load(Relaxed), 1);
+}
+
+#[test]
+fn allocator_grow_zeroed() {
+    // Create a new bump arena.
+    let ref bump = Bump::new();
+
+    // Make a first allocation
+    let first = Layout::from_size_align(4, 4).expect("create a layout");
+    let mut p = bump.allocate_zeroed(first).expect("allocate a first chunk");
+    let allocated = bump.allocated_bytes();
+    unsafe { p.as_mut().fill(42) };
+    let p = p.cast();
+
+    // Should we grow the last allocation, that just allocate new bytes, not more
+    let second = Layout::from_size_align(5, 8).expect("create a expanded layout");
+    let p = unsafe { bump.grow_zeroed(p, first, second) }.expect("allocate a second chunk");
+    assert!(bump.allocated_bytes() <= allocated * 2);
+    assert_eq!(unsafe { p.as_ref() }, [42, 42, 42, 42, 0])
 }
