@@ -1443,38 +1443,23 @@ impl Bump {
             let current_layout = current_footer.as_ref().layout;
 
             // As a sane default, we want our new allocation to be about twice as
-            // big as the previous allocation.
-            let double_size_without_footer =
-                (current_layout.size() - FOOTER_SIZE).checked_mul(2)?;
-            let double_sized_new_footer = Bump::new_chunk(
-                Some(double_size_without_footer),
-                Some(layout),
-                Some(current_footer),
-            );
-
-            // If the allocator refuses to allocate the double sized chunk, it is most likely
-            // related to its size. We decide to only allocate the size of our current footer.
-            let previous_size_without_footer = current_layout.size() - FOOTER_SIZE;
-            let equal_sized_footer = double_sized_new_footer.or_else(|| {
-                Bump::new_chunk(
-                    Some(previous_size_without_footer),
-                    Some(layout),
-                    Some(current_footer),
-                )
+            // big as the previous allocation. If the global allocator refuses it,
+            // we try to divide it by half until it works or the requested size is
+            // smaller than the default footer size.
+            let mut base_size = (current_layout.size() - FOOTER_SIZE).checked_mul(2)?;
+            let sizes = iter::from_fn(|| {
+                if base_size >= DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER {
+                    let size = base_size;
+                    base_size = base_size / 2;
+                    Some(size)
+                } else {
+                    None
+                }
             });
 
-            // If the allocator refuses to allocate the previous chunk size.
-            // We decide to only allocate the half the size of it.
-            let half_size_without_footer = (current_layout.size() - FOOTER_SIZE) / 2;
-            let half_sized_footer = equal_sized_footer.or_else(|| {
-                Bump::new_chunk(
-                    Some(half_size_without_footer),
-                    Some(layout),
-                    Some(current_footer),
-                )
-            });
-
-            let new_footer = half_sized_footer?;
+            let new_footer = sizes
+                .filter_map(|size| Bump::new_chunk(Some(size), Some(layout), Some(current_footer)))
+                .next()?;
 
             debug_assert_eq!(
                 new_footer.as_ref().data.as_ptr() as usize % layout.align(),
