@@ -1455,13 +1455,26 @@ impl Bump {
             // If the allocator refuses to allocate the double sized chunk, it is most likely
             // related to its size. We decide to only allocate the size of our current footer.
             let previous_size_without_footer = current_layout.size() - FOOTER_SIZE;
-            let new_footer = double_sized_new_footer.or_else(|| {
+            let equal_sized_footer = double_sized_new_footer.or_else(|| {
                 Bump::new_chunk(
                     Some(previous_size_without_footer),
                     Some(layout),
                     Some(current_footer),
                 )
-            })?;
+            });
+
+            // If the allocator refuses to allocate the previous chunk size.
+            // We decide to only allocate the half the size of it.
+            let half_size_without_footer = (current_layout.size() - FOOTER_SIZE) / 2;
+            let half_sized_footer = equal_sized_footer.or_else(|| {
+                Bump::new_chunk(
+                    Some(half_size_without_footer),
+                    Some(layout),
+                    Some(current_footer),
+                )
+            });
+
+            let new_footer = half_sized_footer?;
 
             debug_assert_eq!(
                 new_footer.as_ref().data.as_ptr() as usize % layout.align(),
