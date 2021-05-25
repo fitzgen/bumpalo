@@ -1444,10 +1444,10 @@ impl Bump {
             let current_footer = self.current_chunk_footer.get();
             let current_layout = current_footer.as_ref().layout;
 
-            // As a sane default, we want our new allocation to be about twice as
-            // big as the previous allocation. If the global allocator refuses it,
-            // we try to divide it by half until it works or the requested size is
-            // smaller than the default footer size.
+            // By default, we want our new chunk to be about twice as big
+            // as the previous chunk. If the global allocator refuses it,
+            // we try to divide it by half until it works or the requested
+            // size is smaller than the default footer size.
             let mut base_size = (current_layout.size() - FOOTER_SIZE).checked_mul(2)?;
             let sizes = iter::from_fn(|| {
                 if base_size >= DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER {
