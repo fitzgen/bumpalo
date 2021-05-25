@@ -1449,8 +1449,9 @@ impl Bump {
             // we try to divide it by half until it works or the requested
             // size is smaller than the default footer size.
             let mut base_size = (current_layout.size() - FOOTER_SIZE).checked_mul(2)?;
+            let min_new_chunk_size = layout.size().max(DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER);
             let sizes = iter::from_fn(|| {
-                if base_size >= DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER {
+                if base_size >= min_new_chunk_size {
                     let size = base_size;
                     base_size = base_size / 2;
                     Some(size)
