@@ -674,6 +674,8 @@ impl Bump {
                 .unwrap_or_else(allocation_size_overflow);
             let layout = layout_from_size_align(size, align);
 
+            debug_assert!(requested_layout.map_or(true, |layout| size >= layout.size()));
+
             let data = alloc(layout);
             let data = NonNull::new(data)?;
 
