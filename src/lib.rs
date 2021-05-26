@@ -1448,8 +1448,10 @@ impl Bump {
             // as the previous chunk. If the global allocator refuses it,
             // we try to divide it by half until it works or the requested
             // size is smaller than the default footer size.
-            let mut base_size = (current_layout.size() - FOOTER_SIZE).checked_mul(2)?;
             let min_new_chunk_size = layout.size().max(DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER);
+            let mut base_size = (current_layout.size() - FOOTER_SIZE)
+                .checked_mul(2)?
+                .max(min_new_chunk_size);
             let sizes = iter::from_fn(|| {
                 if base_size >= min_new_chunk_size {
                     let size = base_size;
