@@ -632,20 +632,13 @@ impl Bump {
     /// layout of the allocation request that triggered us to fall back to
     /// allocating a new chunk of memory.
     fn new_chunk(
-        old_size_with_footer: Option<usize>,
+        new_size_without_footer: Option<usize>,
         requested_layout: Option<Layout>,
         prev: Option<NonNull<ChunkFooter>>,
     ) -> Option<NonNull<ChunkFooter>> {
         unsafe {
-            // As a sane default, we want our new allocation to be about twice as
-            // big as the previous allocation
             let mut new_size_without_footer =
-                if let Some(old_size_with_footer) = old_size_with_footer {
-                    let old_size_without_footer = old_size_with_footer - FOOTER_SIZE;
-                    old_size_without_footer.checked_mul(2)?
-                } else {
-                    DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER
-                };
+                new_size_without_footer.unwrap_or(DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER);
 
             // We want to have CHUNK_ALIGN or better alignment
             let mut align = CHUNK_ALIGN;
@@ -681,7 +674,7 @@ impl Bump {
                 .unwrap_or_else(allocation_size_overflow);
             let layout = layout_from_size_align(size, align);
 
-            debug_assert!(size >= old_size_with_footer.unwrap_or(0) * 2);
+            debug_assert!(requested_layout.map_or(true, |layout| size >= layout.size()));
 
             let data = alloc(layout);
             let data = NonNull::new(data)?;
@@ -1450,11 +1443,29 @@ impl Bump {
             // Get a new chunk from the global allocator.
             let current_footer = self.current_chunk_footer.get();
             let current_layout = current_footer.as_ref().layout;
-            let new_footer = Bump::new_chunk(
-                Some(current_layout.size()),
-                Some(layout),
-                Some(current_footer),
-            )?;
+
+            // By default, we want our new chunk to be about twice as big
+            // as the previous chunk. If the global allocator refuses it,
+            // we try to divide it by half until it works or the requested
+            // size is smaller than the default footer size.
+            let min_new_chunk_size = layout.size().max(DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER);
+            let mut base_size = (current_layout.size() - FOOTER_SIZE)
+                .checked_mul(2)?
+                .max(min_new_chunk_size);
+            let sizes = iter::from_fn(|| {
+                if base_size >= min_new_chunk_size {
+                    let size = base_size;
+                    base_size = base_size / 2;
+                    Some(size)
+                } else {
+                    None
+                }
+            });
+
+            let new_footer = sizes
+                .filter_map(|size| Bump::new_chunk(Some(size), Some(layout), Some(current_footer)))
+                .next()?;
+
             debug_assert_eq!(
                 new_footer.as_ref().data.as_ptr() as usize % layout.align(),
                 0
