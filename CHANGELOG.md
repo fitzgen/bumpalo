@@ -28,6 +28,26 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.7.0
+
+Released 2020-05-28.
+
+### Added
+
+* Added `Borrow` and `BorrowMut` trait implementations for
+  `bumpalo::collections::Vec` and
+  `bumpalo::collections::String`. [#108](https://github.com/fitzgen/bumpalo/pull/108)
+
+### Changed
+
+* When allocating a new chunk fails, don't immediately give up. Instead, try
+  allocating a chunk that is half that size, and if that fails, then try half of
+  *that* size, etc until either we successfully allocate a chunk or we fail to
+  allocate the minimum chunk size and then finally give
+  up. [#111](https://github.com/fitzgen/bumpalo/pull/111)
+
+--------------------------------------------------------------------------------
+
 ## 3.6.1
 
 Released 2020-02-18.
