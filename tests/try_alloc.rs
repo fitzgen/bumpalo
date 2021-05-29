@@ -223,7 +223,7 @@ fn main() {
                 assert!(vec.try_reserve(chunk_cap).is_ok());
                 assert!(vec.try_reserve_exact(chunk_cap).is_ok());
 
-                // Fails to allocate futher since allocator returns null
+                // Fails to allocate further since allocator returns null
                 assert!(vec.try_reserve(chunk_cap + 1).is_err());
                 assert!(vec.try_reserve_exact(chunk_cap + 1).is_err());
             });
