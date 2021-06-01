@@ -539,7 +539,7 @@ const MALLOC_OVERHEAD: usize = 16;
 // we want to request a chunk of memory that has at least X bytes usable for
 // allocations (where X is aligned to CHUNK_ALIGN), then we expect that the
 // after adding a footer, malloc overhead and alignment, the chunk of memory
-// the allocator actually sets asside for us is X+OVERHEAD rounded up to the
+// the allocator actually sets aside for us is X+OVERHEAD rounded up to the
 // nearest suitable size boundary.
 const OVERHEAD: usize = (MALLOC_OVERHEAD + FOOTER_SIZE + (CHUNK_ALIGN - 1)) & !(CHUNK_ALIGN - 1);
 
