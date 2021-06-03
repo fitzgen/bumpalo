@@ -182,6 +182,38 @@ fn test_reset() {
 }
 
 #[test]
+fn test_reset_back() {
+    let mut b = Bump::new();
+
+    b.alloc(0u64);
+
+    let frist_chunk = b.iter_allocated_chunks().next().unwrap();
+    let start = frist_chunk.as_ptr() as usize;
+
+    assert_eq!(b.iter_allocated_chunks().count(), 1);
+
+    for i in 1u64..10_000 {
+        b.alloc(i);
+    }
+
+    assert!(b.iter_allocated_chunks().count() > 1);
+
+    b.reset_back();
+
+    assert_eq!(
+        start,
+        b.alloc(0u64) as *const u64 as usize
+    );
+
+    assert_eq!(
+        start - mem::size_of::<u64>(),
+        b.alloc(0u64) as *const u64 as usize
+    );
+
+    assert_eq!(b.iter_allocated_chunks().count(), 1);
+}
+
+#[test]
 fn test_alignment() {
     for &alignment in &[2, 4, 8, 16, 32, 64] {
         let b = Bump::with_capacity(513);

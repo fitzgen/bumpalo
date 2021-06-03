@@ -765,6 +765,61 @@ impl Bump {
         }
     }
 
+    /// Reset this bump allocator.
+    ///
+    /// Like `reset`, but keep the last chunk instead of the first chunk.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let mut bump = bumpalo::Bump::new();
+    ///
+    /// // Allocate a bunch of things.
+    /// {
+    ///     for i in 0..100 {
+    ///         bump.alloc(i);
+    ///     }
+    /// }
+    ///
+    /// // Reset the arena.
+    /// bump.reset_back();
+    ///
+    /// // Allocate some new things in the space previously occupied by the
+    /// // original things.
+    /// for j in 200..400 {
+    ///     bump.alloc(j);
+    /// }
+    ///```
+    pub fn reset_back(&mut self) {
+        unsafe {
+            let mut footer = self.current_chunk_footer.get();
+
+            while let Some(prev_footer) = footer.as_ref().prev.replace(None) {
+                let f = mem::replace(&mut footer, prev_footer);
+                dealloc(f.as_ref().data.as_ptr(), f.as_ref().layout);
+            }
+
+            footer.as_ref().ptr.set(footer.cast());
+
+            self.current_chunk_footer.set(footer);
+
+            debug_assert!(
+                self.current_chunk_footer
+                    .get()
+                    .as_ref()
+                    .prev
+                    .get()
+                    .is_none(),
+                "We should only have a single chunk"
+            );
+            debug_assert_eq!(
+                self.current_chunk_footer.get().as_ref().ptr.get(),
+                self.current_chunk_footer.get().cast(),
+                "Our chunk's bump finger should be reset to the start of its allocation"
+            );
+        }
+    }
+
     /// Allocate an object in this `Bump` and return an exclusive reference to
     /// it.
     ///
