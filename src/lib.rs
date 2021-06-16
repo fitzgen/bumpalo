@@ -243,9 +243,11 @@ use core::mem;
 use core::ptr::{self, NonNull};
 use core::slice;
 use core::str;
-use core_alloc::alloc::{alloc, dealloc, Layout};
+use core_alloc::alloc::Layout;
+#[cfg(not(feature = "allocator_api"))]
+use core_alloc::alloc::{alloc, dealloc};
 #[cfg(feature = "allocator_api")]
-use core_alloc::alloc::{AllocError, Allocator};
+use core_alloc::alloc::{AllocError, Allocator, Global};
 
 /// An error returned from [`Bump::try_alloc_try_with`].
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -463,9 +465,17 @@ impl<E: Display> Display for AllocOrInitError<E> {
 /// the matching `bump.…alloc(x?)` in case of initialization failure. If this
 /// happens frequently, using the plain un-suffixed method may perform better.
 #[derive(Debug)]
-pub struct Bump {
+pub struct Bump<
+    #[cfg(feature = "allocator_api")] A: Allocator = Global,
+    #[cfg(not(feature = "allocator_api"))] A = (),
+> {
     // The current chunk we are bump allocating within.
     current_chunk_footer: Cell<NonNull<ChunkFooter>>,
+
+    #[cfg(feature = "allocator_api")]
+    allocator: A,
+    #[cfg(not(feature = "allocator_api"))]
+    _allocator: PhantomData<A>,
 }
 
 #[repr(C)]
@@ -491,7 +501,17 @@ impl Default for Bump {
     }
 }
 
-impl Drop for Bump {
+#[cfg(feature = "allocator_api")]
+impl<A: Allocator> Drop for Bump<A> {
+    fn drop(&mut self) {
+        unsafe {
+            dealloc_chunk_list(Some(self.current_chunk_footer.get()), &self.allocator);
+        }
+    }
+}
+
+#[cfg(not(feature = "allocator_api"))]
+impl<A> Drop for Bump<A> {
     fn drop(&mut self) {
         unsafe {
             dealloc_chunk_list(Some(self.current_chunk_footer.get()));
@@ -500,10 +520,23 @@ impl Drop for Bump {
 }
 
 #[inline]
-unsafe fn dealloc_chunk_list(mut footer: Option<NonNull<ChunkFooter>>) {
+unsafe fn dealloc_chunk_list(
+    mut footer: Option<NonNull<ChunkFooter>>,
+    #[cfg(feature = "allocator_api")] allocator: &impl Allocator,
+) {
     while let Some(f) = footer {
         footer = f.as_ref().prev.get();
-        dealloc(f.as_ref().data.as_ptr(), f.as_ref().layout);
+
+        let chunk_ptr = f.as_ref().data.as_ptr();
+        let chunk_layout = f.as_ref().layout;
+
+        #[cfg(feature = "allocator_api")]
+        {
+            let chunk_ptr = NonNull::new(chunk_ptr).unwrap();
+            allocator.deallocate(chunk_ptr, chunk_layout);
+        }
+        #[cfg(not(feature = "allocator_api"))]
+        dealloc(chunk_ptr, chunk_layout);
     }
 }
 
@@ -568,6 +601,70 @@ fn allocation_size_overflow<T>() -> T {
     panic!("requested allocation size overflowed")
 }
 
+#[cfg(feature = "allocator_api")]
+impl<A: Allocator> Bump<A> {
+    /// Construct a new arena to bump allocate into using allocator `A`.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new_in(Global);
+    /// # let _ = bump;
+    /// ```
+    pub fn new_in(alloc: A) -> Self {
+        Self::with_capacity_in(0, alloc)
+    }
+
+    /// Attempt to construct a new arena to bump allocate into using allocator `A`.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::try_new_in(Global);
+    /// # let _ = bump.unwrap();
+    /// ```
+    pub fn try_new_in(alloc: A) -> Result<Self, alloc::AllocErr> {
+        Self::try_with_capacity_in(0, alloc)
+    }
+
+    /// Construct a new arena with the specified byte capacity to bump allocate into using allocator `A`.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::with_capacity_in(100, Global);
+    /// # let _ = bump;
+    /// ```
+    pub fn with_capacity_in(capacity: usize, alloc: A) -> Self {
+        Self::try_with_capacity_in(capacity, alloc).unwrap_or_else(|_| oom())
+    }
+
+    /// Attempt to construct a new arena with the specified byte capacity to bump allocate into using allocator `A`.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::try_with_capacity_in(100, Global);
+    /// # let _ = bump.unwrap();
+    /// ```
+    pub fn try_with_capacity_in(capacity: usize, alloc: A) -> Result<Self, alloc::AllocErr> {
+        let chunk_footer = Self::new_chunk(
+            None,
+            Some(unsafe { layout_from_size_align(capacity, 1) }),
+            None,
+            #[cfg(feature = "allocator_api")]
+            &alloc,
+        )
+        .ok_or(alloc::AllocErr {})?;
+
+        Ok(Bump {
+            current_chunk_footer: Cell::new(chunk_footer),
+
+            allocator: alloc,
+        })
+    }
+}
+
 impl Bump {
     /// Construct a new arena to bump allocate into.
     ///
@@ -618,14 +715,25 @@ impl Bump {
             None,
             Some(unsafe { layout_from_size_align(capacity, 1) }),
             None,
+            #[cfg(feature = "allocator_api")]
+            &Global,
         )
         .ok_or(alloc::AllocErr {})?;
 
         Ok(Bump {
             current_chunk_footer: Cell::new(chunk_footer),
+
+            #[cfg(feature = "allocator_api")]
+            allocator: Global,
+            #[cfg(not(feature = "allocator_api"))]
+            _allocator: PhantomData,
         })
     }
+}
 
+impl<#[cfg(feature = "allocator_api")] A: Allocator, #[cfg(not(feature = "allocator_api"))] A>
+    Bump<A>
+{
     /// Allocate a new chunk and return its initialized footer.
     ///
     /// If given, `layouts` is a tuple of the current chunk size and the
@@ -635,6 +743,7 @@ impl Bump {
         new_size_without_footer: Option<usize>,
         requested_layout: Option<Layout>,
         prev: Option<NonNull<ChunkFooter>>,
+        #[cfg(feature = "allocator_api")] allocator: &impl Allocator,
     ) -> Option<NonNull<ChunkFooter>> {
         unsafe {
             let mut new_size_without_footer =
@@ -676,8 +785,16 @@ impl Bump {
 
             debug_assert!(requested_layout.map_or(true, |layout| size >= layout.size()));
 
-            let data = alloc(layout);
-            let data = NonNull::new(data)?;
+            #[cfg(feature = "allocator_api")]
+            let data = {
+                let data = allocator.allocate(layout).ok()?;
+                data.cast::<u8>()
+            };
+            #[cfg(not(feature = "allocator_api"))]
+            let data = {
+                let data = alloc(layout);
+                NonNull::new(data)?
+            };
 
             // The `ChunkFooter` is at the end of the chunk.
             let footer_ptr = data.as_ptr() as usize + new_size_without_footer;
@@ -743,6 +860,10 @@ impl Bump {
 
             // Deallocate all chunks except the current one
             let prev_chunk = cur_chunk.as_ref().prev.replace(None);
+
+            #[cfg(feature = "allocator_api")]
+            dealloc_chunk_list(prev_chunk, &self.allocator);
+            #[cfg(not(feature = "allocator_api"))]
             dealloc_chunk_list(prev_chunk);
 
             // Reset the bump finger to the end of the chunk.
@@ -1463,7 +1584,15 @@ impl Bump {
             });
 
             let new_footer = sizes
-                .filter_map(|size| Bump::new_chunk(Some(size), Some(layout), Some(current_footer)))
+                .filter_map(|size| {
+                    Bump::<A>::new_chunk(
+                        Some(size),
+                        Some(layout),
+                        Some(current_footer),
+                        #[cfg(feature = "allocator_api")]
+                        &self.allocator,
+                    )
+                })
                 .next()?;
 
             debug_assert_eq!(
@@ -1745,7 +1874,12 @@ fn oom() -> ! {
     panic!("out of memory")
 }
 
-unsafe impl<'a> alloc::Alloc for &'a Bump {
+unsafe impl<
+        'a,
+        #[cfg(feature = "allocator_api")] A: Allocator,
+        #[cfg(not(feature = "allocator_api"))] A,
+    > alloc::Alloc for &'a Bump<A>
+{
     #[inline(always)]
     unsafe fn alloc(&mut self, layout: Layout) -> Result<NonNull<u8>, alloc::AllocErr> {
         self.try_alloc_layout(layout)
@@ -1753,7 +1887,7 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
 
     #[inline]
     unsafe fn dealloc(&mut self, ptr: NonNull<u8>, layout: Layout) {
-        Bump::dealloc(self, ptr, layout)
+        Bump::<A>::dealloc(self, ptr, layout)
     }
 
     #[inline]
@@ -1778,7 +1912,7 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
 }
 
 #[cfg(feature = "allocator_api")]
-unsafe impl<'a> Allocator for &'a Bump {
+unsafe impl<'a, A: Allocator> Allocator for &'a Bump<A> {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         self.try_alloc_layout(layout)
             .map(|p| NonNull::slice_from_raw_parts(p, layout.size()))
@@ -1786,7 +1920,7 @@ unsafe impl<'a> Allocator for &'a Bump {
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        Bump::dealloc(self, ptr, layout)
+        Bump::<A>::dealloc(self, ptr, layout)
     }
 
     unsafe fn shrink(
@@ -1796,7 +1930,7 @@ unsafe impl<'a> Allocator for &'a Bump {
         new_layout: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
         let new_size = new_layout.size();
-        Bump::shrink(self, ptr, old_layout, new_size)
+        Bump::<A>::shrink(self, ptr, old_layout, new_size)
             .map(|p| NonNull::slice_from_raw_parts(p, new_size))
             .map_err(|_| AllocError)
     }
@@ -1808,7 +1942,7 @@ unsafe impl<'a> Allocator for &'a Bump {
         new_layout: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
         let new_size = new_layout.size();
-        Bump::grow(self, ptr, old_layout, new_size)
+        Bump::<A>::grow(self, ptr, old_layout, new_size)
             .map(|p| NonNull::slice_from_raw_parts(p, new_size))
             .map_err(|_| AllocError)
     }
@@ -1900,5 +2034,15 @@ mod tests {
             let l3 = Layout::from_size_align(24000, 4).unwrap();
             b.realloc(p1, l3, 48000).unwrap();
         }
+    }
+
+    #[cfg(feature = "allocator_api")]
+    #[test]
+    fn inception() {
+        let bump_base = &Bump::new();
+        let bump_custom = &Bump::new_in(bump_base);
+
+        let answer = bump_custom.alloc(42);
+        assert_eq!(*answer, 42);
     }
 }
