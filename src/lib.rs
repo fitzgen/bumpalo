@@ -785,6 +785,13 @@ impl Bump {
         self.alloc_with(|| val)
     }
 
+    /// Simiar to `alloc`, but rewrite the memory in place without any allocation.
+    #[inline(always)]
+    #[allow(clippy::mut_from_ref)]
+    pub fn alloc_in_place<T>(&self, place: NonNull<u8>, val: T) -> &mut T {
+        self.alloc_with_inplace(place, || val)
+    }
+
     /// Try to allocate an object in this `Bump` and return an exclusive
     /// reference to it.
     ///
@@ -853,6 +860,28 @@ impl Bump {
         unsafe {
             let p = self.alloc_layout(layout);
             let p = p.as_ptr() as *mut T;
+            inner_writer(p, f);
+            &mut *p
+        }
+    }
+
+    /// Similar to alloc_with, but rewrite the memory in place without any allocation.
+    #[inline(always)]
+    #[allow(clippy::mut_from_ref)]
+    pub fn alloc_with_inplace<F, T>(&self, place: NonNull<u8>, f: F) -> &mut T
+    where
+        F: FnOnce() -> T,
+    {
+        #[inline(always)]
+        unsafe fn inner_writer<T, F>(ptr: *mut T, f: F)
+        where
+            F: FnOnce() -> T,
+        {
+            ptr::write(ptr, f())
+        }
+
+        unsafe {
+            let p = place.as_ptr() as *mut T;
             inner_writer(p, f);
             &mut *p
         }
@@ -1899,6 +1928,29 @@ mod tests {
             let p1 = b.realloc(p1, l1, 24000).unwrap();
             let l3 = Layout::from_size_align(24000, 4).unwrap();
             b.realloc(p1, l3, 48000).unwrap();
+        }
+    }
+
+    #[test]
+    fn inplace_allocate() {
+        use alloc::Alloc;
+
+        let b = &Bump::new();
+
+        unsafe {
+            let layout = Layout::from_size_align(12000, 4).unwrap();
+            let p1 = b.alloc_layout(layout);
+
+            let c = b.alloc_with_inplace(p1.clone(), || 3u8);
+            assert_eq!(*c, 3);
+            b.alloc_with_inplace(p1.clone(), || 4u8);
+            assert_eq!(*c, 4);
+
+            let next = NonNull::new_unchecked(p1.as_ptr().offset(-4));
+            let d = b.alloc_with_inplace(next.clone(), || 123u32);
+            assert_eq!(*d, 123);
+            b.alloc_with_inplace(next.clone(), || 456u32);
+            assert_eq!(*d, 456);
         }
     }
 }
