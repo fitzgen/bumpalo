@@ -788,7 +788,7 @@ impl Bump {
     /// Simiar to `alloc`, but rewrite the memory in place without any allocation.
     #[inline(always)]
     #[allow(clippy::mut_from_ref)]
-    pub fn alloc_in_place<T>(&self, place: NonNull<u8>, val: T) -> &mut T {
+    pub unsafe fn alloc_in_place<T>(&self, place: NonNull<u8>, val: T) -> &mut T {
         self.alloc_with_inplace(place, || val)
     }
 
@@ -868,7 +868,7 @@ impl Bump {
     /// Similar to alloc_with, but rewrite the memory in place without any allocation.
     #[inline(always)]
     #[allow(clippy::mut_from_ref)]
-    pub fn alloc_with_inplace<F, T>(&self, place: NonNull<u8>, f: F) -> &mut T
+    pub unsafe fn alloc_with_inplace<F, T>(&self, place: NonNull<u8>, f: F) -> &mut T
     where
         F: FnOnce() -> T,
     {
@@ -880,11 +880,9 @@ impl Bump {
             ptr::write(ptr, f())
         }
 
-        unsafe {
-            let p = place.as_ptr() as *mut T;
-            inner_writer(p, f);
-            &mut *p
-        }
+        let p = place.as_ptr() as *mut T;
+        inner_writer(p, f);
+        &mut *p
     }
 
     /// Tries to pre-allocate space for an object in this `Bump`, initializes
@@ -1933,23 +1931,21 @@ mod tests {
 
     #[test]
     fn inplace_allocate() {
-        use alloc::Alloc;
-
         let b = &Bump::new();
 
         unsafe {
             let layout = Layout::from_size_align(12000, 4).unwrap();
             let p1 = b.alloc_layout(layout);
 
-            let c = b.alloc_with_inplace(p1.clone(), || 3u8);
+            let c = b.alloc_with_inplace(p1, || 3u8);
             assert_eq!(*c, 3);
             b.alloc_with_inplace(p1.clone(), || 4u8);
             assert_eq!(*c, 4);
 
             let next = NonNull::new_unchecked(p1.as_ptr().offset(-4));
-            let d = b.alloc_with_inplace(next.clone(), || 123u32);
+            let d = b.alloc_with_inplace(next, || 123u32);
             assert_eq!(*d, 123);
-            b.alloc_with_inplace(next.clone(), || 456u32);
+            b.alloc_with_inplace(next, || 456u32);
             assert_eq!(*d, 456);
         }
     }
