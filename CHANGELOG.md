@@ -28,6 +28,17 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.7.1
+
+Released 2021-09-17.
+
+### Changed
+
+* The packaged crate uploaded to crates.io when `bumpalo` is published is now
+  smaller, thanks to excluding unnecessary files.
+
+--------------------------------------------------------------------------------
+
 ## 3.7.0
 
 Released 2020-05-28.
