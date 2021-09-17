@@ -9,6 +9,7 @@ name = "bumpalo"
 readme = "./README.md"
 repository = "https://github.com/fitzgen/bumpalo"
 version = "3.7.0"
+exclude = ["/.github/*", "/benches", "/tests", "valgrind.supp", "bumpalo.png"]
 
 [package.metadata.docs.rs]
 all-features = true
