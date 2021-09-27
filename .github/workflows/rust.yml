@@ -73,19 +73,3 @@ jobs:
 
     - name: Check that benches build
       run: cargo check --benches --all-features
-
-  cargo_readme_up_to_date:
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Install rustup
-      run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile=minimal
-    - name: Install rust channel
-      run: rustup install stable && rustup default stable
-    - name: Install `cargo readme`
-      run: cargo install cargo-readme --vers "^3"
-    - uses: actions/checkout@v2
-    - name: Run `cargo readme`
-      run: cargo readme > README.md
-    - name: Check if up to date; run `cargo readme > README.md` and commit if this fails
-      run: git diff --quiet
