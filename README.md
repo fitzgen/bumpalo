@@ -203,8 +203,8 @@ v.push(2);
 
 #### Minimum Supported Rust Version (MSRV)
 
-This crate is guaranteed to compile on stable Rust 1.51 and up. It might compile
-with older versions but that may change in any new patch release.
+This crate is guaranteed to compile on stable Rust **1.54** and up. It might
+compile with older versions but that may change in any new patch release.
 
 We reserve the right to increment the MSRV on minor releases, however we will strive
 to only do it deliberately and for good reasons.
