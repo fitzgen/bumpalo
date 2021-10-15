@@ -1579,7 +1579,27 @@ impl Bump {
     ///     assert_eq!(chunk[2].assume_init(), b'a');
     /// }
     /// ```
+    #[inline(always)]
     pub fn iter_allocated_chunks(&mut self) -> ChunkIter<'_> {
+        // SAFE: `self` is borrowed mutably.
+        unsafe { self.iter_allocated_chunks_unchecked() }
+    }
+
+    /// Returns an iterator over each chunk of allocated memory that this arena
+    /// has bump allocated into.
+    ///
+    /// This is the same as [`iter_allocated_chunks()`](Bump::iter_allocated_chunks)
+    /// but does not require exclusive access to the arena, and so the caller is
+    /// responsible for ensuring that the arena is not modified while iterating.
+    ///
+    /// ## Safety
+    ///
+    /// This arena must not be allocated from while the returned iterator is
+    /// alive.
+    ///
+    /// In addition, all of the caveats when reading the chunk data from
+    /// [`iter_allocated_chunks()`](Bump::iter_allocated_chunks) still apply.
+    pub unsafe fn iter_allocated_chunks_unchecked(&self) -> ChunkIter<'_> {
         ChunkIter {
             footer: Some(self.current_chunk_footer.get()),
             bump: PhantomData,
