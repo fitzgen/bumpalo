@@ -1594,8 +1594,9 @@ impl Bump {
     ///
     /// ## Safety
     ///
-    /// This arena must not be allocated from while the returned iterator is
-    /// alive.
+    /// Must not be called if there currently exist any mutable references to
+    /// data allocated from this arena. This arena must not be allocated from
+    /// while the returned iterator is alive.
     ///
     /// In addition, all of the caveats when reading the chunk data from
     /// [`iter_allocated_chunks()`](Bump::iter_allocated_chunks) still apply.
