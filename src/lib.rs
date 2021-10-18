@@ -485,6 +485,19 @@ struct ChunkFooter {
     ptr: Cell<NonNull<u8>>,
 }
 
+impl ChunkFooter {
+    // Returns the start and length of the currently allocated region of this
+    // chunk.
+    fn as_raw_parts(&self) -> (*const u8, usize) {
+        let data = self.data.as_ptr() as usize;
+        let ptr = self.ptr.get().as_ptr() as usize;
+        debug_assert!(data <= ptr);
+        debug_assert!(ptr <= self as *const _ as usize);
+        let len = self as *const _ as usize - ptr;
+        (ptr as *const u8, len)
+    }
+}
+
 impl Default for Bump {
     fn default() -> Bump {
         Bump::new()
@@ -1586,6 +1599,24 @@ impl Bump {
         }
     }
 
+    /// TODO
+    ///
+    /// ## Safety
+    ///
+    /// Allocations from this arena must not be performed while the returned
+    /// iterator is alive. If reading the chunk data (or casting to a reference)
+    /// the caller must ensure that there exist no mutable references to
+    /// previously allocated data.
+    ///
+    /// In addition, all of the caveats when reading the chunk data from
+    /// [`iter_allocated_chunks()`](Bump::iter_allocated_chunks) still apply.
+    pub unsafe fn iter_allocated_chunks_raw(&self) -> ChunkRawIter<'_> {
+        ChunkRawIter {
+            footer: Some(self.current_chunk_footer.get()),
+            bump: PhantomData,
+        }
+    }
+
     /// Calculates the number of bytes currently allocated across all chunks in
     /// this bump arena.
     ///
@@ -1724,12 +1755,7 @@ impl<'a> Iterator for ChunkIter<'a> {
         unsafe {
             let foot = self.footer?;
             let foot = foot.as_ref();
-            let data = foot.data.as_ptr() as usize;
-            let ptr = foot.ptr.get().as_ptr() as usize;
-            debug_assert!(data <= ptr);
-            debug_assert!(ptr <= foot as *const _ as usize);
-
-            let len = foot as *const _ as usize - ptr;
+            let (ptr, len) = foot.as_raw_parts();
             let slice = slice::from_raw_parts(ptr as *const mem::MaybeUninit<u8>, len);
             self.footer = foot.prev.get();
             Some(slice)
@@ -1738,6 +1764,28 @@ impl<'a> Iterator for ChunkIter<'a> {
 }
 
 impl<'a> iter::FusedIterator for ChunkIter<'a> {}
+
+/// TODO
+#[derive(Debug)]
+pub struct ChunkRawIter<'a> {
+    footer: Option<NonNull<ChunkFooter>>,
+    bump: PhantomData<&'a Bump>,
+}
+
+impl Iterator for ChunkRawIter<'_> {
+    type Item = (*mut u8, usize);
+    fn next(&mut self) -> Option<(*mut u8, usize)> {
+        unsafe {
+            let foot = self.footer?;
+            let foot = foot.as_ref();
+            let (ptr, len) = foot.as_raw_parts();
+            self.footer = foot.prev.get();
+            Some((ptr as *mut u8, len))
+        }
+    }
+}
+
+impl iter::FusedIterator for ChunkRawIter<'_> {}
 
 #[inline(never)]
 #[cold]
