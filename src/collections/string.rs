@@ -61,7 +61,6 @@
 
 use crate::collections::str::lossy;
 use crate::collections::vec::Vec;
-use crate::collections::FromIteratorIn;
 use crate::Bump;
 use core::borrow::{Borrow, BorrowMut};
 use core::char::decode_utf16;
@@ -2092,16 +2091,6 @@ impl<'bump> BorrowMut<str> for String<'bump> {
     #[inline]
     fn borrow_mut(&mut self) -> &mut str {
         &mut self[..]
-    }
-}
-
-impl<'a> FromIteratorIn<char> for String<'a> {
-    type Alloc = &'a Bump;
-    fn from_iter_in<I>(iter: I, alloc: Self::Alloc) -> Self
-    where
-        I: IntoIterator<Item = char>,
-    {
-        String::from_iter_in(iter, alloc)
     }
 }
 
