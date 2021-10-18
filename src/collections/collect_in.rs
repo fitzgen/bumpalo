@@ -1,6 +1,3 @@
-use super::{Vec, String};
-use crate::Bump;
-
 /// Wrapper trait for types that support being constructed from an iterator, parameterized by an allocator.
 pub trait FromIteratorIn<A> {
     /// An allocator type
@@ -8,22 +5,6 @@ pub trait FromIteratorIn<A> {
     /// Similar to `from_iter`, but with a given allocator.
     fn from_iter_in<I>(iter: I, alloc: Self::Alloc) -> Self
     where I: IntoIterator<Item = A>;
-}
-
-impl<'a, T> FromIteratorIn<T> for Vec<'a, T> {
-    type Alloc = &'a Bump;
-    fn from_iter_in<I>(iter: I, alloc: Self::Alloc) -> Self
-    where I: IntoIterator<Item = T> {
-        Vec::from_iter_in(iter, alloc)
-    }
-}
-
-impl<'a> FromIteratorIn<char> for String<'a> {
-    type Alloc = &'a Bump;
-    fn from_iter_in<I>(iter:I, alloc: Self::Alloc) -> Self
-    where I: IntoIterator<Item = char> {
-        String::from_iter_in(iter, alloc)
-    }
 }
 
 /// Extension trait for iterators, in order to allow allocator-parameterized collections to be constructed more easily.

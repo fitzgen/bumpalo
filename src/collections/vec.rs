@@ -84,7 +84,7 @@
 //! [`vec!`]: ../../macro.vec.html
 
 use super::raw_vec::RawVec;
-use crate::collections::CollectionAllocErr;
+use crate::collections::{FromIteratorIn, CollectionAllocErr};
 use crate::Bump;
 use core::borrow::{Borrow, BorrowMut};
 use core::cmp::Ordering;
@@ -1893,6 +1893,14 @@ impl<'bump, T: 'bump> Extend<T> for Vec<'bump, T> {
         for t in iter {
             self.push(t);
         }
+    }
+}
+
+impl<'bump, T> FromIteratorIn<T> for Vec<'bump, T> {
+    type Alloc = &'bump Bump;
+    fn from_iter_in<I>(iter: I, alloc: Self::Alloc) -> Self
+    where I: IntoIterator<Item = T> {
+        Vec::from_iter_in(iter, alloc)
     }
 }
 
