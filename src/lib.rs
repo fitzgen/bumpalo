@@ -1593,13 +1593,18 @@ impl Bump {
     /// }
     /// ```
     pub fn iter_allocated_chunks(&mut self) -> ChunkIter<'_> {
-        ChunkIter {
-            footer: Some(self.current_chunk_footer.get()),
-            bump: PhantomData,
-        }
+        // SAFE: Ensured by mutable borrow of `self`.
+        let raw = unsafe { self.iter_allocated_chunks_raw() };
+        ChunkIter { raw }
     }
 
-    /// TODO
+    /// Returns an iterator over raw pointers to chunks of allocated memory that
+    /// this arena has bump allocated into.
+    ///
+    /// This is an unsafe version of [`iter_allocated_chunks()`](Bump::iter_allocated_chunks),
+    /// with the caller responsible for safe usage of the returned pointers as
+    /// well as ensuring that the iterator is not invalidated by new
+    /// allocations.
     ///
     /// ## Safety
     ///
@@ -1745,19 +1750,15 @@ impl Bump {
 /// [`iter_allocated_chunks`]: ./struct.Bump.html#method.iter_allocated_chunks
 #[derive(Debug)]
 pub struct ChunkIter<'a> {
-    footer: Option<NonNull<ChunkFooter>>,
-    bump: PhantomData<&'a mut Bump>,
+    raw: ChunkRawIter<'a>,
 }
 
 impl<'a> Iterator for ChunkIter<'a> {
     type Item = &'a [mem::MaybeUninit<u8>];
     fn next(&mut self) -> Option<&'a [mem::MaybeUninit<u8>]> {
         unsafe {
-            let foot = self.footer?;
-            let foot = foot.as_ref();
-            let (ptr, len) = foot.as_raw_parts();
+            let (ptr, len) = self.raw.next()?;
             let slice = slice::from_raw_parts(ptr as *const mem::MaybeUninit<u8>, len);
-            self.footer = foot.prev.get();
             Some(slice)
         }
     }
@@ -1765,7 +1766,17 @@ impl<'a> Iterator for ChunkIter<'a> {
 
 impl<'a> iter::FusedIterator for ChunkIter<'a> {}
 
-/// TODO
+/// An iterator over raw pointers to chunks of allocated memory that this
+/// arena has bump allocated into.
+///
+/// See [`ChunkIter`] for details regarding the returned chunks.
+///
+/// This struct is created by the [`iter_allocated_chunks_raw`] method on
+/// [`Bump`]. See that function for a safety description regarding reading from
+/// the returned items.
+///
+/// [`Bump`]: ./struct.Bump.html
+/// [`iter_allocated_chunks_raw`]: ./struct.Bump.html#method.iter_allocated_chunks_raw
 #[derive(Debug)]
 pub struct ChunkRawIter<'a> {
     footer: Option<NonNull<ChunkFooter>>,
