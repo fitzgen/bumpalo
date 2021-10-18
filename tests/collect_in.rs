@@ -21,7 +21,7 @@ quickcheck! {
     let bump = Bump::new();
     let bump_vec = input.clone().into_iter().collect_in::<Vec<_>>(&bump);
 
-    bump_vec.as_slice() == &input
+    bump_vec.as_slice() == input.as_slice()
   }
 
 
