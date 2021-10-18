@@ -2095,11 +2095,12 @@ impl<'bump> BorrowMut<str> for String<'bump> {
     }
 }
 
-
 impl<'a> FromIteratorIn<char> for String<'a> {
     type Alloc = &'a Bump;
-    fn from_iter_in<I>(iter:I, alloc: Self::Alloc) -> Self
-    where I: IntoIterator<Item = char> {
+    fn from_iter_in<I>(iter: I, alloc: Self::Alloc) -> Self
+    where
+        I: IntoIterator<Item = char>,
+    {
         String::from_iter_in(iter, alloc)
     }
 }

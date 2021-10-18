@@ -1,10 +1,9 @@
 #![cfg(feature = "collections")]
-use bumpalo::collections::{CollectIn,Vec, String};
+use bumpalo::collections::{CollectIn, String, Vec};
 use bumpalo::Bump;
-use quickcheck::{quickcheck};
+use quickcheck::quickcheck;
 use std::string::String as StdString;
 use std::vec::Vec as StdVec;
-
 
 #[cfg(test)]
 quickcheck! {
