@@ -1595,7 +1595,10 @@ impl Bump {
     pub fn iter_allocated_chunks(&mut self) -> ChunkIter<'_> {
         // SAFE: Ensured by mutable borrow of `self`.
         let raw = unsafe { self.iter_allocated_chunks_raw() };
-        ChunkIter { raw }
+        ChunkIter {
+            raw,
+            bump: PhantomData,
+        }
     }
 
     /// Returns an iterator over raw pointers to chunks of allocated memory that
@@ -1751,6 +1754,7 @@ impl Bump {
 #[derive(Debug)]
 pub struct ChunkIter<'a> {
     raw: ChunkRawIter<'a>,
+    bump: PhantomData<&'a mut Bump>,
 }
 
 impl<'a> Iterator for ChunkIter<'a> {
