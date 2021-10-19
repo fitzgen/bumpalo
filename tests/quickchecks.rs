@@ -108,7 +108,7 @@ fn overlap((a1, a2): (usize, usize), (b1, b2): (usize, usize)) -> bool {
 fn contains((a1, a2): (usize, usize), (b1, b2): (usize, usize)) -> bool {
     assert!(a1 < a2);
     assert!(b1 < b2);
-    a1 <= b1 && a2 >= b2
+    a1 <= b1 && b2 <= a2
 }
 
 fn range<T>(t: &T) -> (usize, usize) {
@@ -255,10 +255,9 @@ quickcheck! {
         }
         let raw_chunks: Vec<(_, _)> = unsafe { b.iter_allocated_chunks_raw() }.collect();
         let chunks: Vec<&[_]> = b.iter_allocated_chunks().collect();
+        assert_eq!(raw_chunks.len(), chunks.len());
         for ((ptr, size), chunk) in raw_chunks.into_iter().zip(chunks) {
-            if let Some(byte) = chunk.get(0) {
-                assert_eq!(ptr as *const u8, byte.as_ptr());
-            }
+            assert_eq!(ptr as *const _, chunk.as_ptr() as *const _);
             assert_eq!(size, chunk.len());
         }
     }
