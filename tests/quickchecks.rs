@@ -104,6 +104,13 @@ fn overlap((a1, a2): (usize, usize), (b1, b2): (usize, usize)) -> bool {
     a1 < b2 && b1 < a2
 }
 
+// Returns whether `(b1, b2)` is contained in `(a1, a2)`.
+fn contains((a1, a2): (usize, usize), (b1, b2): (usize, usize)) -> bool {
+    assert!(a1 < a2);
+    assert!(b1 < b2);
+    a1 <= b1 && a2 >= b2
+}
+
 fn range<T>(t: &T) -> (usize, usize) {
     let start = t as *const _ as usize;
     let end = start + mem::size_of::<T>();
@@ -225,6 +232,34 @@ quickcheck! {
         let allocated: Vec<&str> = allocs.iter().map(|s| b.alloc_str(s) as &_).collect();
         for (val, alloc) in allocs.into_iter().zip(allocated) {
             assert_eq!(val, alloc);
+        }
+    }
+
+    fn all_allocations_in_a_chunk(values: Vec<BigValue>) -> () {
+        let b = Bump::new();
+        let allocated: Vec<&BigValue> = values.into_iter().map(|val| b.alloc(val) as &_).collect();
+        let chunks: Vec<(*mut u8, usize)> = unsafe { b.iter_allocated_chunks_raw() }.collect();
+        for alloc in allocated.into_iter() {
+            assert!(chunks.iter().any(|&(ptr, size)| {
+                let ptr = ptr as usize;
+                let chunk = (ptr, ptr + size);
+                contains(chunk, range(alloc))
+            }));
+        }
+    }
+
+    fn chunks_and_raw_chunks_are_same(values: Vec<BigValue>) -> () {
+        let mut b = Bump::new();
+        for val in values {
+            b.alloc(val);
+        }
+        let raw_chunks: Vec<(_, _)> = unsafe { b.iter_allocated_chunks_raw() }.collect();
+        let chunks: Vec<&[_]> = b.iter_allocated_chunks().collect();
+        for ((ptr, size), chunk) in raw_chunks.into_iter().zip(chunks) {
+            if let Some(byte) = chunk.get(0) {
+                assert_eq!(ptr as *const u8, byte.as_ptr());
+            }
+            assert_eq!(size, chunk.len());
         }
     }
 }
