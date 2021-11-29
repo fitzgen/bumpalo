@@ -2073,6 +2073,18 @@ impl<'bump, T: 'bump> BorrowMut<[T]> for Vec<'bump, T> {
     }
 }
 
+impl<'bump, T> Drop for Vec<'bump, T> {
+    fn drop(&mut self) {
+        unsafe {
+            // use drop for [T]
+            // use a raw slice to refer to the elements of the vector as weakest necessary type;
+            // could avoid questions of validity in certain cases
+            ptr::drop_in_place(ptr::slice_from_raw_parts_mut(self.as_mut_ptr(), self.len))
+        }
+        // RawVec handles deallocation
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Clone-on-write
 ////////////////////////////////////////////////////////////////////////////////

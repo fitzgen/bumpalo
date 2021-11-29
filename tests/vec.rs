@@ -1,6 +1,7 @@
 #![cfg(feature = "collections")]
 use bumpalo::{collections::Vec, vec, Bump};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::ops::Deref;
 
 #[test]
 fn push_a_bunch_of_items() {
@@ -82,4 +83,23 @@ quickcheck::quickcheck! {
             v.shrink_to_fit();
         }
     }
+}
+
+#[test]
+fn test_vec_items_get_dropped() {
+    struct Foo<'a>(&'a RefCell<String>);
+    impl<'a> Drop for Foo<'a> {
+        fn drop(&mut self) {
+            self.0.borrow_mut().push_str("Dropped!");
+        }
+    }
+
+    let buffer = RefCell::new(String::new());
+    let bump = Bump::new();
+    {
+        let mut vec_foo = Vec::new_in(&bump);
+        vec_foo.push(Foo(&buffer));
+        vec_foo.push(Foo(&buffer));
+    }
+    assert_eq!("Dropped!Dropped!", buffer.borrow().deref());
 }
