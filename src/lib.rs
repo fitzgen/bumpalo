@@ -209,12 +209,11 @@ v.push(2);
 
 ### Minimum Supported Rust Version (MSRV)
 
-This crate is guaranteed to compile on stable Rust 1.44 and up. It might compile
+This crate is guaranteed to compile on stable Rust 1.51 and up. It might compile
 with older versions but that may change in any new patch release.
 
 We reserve the right to increment the MSRV on minor releases, however we will strive
 to only do it deliberately and for good reasons.
-
  */
 
 #![deny(missing_debug_implementations)]
@@ -420,7 +419,7 @@ impl<E: Display> Display for AllocOrInitError<E> {
 ///
 /// Even when optimizations are on, these functions do not **guarantee** that
 /// the value is constructed on the heap. To the best of our knowledge no such
-/// guarantee can be made in stable Rust as of 1.44.
+/// guarantee can be made in stable Rust as of 1.51.
 ///
 /// ### Fallible Initialization: The `_try_with` Method Suffix
 ///
