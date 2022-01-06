@@ -28,6 +28,20 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.9.0
+
+Released 2022-01-05.
+
+### Changed
+
+* The minimum supported Rust version (MSRV) has been raised to Rust 1.54.0.
+
+* `bumpalo::collections::Vec<T>` implements relevant traits for all arrays of
+  any size `N` via const generics. Previously, it was just arrays up to length
+  32. Similar for `bumpalo::boxed::Box<[T; N]>`.
+
+--------------------------------------------------------------------------------
+
 ## 3.8.0
 
 Released 2021-10-19.
