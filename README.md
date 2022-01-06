@@ -7,7 +7,7 @@
 [![](https://img.shields.io/crates/d/bumpalo.svg)](https://crates.io/crates/bumpalo)
 [![Build Status](https://github.com/fitzgen/bumpalo/workflows/Rust/badge.svg)](https://github.com/fitzgen/bumpalo/actions?query=workflow%3ARust)
 
-![](https://github.com/fitzgen/bumpalo/raw/master/bumpalo.png)
+![](https://github.com/fitzgen/bumpalo/raw/main/bumpalo.png)
 
 ### Bump Allocation
 
