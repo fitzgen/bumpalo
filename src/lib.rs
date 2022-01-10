@@ -59,14 +59,14 @@ impl<E: Display> Display for AllocOrInitError<E> {
 ///
 /// ## No `Drop`s
 ///
-/// Objects that are bump-allocated will never have their `Drop` implementation
+/// Objects that are bump-allocated will never have their [`Drop`] implementation
 /// called &mdash; unless you do it manually yourself. This makes it relatively
 /// easy to leak memory or other resources.
 ///
 /// If you have a type which internally manages
 ///
-/// * an allocation from the global heap (e.g. `Vec<T>`),
-/// * open file descriptors (e.g. `std::fs::File`), or
+/// * an allocation from the global heap (e.g. [`Vec<T>`]),
+/// * open file descriptors (e.g. [`std::fs::File`]), or
 /// * any other resource that must be cleaned up (e.g. an `mmap`)
 ///
 /// and relies on its `Drop` implementation to clean up the internal resource,
@@ -91,12 +91,14 @@ impl<E: Display> Display for AllocOrInitError<E> {
 /// guaranteed to run in Rust, you can't rely on them for enforcing memory
 /// safety.
 ///
+/// [`Drop`]: https://doc.rust-lang.org/std/ops/trait.Drop.html
+/// [`Vec<T>`]: https://doc.rust-lang.org/std/vec/struct.Vec.html
+/// [`std::fs::File`]: https://doc.rust-lang.org/std/fs/struct.File.html
 /// [drop_in_place]: https://doc.rust-lang.org/std/ptr/fn.drop_in_place.html
 /// [manuallydrop]: https://doc.rust-lang.org/std/mem/struct.ManuallyDrop.html
-/// [`bumpalo::collections::Vec`]: ./collections/struct.Vec.html
+/// [`bumpalo::collections::Vec`]: collections/vec/struct.Vec.html
 /// [`std::vec::Vec`]: https://doc.rust-lang.org/std/vec/struct.Vec.html
-/// [`bumpalo::boxed::Box::new_in`]: ./boxed/struct.Box.html#method.new_in
-/// [`Bump::alloc`]: ./struct.Bump.html#method.alloc
+/// [`bumpalo::boxed::Box::new_in`]: boxed/struct.Box.html#method.new_in
 /// [`std::boxed::Box`]: https://doc.rust-lang.org/std/boxed/struct.Box.html
 ///
 /// ## Example
@@ -189,7 +191,7 @@ impl<E: Display> Display for AllocOrInitError<E> {
 /// able to optimize this into constructing `x` directly on the heap, however
 /// in many cases it does not.
 ///
-/// The `*alloc_with` functions try to help the compiler be smarter. In most
+/// The `…alloc_with` functions try to help the compiler be smarter. In most
 /// cases doing for example `bump.try_alloc_with(|| x)` on release mode will be
 /// enough to help the compiler realize that this optimization is valid and
 /// to construct `x` directly onto the heap.
@@ -202,7 +204,7 @@ impl<E: Display> Display for AllocOrInitError<E> {
 ///
 /// Even when optimizations are on, these functions do not **guarantee** that
 /// the value is constructed on the heap. To the best of our knowledge no such
-/// guarantee can be made in stable Rust as of 1.51.
+/// guarantee can be made in stable Rust as of 1.54.
 ///
 /// ### Fallible Initialization: The `_try_with` Method Suffix
 ///
@@ -244,6 +246,10 @@ impl<E: Display> Display for AllocOrInitError<E> {
 /// stack, `bump.…alloc_try_with(|| x)?` is likely to execute more slowly than
 /// the matching `bump.…alloc(x?)` in case of initialization failure. If this
 /// happens frequently, using the plain un-suffixed method may perform better.
+///
+/// [`Result`]: https://doc.rust-lang.org/std/result/enum.Result.html
+/// [`Ok`]: https://doc.rust-lang.org/std/result/enum.Result.html#variant.Ok
+/// [`Err`]: https://doc.rust-lang.org/std/result/enum.Result.html#variant.Err
 #[derive(Debug)]
 pub struct Bump {
     // The current chunk we are bump allocating within.
@@ -503,8 +509,7 @@ impl Bump {
     /// Performs mass deallocation on everything allocated in this arena by
     /// resetting the pointer into the underlying chunk of memory to the start
     /// of the chunk. Does not run any `Drop` implementations on deallocated
-    /// objects; see [the `Bump` type's top-level
-    /// documentation](./struct.Bump.html) for details.
+    /// objects; see [the top-level documentation](struct.Bump.html) for details.
     ///
     /// If this arena has allocated multiple chunks to bump allocate into, then
     /// the excess chunks are returned to the global allocator.
@@ -592,7 +597,7 @@ impl Bump {
     /// ```
     /// let bump = bumpalo::Bump::new();
     /// let x = bump.try_alloc("hello");
-    /// assert_eq!(x, Ok(&mut"hello"));
+    /// assert_eq!(x, Ok(&mut "hello"));
     /// ```
     #[inline(always)]
     #[allow(clippy::mut_from_ref)]
@@ -603,7 +608,7 @@ impl Bump {
     /// Pre-allocate space for an object in this `Bump`, initializes it using
     /// the closure, then returns an exclusive reference to it.
     ///
-    /// See [The `_with` Method Suffix](#the-_with-method-suffix) for a
+    /// See [The `_with` Method Suffix](#initializer-functions-the-_with-method-suffix) for a
     /// discussion on the differences between the `_with` suffixed methods and
     /// those methods without it, their performance characteristics, and when
     /// you might or might not choose a `_with` suffixed method.
@@ -656,7 +661,7 @@ impl Bump {
     /// Tries to pre-allocate space for an object in this `Bump`, initializes
     /// it using the closure, then returns an exclusive reference to it.
     ///
-    /// See [The `_with` Method Suffix](#the-_with-method-suffix) for a
+    /// See [The `_with` Method Suffix](#initializer-functions-the-_with-method-suffix) for a
     /// discussion on the differences between the `_with` suffixed methods and
     /// those methods without it, their performance characteristics, and when
     /// you might or might not choose a `_with` suffixed method.
@@ -716,13 +721,17 @@ impl Bump {
     /// Iff [`Err`], an allocator rewind is *attempted* and the `E` instance is
     /// moved out of the allocator to be consumed or dropped as normal.
     ///
-    /// See [The `_with` Method Suffix](#the-_with-method-suffix) for a
+    /// See [The `_with` Method Suffix](#initializer-functions-the-_with-method-suffix) for a
     /// discussion on the differences between the `_with` suffixed methods and
     /// those methods without it, their performance characteristics, and when
     /// you might or might not choose a `_with` suffixed method.
     ///
     /// For caveats specific to fallible initialization, see
-    /// [The `_try_with` Method Suffix](#the-_try_with-method-suffix).
+    /// [The `_try_with` Method Suffix](#fallible-initialization-the-_try_with-method-suffix).
+    ///
+    /// [`Result`]: https://doc.rust-lang.org/std/result/enum.Result.html
+    /// [`Ok`]: https://doc.rust-lang.org/std/result/enum.Result.html#variant.Ok
+    /// [`Err`]: https://doc.rust-lang.org/std/result/enum.Result.html#variant.Err
     ///
     /// ## Errors
     ///
@@ -822,13 +831,17 @@ impl Bump {
     /// the `E` instance is moved out of the allocator to be consumed or dropped
     /// as normal.
     ///
-    /// See [The `_with` Method Suffix](#the-_with-method-suffix) for a
+    /// See [The `_with` Method Suffix](#initializer-functions-the-_with-method-suffix) for a
     /// discussion on the differences between the `_with` suffixed methods and
     /// those methods without it, their performance characteristics, and when
     /// you might or might not choose a `_with` suffixed method.
     ///
     /// For caveats specific to fallible initialization, see
-    /// [The `_try_with` Method Suffix](#the-_try_with-method-suffix).
+    /// [The `_try_with` Method Suffix](#fallible-initialization-the-_try_with-method-suffix).
+    ///
+    /// [`Result`]: https://doc.rust-lang.org/std/result/enum.Result.html
+    /// [`Ok`]: https://doc.rust-lang.org/std/result/enum.Result.html#variant.Ok
+    /// [`Err`]: https://doc.rust-lang.org/std/result/enum.Result.html#variant.Err
     ///
     /// ## Errors
     ///
@@ -948,7 +961,7 @@ impl Bump {
     }
 
     /// `Clone` a slice into this `Bump` and return an exclusive reference to
-    /// the clone. Prefer `alloc_slice_copy` if `T` is `Copy`.
+    /// the clone. Prefer [`alloc_slice_copy`](#method.alloc_slice_copy) if `T` is `Copy`.
     ///
     /// ## Panics
     ///
@@ -962,7 +975,7 @@ impl Bump {
     ///     name: String,
     /// }
     ///
-    /// let originals = vec![
+    /// let originals = [
     ///     Sheep { name: "Alice".into() },
     ///     Sheep { name: "Bob".into() },
     ///     Sheep { name: "Cathy".into() },
@@ -1027,7 +1040,7 @@ impl Bump {
     ///
     /// ```
     /// let bump = bumpalo::Bump::new();
-    /// let x = bump.alloc_slice_fill_with(5, |i| 5*(i+1));
+    /// let x = bump.alloc_slice_fill_with(5, |i| 5 * (i + 1));
     /// assert_eq!(x, &[5, 10, 15, 20, 25]);
     /// ```
     #[inline(always)]
@@ -1130,7 +1143,9 @@ impl Bump {
     /// Allocates a new slice of size `len` slice into this `Bump` and return an
     /// exclusive reference to the copy.
     ///
-    /// All elements of the slice are initialized to `T::default()`.
+    /// All elements of the slice are initialized to [`T::default()`].
+    ///
+    /// [`T::default()`]: https://doc.rust-lang.org/std/default/trait.Default.html#tymethod.default
     ///
     /// ## Panics
     ///
@@ -1348,7 +1363,7 @@ impl Bump {
     /// for ch in bump.iter_allocated_chunks() {
     ///     println!("Used a chunk that is {} bytes long", ch.len());
     ///     println!("The first byte is {:?}", unsafe {
-    ///         ch.get(0).unwrap().assume_init()
+    ///         ch[0].assume_init()
     ///     });
     /// }
     ///
@@ -1525,14 +1540,14 @@ impl Bump {
 /// The chunks are returned ordered by allocation time, with the most recently
 /// allocated chunk being returned first.
 ///
-/// The values inside each chunk is also ordered by allocation time, with the most
+/// The values inside each chunk are also ordered by allocation time, with the most
 /// recent allocation being earlier in the slice.
 ///
 /// This struct is created by the [`iter_allocated_chunks`] method on
 /// [`Bump`]. See that function for a safety description regarding reading from the returned items.
 ///
-/// [`Bump`]: ./struct.Bump.html
-/// [`iter_allocated_chunks`]: ./struct.Bump.html#method.iter_allocated_chunks
+/// [`Bump`]: struct.Bump.html
+/// [`iter_allocated_chunks`]: struct.Bump.html#method.iter_allocated_chunks
 #[derive(Debug)]
 pub struct ChunkIter<'a> {
     raw: ChunkRawIter<'a>,
@@ -1561,8 +1576,8 @@ impl<'a> iter::FusedIterator for ChunkIter<'a> {}
 /// [`Bump`]. See that function for a safety description regarding reading from
 /// the returned items.
 ///
-/// [`Bump`]: ./struct.Bump.html
-/// [`iter_allocated_chunks_raw`]: ./struct.Bump.html#method.iter_allocated_chunks_raw
+/// [`Bump`]: struct.Bump.html
+/// [`iter_allocated_chunks_raw`]: struct.Bump.html#method.iter_allocated_chunks_raw
 #[derive(Debug)]
 pub struct ChunkRawIter<'a> {
     footer: Option<NonNull<ChunkFooter>>,
@@ -1573,8 +1588,7 @@ impl Iterator for ChunkRawIter<'_> {
     type Item = (*mut u8, usize);
     fn next(&mut self) -> Option<(*mut u8, usize)> {
         unsafe {
-            let foot = self.footer?;
-            let foot = foot.as_ref();
+            let foot = self.footer?.as_ref();
             let (ptr, len) = foot.as_raw_parts();
             self.footer = foot.prev.get();
             Some((ptr as *mut u8, len))

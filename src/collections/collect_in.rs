@@ -1,11 +1,26 @@
 use crate::collections::{String, Vec};
 use crate::Bump;
 
-/// Wrapper trait for types that support being constructed from an iterator, parameterized by an allocator.
+/// A trait for types that support being constructed from an iterator, parameterized by an allocator.
 pub trait FromIteratorIn<A> {
-    /// An allocator type
+    /// The allocator type
     type Alloc;
-    /// Similar to `from_iter`, but with a given allocator.
+
+    /// Similar to [`FromIterator::from_iter`][from_iter], but with a given allocator.
+    ///
+    /// [from_iter]: https://doc.rust-lang.org/std/iter/trait.FromIterator.html#tymethod.from_iter
+    ///
+    /// ```
+    /// # use bumpalo::collections::{FromIteratorIn, Vec};
+    /// # use bumpalo::Bump;
+    /// #
+    /// let five_fives = std::iter::repeat(5).take(5);
+    /// let bump = Bump::new();
+    ///
+    /// let v = Vec::from_iter_in(five_fives, &bump);
+    ///
+    /// assert_eq!(v, [5, 5, 5, 5, 5]);
+    /// ```
     fn from_iter_in<I>(iter: I, alloc: Self::Alloc) -> Self
     where
         I: IntoIterator<Item = A>;
@@ -34,13 +49,14 @@ impl<'a> FromIteratorIn<char> for String<'a> {
 /// Extension trait for iterators, in order to allow allocator-parameterized collections to be constructed more easily.
 pub trait CollectIn: Iterator + Sized {
     /// Collect all items from an iterator, into a collection parameterized by an allocator.
-    /// Similar to `Iterator::collect::<C>()`.
+    /// Similar to [`Iterator::collect`][collect].
     ///
-    /// ```rust
-    /// #[cfg(feature = "collections")]
+    /// [collect]: https://doc.rust-lang.org/std/iter/trait.Iterator.html#method.collect
+    ///
+    /// ```
     /// # use bumpalo::collections::{FromIteratorIn, CollectIn, Vec, String};
     /// # use bumpalo::Bump;
-    ///
+    /// #
     /// let bump = Bump::new();
     ///
     /// let str = "hello, world!".to_owned();
