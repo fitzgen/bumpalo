@@ -161,7 +161,7 @@ Released 2020-01-22.
 
   ```toml
   [dependencies]
-  bumpalo = { version = "3.4.0", features = ["allocator_api"] }
+  bumpalo = { version = "3.5", features = ["allocator_api"] }
   ```
 
   Next, enable the `allocator_api` nightly Rust feature in your `src/lib.rs` or `src/main.rs`:
