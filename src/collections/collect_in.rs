@@ -36,6 +36,66 @@ impl<'bump, T> FromIteratorIn<T> for Vec<'bump, T> {
     }
 }
 
+impl<T, V: FromIteratorIn<T>> FromIteratorIn<Option<T>> for Option<V> {
+    type Alloc = V::Alloc;
+    fn from_iter_in<I>(iter: I, alloc: Self::Alloc) -> Self
+    where
+        I: IntoIterator<Item = Option<T>>,
+    {
+        iter.into_iter().map(|x| x.ok_or(())).collect_in::<Result<_, _>>(alloc).ok()
+    }
+}
+
+impl<T, E, V: FromIteratorIn<T>> FromIteratorIn<Result<T, E>> for Result<V, E> {
+    type Alloc = V::Alloc;
+    /// Takes each element in the `Iterator`: if it is an `Err`, no further
+    /// elements are taken, and the `Err` is returned. Should no `Err` occur, a
+    /// container with the values of each `Result` is returned.
+    ///
+    /// Here is an example which increments every integer in a vector,
+    /// checking for overflow:
+    ///
+    /// ```
+    /// # use bumpalo::collections::{FromIteratorIn, CollectIn, Vec, String};
+    /// # use bumpalo::Bump;
+    /// #
+    /// let bump = Bump::new();
+    ///
+    /// let v = vec![1, 2, u32::MAX];
+    /// let res: Result<Vec<u32>, &'static str> = v.iter().take(2).map(|x: &u32|
+    ///     x.checked_add(1).ok_or("Overflow!")
+    /// ).collect_in(&bump);
+    /// assert_eq!(res, Ok(bumpalo::vec![in &bump; 2, 3]));
+    ///
+    /// let res: Result<Vec<u32>, &'static str> = v.iter().map(|x: &u32|
+    ///     x.checked_add(1).ok_or("Overflow!")
+    /// ).collect_in(&bump);
+    /// assert_eq!(res, Err("Overflow!"));
+    /// ```
+    fn from_iter_in<I>(iter: I, alloc: Self::Alloc) -> Self
+    where
+        I: IntoIterator<Item = Result<T, E>>,
+    {
+        let mut iter = iter.into_iter();
+        let mut error = None;
+        let container = core::iter::from_fn(|| {
+            match iter.next() {
+                Some(Ok(x)) => Some(x),
+                Some(Err(e)) => {
+                    error = Some(e);
+                    None
+                }
+                None => None,
+            }
+        }).collect_in(alloc);
+
+        match error {
+            Some(e) => Err(e),
+            None => Ok(container),
+        }
+    }
+}
+
 impl<'a> FromIteratorIn<char> for String<'a> {
     type Alloc = &'a Bump;
     fn from_iter_in<I>(iter: I, alloc: Self::Alloc) -> Self
