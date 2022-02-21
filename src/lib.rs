@@ -1480,10 +1480,17 @@ impl Bump {
     unsafe fn shrink(
         &self,
         ptr: NonNull<u8>,
-        layout: Layout,
-        new_size: usize,
+        old_layout: Layout,
+        new_layout: Layout,
     ) -> Result<NonNull<u8>, alloc::AllocErr> {
-        let old_size = layout.size();
+        let old_size = old_layout.size();
+        let new_size = new_layout.size();
+        let align_is_compatible = old_layout.align() >= new_layout.align();
+
+        if !align_is_compatible {
+            return Err(alloc::AllocErr);
+        }
+
         if self.is_last_allocation(ptr)
                 // Only reclaim the excess space (which requires a copy) if it
                 // is worth it: we are actually going to recover "enough" space
@@ -1510,16 +1517,19 @@ impl Bump {
     unsafe fn grow(
         &self,
         ptr: NonNull<u8>,
-        layout: Layout,
-        new_size: usize,
+        old_layout: Layout,
+        new_layout: Layout,
     ) -> Result<NonNull<u8>, alloc::AllocErr> {
-        let old_size = layout.size();
-        if self.is_last_allocation(ptr) {
+        let old_size = old_layout.size();
+        let new_size = new_layout.size();
+        let align_is_compatible = old_layout.align() >= new_layout.align();
+
+        if align_is_compatible && self.is_last_allocation(ptr) {
             // Try to allocate the delta size within this same block so we can
             // reuse the currently allocated space.
             let delta = new_size - old_size;
             if let Some(p) =
-                self.try_alloc_layout_fast(layout_from_size_align(delta, layout.align()))
+                self.try_alloc_layout_fast(layout_from_size_align(delta, old_layout.align()))
             {
                 ptr::copy(ptr.as_ptr(), p.as_ptr(), old_size);
                 return Ok(p);
@@ -1527,7 +1537,6 @@ impl Bump {
         }
 
         // Fallback: do a fresh allocation and copy the existing data into it.
-        let new_layout = layout_from_size_align(new_size, layout.align());
         let new_ptr = self.try_alloc_layout(new_layout)?;
         ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), old_size);
         Ok(new_ptr)
@@ -1628,10 +1637,11 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
             return self.try_alloc_layout(layout);
         }
 
+        let new_layout = layout_from_size_align(new_size, layout.align());
         if new_size <= old_size {
-            self.shrink(ptr, layout, new_size)
+            self.shrink(ptr, layout, new_layout)
         } else {
-            self.grow(ptr, layout, new_size)
+            self.grow(ptr, layout, new_layout)
         }
     }
 }
@@ -1654,9 +1664,8 @@ unsafe impl<'a> Allocator for &'a Bump {
         old_layout: Layout,
         new_layout: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
-        let new_size = new_layout.size();
-        Bump::shrink(self, ptr, old_layout, new_size)
-            .map(|p| NonNull::slice_from_raw_parts(p, new_size))
+        Bump::shrink(self, ptr, old_layout, new_layout)
+            .map(|p| NonNull::slice_from_raw_parts(p, new_layout.size()))
             .map_err(|_| AllocError)
     }
 
@@ -1666,9 +1675,8 @@ unsafe impl<'a> Allocator for &'a Bump {
         old_layout: Layout,
         new_layout: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
-        let new_size = new_layout.size();
-        Bump::grow(self, ptr, old_layout, new_size)
-            .map(|p| NonNull::slice_from_raw_parts(p, new_size))
+        Bump::grow(self, ptr, old_layout, new_layout)
+            .map(|p| NonNull::slice_from_raw_parts(p, new_layout.size()))
             .map_err(|_| AllocError)
     }
 

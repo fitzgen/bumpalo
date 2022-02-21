@@ -1,4 +1,4 @@
-#![feature(allocator_api)]
+#![feature(allocator_api, slice_ptr_get)]
 #![cfg(feature = "allocator_api")]
 use bumpalo::Bump;
 
@@ -113,4 +113,32 @@ fn allocator_grow_zeroed() {
         .expect("should grow_zeroed okay");
     assert!(bump.allocated_bytes() <= allocated * 2);
     assert_eq!(unsafe { p.as_ref() }, [42, 42, 42, 42, 0, 0, 0, 0]);
+}
+
+#[test]
+fn allocator_grow_layout_change() {
+    let b = AllocatorDebug::new(Bump::with_capacity(1024));
+
+    let layout_align4 = Layout::from_size_align(256, 4).unwrap();
+    let layout_align16 = Layout::from_size_align(1024, 16).unwrap();
+
+    // Allocate a chunk of memory and attempt to grow it while increasing
+    // alignment requirements.
+    let p4 = b.allocate(layout_align4).unwrap().as_non_null_ptr();
+    let _p16 = unsafe { b.grow(p4, layout_align4, layout_align16).unwrap() };
+}
+
+#[test]
+fn allocator_shrink_layout_change() {
+    let b = AllocatorDebug::new(Bump::with_capacity(1024));
+
+    let layout_align4 = Layout::from_size_align(1024, 4).unwrap();
+    let layout_align16 = Layout::from_size_align(256, 16).unwrap();
+
+    // Allocate a chunk of memory and attempt to shrink it while increasing
+    // alignment requirements.
+    let p4 = b.allocate(layout_align4).unwrap().as_non_null_ptr();
+    let p16_res = unsafe { b.shrink(p4, layout_align4, layout_align16) };
+
+    assert_eq!(p16_res, Err(AllocError));
 }
