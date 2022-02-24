@@ -1491,22 +1491,28 @@ impl Bump {
             return Err(alloc::AllocErr);
         }
 
+        // This is how much space we would *actually* reclaim while satisfying
+        // the requested alignment.
+        let delta = (old_size - new_size) & !(new_layout.align() - 1);
+
         if self.is_last_allocation(ptr)
                 // Only reclaim the excess space (which requires a copy) if it
                 // is worth it: we are actually going to recover "enough" space
                 // and we can do a non-overlapping copy.
-                && new_size <= old_size / 2
+                && delta >= old_size / 2
         {
-            let delta = old_size - new_size;
             let footer = self.current_chunk_footer.get();
             let footer = footer.as_ref();
-            footer
-                .ptr
-                .set(NonNull::new_unchecked(footer.ptr.get().as_ptr().add(delta)));
-            let new_ptr = footer.ptr.get();
+
+            // NB: new_ptr is aligned, because ptr *has to* be aligned, and we
+            // made sure delta is aligned.
+            let new_ptr = NonNull::new_unchecked(footer.ptr.get().as_ptr().add(delta));
+            footer.ptr.set(new_ptr);
+
             // NB: we know it is non-overlapping because of the size check
             // in the `if` condition.
             ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), new_size);
+
             return Ok(new_ptr);
         } else {
             return Ok(ptr);
