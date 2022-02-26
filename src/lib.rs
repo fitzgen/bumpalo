@@ -321,6 +321,13 @@ pub(crate) fn round_up_to(n: usize, divisor: usize) -> Option<usize> {
     Some(n.checked_add(divisor - 1)? & !(divisor - 1))
 }
 
+#[inline]
+pub(crate) fn round_down_to(n: usize, divisor: usize) -> usize {
+    debug_assert!(divisor > 0);
+    debug_assert!(divisor.is_power_of_two());
+    n & !(divisor - 1)
+}
+
 // After this point, we try to hit page boundaries instead of powers of 2
 const PAGE_STRATEGY_CUTOFF: usize = 0x1000;
 
@@ -1493,7 +1500,7 @@ impl Bump {
 
         // This is how much space we would *actually* reclaim while satisfying
         // the requested alignment.
-        let delta = (old_size - new_size) & !(new_layout.align() - 1);
+        let delta = round_down_to(old_size - new_size, new_layout.align());
 
         if self.is_last_allocation(ptr)
                 // Only reclaim the excess space (which requires a copy) if it
