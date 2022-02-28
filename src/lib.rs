@@ -321,6 +321,13 @@ pub(crate) fn round_up_to(n: usize, divisor: usize) -> Option<usize> {
     Some(n.checked_add(divisor - 1)? & !(divisor - 1))
 }
 
+#[inline]
+pub(crate) fn round_down_to(n: usize, divisor: usize) -> usize {
+    debug_assert!(divisor > 0);
+    debug_assert!(divisor.is_power_of_two());
+    n & !(divisor - 1)
+}
+
 // After this point, we try to hit page boundaries instead of powers of 2
 const PAGE_STRATEGY_CUTOFF: usize = 0x1000;
 
@@ -1480,26 +1487,39 @@ impl Bump {
     unsafe fn shrink(
         &self,
         ptr: NonNull<u8>,
-        layout: Layout,
-        new_size: usize,
+        old_layout: Layout,
+        new_layout: Layout,
     ) -> Result<NonNull<u8>, alloc::AllocErr> {
-        let old_size = layout.size();
+        let old_size = old_layout.size();
+        let new_size = new_layout.size();
+        let align_is_compatible = old_layout.align() >= new_layout.align();
+
+        if !align_is_compatible {
+            return Err(alloc::AllocErr);
+        }
+
+        // This is how much space we would *actually* reclaim while satisfying
+        // the requested alignment.
+        let delta = round_down_to(old_size - new_size, new_layout.align());
+
         if self.is_last_allocation(ptr)
                 // Only reclaim the excess space (which requires a copy) if it
                 // is worth it: we are actually going to recover "enough" space
                 // and we can do a non-overlapping copy.
-                && new_size <= old_size / 2
+                && delta >= old_size / 2
         {
-            let delta = old_size - new_size;
             let footer = self.current_chunk_footer.get();
             let footer = footer.as_ref();
-            footer
-                .ptr
-                .set(NonNull::new_unchecked(footer.ptr.get().as_ptr().add(delta)));
-            let new_ptr = footer.ptr.get();
+
+            // NB: new_ptr is aligned, because ptr *has to* be aligned, and we
+            // made sure delta is aligned.
+            let new_ptr = NonNull::new_unchecked(footer.ptr.get().as_ptr().add(delta));
+            footer.ptr.set(new_ptr);
+
             // NB: we know it is non-overlapping because of the size check
             // in the `if` condition.
             ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), new_size);
+
             return Ok(new_ptr);
         } else {
             return Ok(ptr);
@@ -1510,16 +1530,19 @@ impl Bump {
     unsafe fn grow(
         &self,
         ptr: NonNull<u8>,
-        layout: Layout,
-        new_size: usize,
+        old_layout: Layout,
+        new_layout: Layout,
     ) -> Result<NonNull<u8>, alloc::AllocErr> {
-        let old_size = layout.size();
-        if self.is_last_allocation(ptr) {
+        let old_size = old_layout.size();
+        let new_size = new_layout.size();
+        let align_is_compatible = old_layout.align() >= new_layout.align();
+
+        if align_is_compatible && self.is_last_allocation(ptr) {
             // Try to allocate the delta size within this same block so we can
             // reuse the currently allocated space.
             let delta = new_size - old_size;
             if let Some(p) =
-                self.try_alloc_layout_fast(layout_from_size_align(delta, layout.align()))
+                self.try_alloc_layout_fast(layout_from_size_align(delta, old_layout.align()))
             {
                 ptr::copy(ptr.as_ptr(), p.as_ptr(), old_size);
                 return Ok(p);
@@ -1527,7 +1550,6 @@ impl Bump {
         }
 
         // Fallback: do a fresh allocation and copy the existing data into it.
-        let new_layout = layout_from_size_align(new_size, layout.align());
         let new_ptr = self.try_alloc_layout(new_layout)?;
         ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), old_size);
         Ok(new_ptr)
@@ -1628,10 +1650,11 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
             return self.try_alloc_layout(layout);
         }
 
+        let new_layout = layout_from_size_align(new_size, layout.align());
         if new_size <= old_size {
-            self.shrink(ptr, layout, new_size)
+            self.shrink(ptr, layout, new_layout)
         } else {
-            self.grow(ptr, layout, new_size)
+            self.grow(ptr, layout, new_layout)
         }
     }
 }
@@ -1654,9 +1677,8 @@ unsafe impl<'a> Allocator for &'a Bump {
         old_layout: Layout,
         new_layout: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
-        let new_size = new_layout.size();
-        Bump::shrink(self, ptr, old_layout, new_size)
-            .map(|p| NonNull::slice_from_raw_parts(p, new_size))
+        Bump::shrink(self, ptr, old_layout, new_layout)
+            .map(|p| NonNull::slice_from_raw_parts(p, new_layout.size()))
             .map_err(|_| AllocError)
     }
 
@@ -1666,9 +1688,8 @@ unsafe impl<'a> Allocator for &'a Bump {
         old_layout: Layout,
         new_layout: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
-        let new_size = new_layout.size();
-        Bump::grow(self, ptr, old_layout, new_size)
-            .map(|p| NonNull::slice_from_raw_parts(p, new_size))
+        Bump::grow(self, ptr, old_layout, new_layout)
+            .map(|p| NonNull::slice_from_raw_parts(p, new_layout.size()))
             .map_err(|_| AllocError)
     }
 
