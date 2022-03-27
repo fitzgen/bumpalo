@@ -37,6 +37,23 @@ jobs:
     - name: Run tests (features)
       run: cargo test --verbose ${{matrix.feature_set}}
 
+  miri:
+    runs-on: ubuntu-latest
+
+    env:
+      MIRIFLAGS: "-Zmiri-tag-raw-pointers -Zmiri-check-number-validity -Zmiri-ignore-leaks"
+
+    steps:
+    - name: Install rustup
+      run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain nightly -y
+    - name: Install miri
+      run: rustup toolchain install nightly --allow-downgrade --profile minimal --component miri
+
+    - uses: actions/checkout@v2
+
+    - name: Run miri
+      run: cargo miri test
+
   valgrind:
     runs-on: ubuntu-latest
 

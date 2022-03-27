@@ -7,7 +7,11 @@ use std::usize;
 fn can_iterate_over_allocated_things() {
     let mut bump = Bump::new();
 
+    #[cfg(not(miri))]
     const MAX: u64 = 131_072;
+
+    #[cfg(miri)] // Miri is very slow, pick a smaller max that runs in a reasonable amount of time
+    const MAX: u64 = 1024;
 
     let mut chunk_ends = vec![];
     let mut last = None;
@@ -58,6 +62,7 @@ fn can_iterate_over_allocated_things() {
     assert!(seen.iter().all(|s| *s));
 }
 
+#[cfg(not(miri))] // Miri does not panic on OOM, the interpreter halts
 #[test]
 #[should_panic(expected = "out of memory")]
 fn oom_instead_of_bump_pointer_overflow() {
@@ -154,10 +159,13 @@ where
 #[test]
 fn with_capacity_test() {
     with_capacity_helper(0u8..255);
-    with_capacity_helper(0u16..10000);
-    with_capacity_helper(0u32..10000);
-    with_capacity_helper(0u64..10000);
-    with_capacity_helper(0u128..10000);
+    #[cfg(not(miri))] // Miri is very slow, disable most of the test cases when using it
+    {
+        with_capacity_helper(0u16..10000);
+        with_capacity_helper(0u32..10000);
+        with_capacity_helper(0u64..10000);
+        with_capacity_helper(0u128..10000);
+    }
 }
 
 #[test]
