@@ -277,12 +277,12 @@ impl ChunkFooter {
     // Returns the start and length of the currently allocated region of this
     // chunk.
     fn as_raw_parts(&self) -> (*const u8, usize) {
-        let data = self.data.as_ptr() as usize;
-        let ptr = self.ptr.get().as_ptr() as usize;
+        let data = self.data.as_ptr() as *const u8;
+        let ptr = self.ptr.get().as_ptr() as *const u8;
         debug_assert!(data <= ptr);
-        debug_assert!(ptr <= self as *const _ as usize);
-        let len = self as *const _ as usize - ptr;
-        (ptr as *const u8, len)
+        debug_assert!(ptr <= self as *const ChunkFooter as *const u8);
+        let len = unsafe { (self as *const ChunkFooter as *const u8).offset_from(ptr) as usize };
+        (ptr, len)
     }
 }
 
@@ -488,9 +488,9 @@ impl Bump {
             let data = NonNull::new(data)?;
 
             // The `ChunkFooter` is at the end of the chunk.
-            let footer_ptr = data.as_ptr() as usize + new_size_without_footer;
+            let footer_ptr = data.as_ptr().add(new_size_without_footer);
             debug_assert_eq!((data.as_ptr() as usize) % align, 0);
-            debug_assert_eq!(footer_ptr % CHUNK_ALIGN, 0);
+            debug_assert_eq!(footer_ptr as usize % CHUNK_ALIGN, 0);
             let footer_ptr = footer_ptr as *mut ChunkFooter;
 
             // The bump pointer is initialized to the end of the range we will
@@ -1213,13 +1213,18 @@ impl Bump {
         unsafe {
             let footer = self.current_chunk_footer.get();
             let footer = footer.as_ref();
-            let ptr = footer.ptr.get().as_ptr() as usize;
-            let start = footer.data.as_ptr() as usize;
+            let ptr = footer.ptr.get().as_ptr();
+            let start = footer.data.as_ptr();
             debug_assert!(start <= ptr);
-            debug_assert!(ptr <= footer as *const _ as usize);
+            debug_assert!(ptr as *const u8 <= footer as *const _ as *const u8);
 
-            let ptr = ptr.checked_sub(layout.size())?;
-            let aligned_ptr = ptr & !(layout.align() - 1);
+            if (ptr as usize) < layout.size() {
+                return None;
+            }
+
+            let ptr = ptr.wrapping_sub(layout.size());
+            let rem = ptr as usize % layout.align();
+            let aligned_ptr = ptr.wrapping_sub(rem);
 
             if aligned_ptr >= start {
                 let aligned_ptr = NonNull::new_unchecked(aligned_ptr as *mut u8);
@@ -1296,14 +1301,14 @@ impl Bump {
             // Move the bump ptr finger down to allocate room for `val`. We know
             // this can't overflow because we successfully allocated a chunk of
             // at least the requested size.
-            let ptr = new_footer.ptr.get().as_ptr() as usize - size;
+            let mut ptr = new_footer.ptr.get().as_ptr().sub(size);
             // Round the pointer down to the requested alignment.
-            let ptr = ptr & !(layout.align() - 1);
+            ptr = ptr.sub(ptr as usize % layout.align());
             debug_assert!(
-                ptr <= new_footer as *const _ as usize,
-                "{:#x} <= {:#x}",
+                ptr as *const _ <= new_footer,
+                "{:p} <= {:p}",
                 ptr,
-                new_footer as *const _ as usize
+                new_footer
             );
             let ptr = NonNull::new_unchecked(ptr as *mut u8);
             new_footer.ptr.set(ptr);
