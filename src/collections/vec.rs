@@ -1296,7 +1296,7 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
             self.reserve(1);
         }
         unsafe {
-            let end = self.as_mut_ptr().add(self.len);
+            let end = self.buf.ptr().add(self.len);
             ptr::write(end, value);
             self.len += 1;
         }
