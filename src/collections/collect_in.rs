@@ -1,3 +1,5 @@
+#[cfg(feature = "boxed")]
+use crate::boxed::Box;
 use crate::collections::{String, Vec};
 use crate::Bump;
 
@@ -26,8 +28,21 @@ pub trait FromIteratorIn<A> {
         I: IntoIterator<Item = A>;
 }
 
+#[cfg(feature = "boxed")]
+impl<'bump, T> FromIteratorIn<T> for Box<'bump, [T]> {
+    type Alloc = &'bump Bump;
+
+    fn from_iter_in<I>(iter: I, alloc: Self::Alloc) -> Self
+    where
+        I: IntoIterator<Item = T>,
+    {
+        Box::from_iter_in(iter, alloc)
+    }
+}
+
 impl<'bump, T> FromIteratorIn<T> for Vec<'bump, T> {
     type Alloc = &'bump Bump;
+
     fn from_iter_in<I>(iter: I, alloc: Self::Alloc) -> Self
     where
         I: IntoIterator<Item = T>,
@@ -96,8 +111,9 @@ impl<T, E, V: FromIteratorIn<T>> FromIteratorIn<Result<T, E>> for Result<V, E> {
     }
 }
 
-impl<'a> FromIteratorIn<char> for String<'a> {
-    type Alloc = &'a Bump;
+impl<'bump> FromIteratorIn<char> for String<'bump> {
+    type Alloc = &'bump Bump;
+
     fn from_iter_in<I>(iter: I, alloc: Self::Alloc) -> Self
     where
         I: IntoIterator<Item = char>,
