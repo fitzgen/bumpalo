@@ -29,11 +29,13 @@ use core_alloc::alloc::{alloc, dealloc, Layout};
 #[cfg(feature = "allocator_api")]
 use core_alloc::alloc::{AllocError, Allocator};
 
+pub use alloc::AllocErr;
+
 /// An error returned from [`Bump::try_alloc_try_with`].
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum AllocOrInitError<E> {
     /// Indicates that the initial allocation failed.
-    Alloc(alloc::AllocErr),
+    Alloc(AllocErr),
     /// Indicates that the initializer failed with the contained error after
     /// allocation.
     ///
@@ -41,8 +43,8 @@ pub enum AllocOrInitError<E> {
     /// released back to the allocator at this point.
     Init(E),
 }
-impl<E> From<alloc::AllocErr> for AllocOrInitError<E> {
-    fn from(e: alloc::AllocErr) -> Self {
+impl<E> From<AllocErr> for AllocOrInitError<E> {
+    fn from(e: AllocErr) -> Self {
         Self::Alloc(e)
     }
 }
@@ -397,7 +399,7 @@ impl Bump {
     /// let bump = bumpalo::Bump::try_new();
     /// # let _ = bump.unwrap();
     /// ```
-    pub fn try_new() -> Result<Bump, alloc::AllocErr> {
+    pub fn try_new() -> Result<Bump, AllocErr> {
         Bump::try_with_capacity(0)
     }
 
@@ -421,13 +423,13 @@ impl Bump {
     /// let bump = bumpalo::Bump::try_with_capacity(100);
     /// # let _ = bump.unwrap();
     /// ```
-    pub fn try_with_capacity(capacity: usize) -> Result<Self, alloc::AllocErr> {
+    pub fn try_with_capacity(capacity: usize) -> Result<Self, AllocErr> {
         let chunk_footer = Self::new_chunk(
             None,
             Some(unsafe { layout_from_size_align(capacity, 1) }),
             None,
         )
-        .ok_or(alloc::AllocErr {})?;
+        .ok_or(AllocErr)?;
 
         Ok(Bump {
             current_chunk_footer: Cell::new(chunk_footer),
@@ -608,7 +610,7 @@ impl Bump {
     /// ```
     #[inline(always)]
     #[allow(clippy::mut_from_ref)]
-    pub fn try_alloc<T>(&self, val: T) -> Result<&mut T, alloc::AllocErr> {
+    pub fn try_alloc<T>(&self, val: T) -> Result<&mut T, AllocErr> {
         self.try_alloc_with(|| val)
     }
 
@@ -686,7 +688,7 @@ impl Bump {
     /// ```
     #[inline(always)]
     #[allow(clippy::mut_from_ref)]
-    pub fn try_alloc_with<F, T>(&self, f: F) -> Result<&mut T, alloc::AllocErr>
+    pub fn try_alloc_with<F, T>(&self, f: F) -> Result<&mut T, AllocErr>
     where
         F: FnOnce() -> T,
     {
@@ -1196,11 +1198,11 @@ impl Bump {
     ///
     /// Errors if reserving space matching `layout` fails.
     #[inline(always)]
-    pub fn try_alloc_layout(&self, layout: Layout) -> Result<NonNull<u8>, alloc::AllocErr> {
+    pub fn try_alloc_layout(&self, layout: Layout) -> Result<NonNull<u8>, AllocErr> {
         if let Some(p) = self.try_alloc_layout_fast(layout) {
             Ok(p)
         } else {
-            self.alloc_layout_slow(layout).ok_or(alloc::AllocErr {})
+            self.alloc_layout_slow(layout).ok_or(AllocErr)
         }
     }
 
@@ -1494,13 +1496,13 @@ impl Bump {
         ptr: NonNull<u8>,
         old_layout: Layout,
         new_layout: Layout,
-    ) -> Result<NonNull<u8>, alloc::AllocErr> {
+    ) -> Result<NonNull<u8>, AllocErr> {
         let old_size = old_layout.size();
         let new_size = new_layout.size();
         let align_is_compatible = old_layout.align() >= new_layout.align();
 
         if !align_is_compatible {
-            return Err(alloc::AllocErr);
+            return Err(AllocErr);
         }
 
         // This is how much space we would *actually* reclaim while satisfying
@@ -1537,7 +1539,7 @@ impl Bump {
         ptr: NonNull<u8>,
         old_layout: Layout,
         new_layout: Layout,
-    ) -> Result<NonNull<u8>, alloc::AllocErr> {
+    ) -> Result<NonNull<u8>, AllocErr> {
         let old_size = old_layout.size();
         let new_size = new_layout.size();
         let align_is_compatible = old_layout.align() >= new_layout.align();
@@ -1633,7 +1635,7 @@ fn oom() -> ! {
 
 unsafe impl<'a> alloc::Alloc for &'a Bump {
     #[inline(always)]
-    unsafe fn alloc(&mut self, layout: Layout) -> Result<NonNull<u8>, alloc::AllocErr> {
+    unsafe fn alloc(&mut self, layout: Layout) -> Result<NonNull<u8>, AllocErr> {
         self.try_alloc_layout(layout)
     }
 
@@ -1648,7 +1650,7 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
         ptr: NonNull<u8>,
         layout: Layout,
         new_size: usize,
-    ) -> Result<NonNull<u8>, alloc::AllocErr> {
+    ) -> Result<NonNull<u8>, AllocErr> {
         let old_size = layout.size();
 
         if old_size == 0 {
