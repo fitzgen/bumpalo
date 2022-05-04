@@ -1191,7 +1191,25 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
         self.drain_filter(|x| !f(x));
     }
 
-    fn drain_filter<'a, F>(&'a mut self, filter: F) -> DrainFilter<'a, 'bump, T, F>
+    /// Creates an iterator that removes the elements in the vector
+    /// for which the predicate returns `true` and yields the removed items.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bumpalo::Bump;
+    /// use bumpalo::collections::{CollectIn, Vec};
+    ///
+    /// let b = Bump::new();
+    ///
+    /// let mut numbers = bumpalo::vec![in &b; 1, 2, 3, 4, 5];
+    ///
+    /// let evens: Vec<_> = numbers.drain_filter(|x| *x % 2 == 0).collect_in(&b);
+    ///
+    /// assert_eq!(numbers, &[1, 3, 5]);
+    /// assert_eq!(evens, &[2, 4]);
+    /// ```
+    pub fn drain_filter<'a, F>(&'a mut self, filter: F) -> DrainFilter<'a, 'bump, T, F>
     where
         F: FnMut(&mut T) -> bool,
     {
@@ -1384,14 +1402,14 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
     /// # Examples
     ///
     /// ```
-    /// use bumpalo::{Bump, collections::Vec};
+    /// use bumpalo::Bump;
+    /// use bumpalo::collections::{CollectIn, Vec};
     ///
     /// let b = Bump::new();
     ///
     /// let mut v = bumpalo::vec![in &b; 1, 2, 3];
     ///
-    /// let mut u: Vec<_> = Vec::new_in(&b);
-    /// u.extend(v.drain(1..));
+    /// let u: Vec<_> = v.drain(1..).collect_in(&b);
     ///
     /// assert_eq!(v, &[1]);
     /// assert_eq!(u, &[2, 3]);
