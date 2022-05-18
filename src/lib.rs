@@ -446,7 +446,7 @@ impl Bump {
         requested_layout: Option<Layout>,
         prev: Option<NonNull<ChunkFooter>>,
     ) -> Option<NonNull<ChunkFooter>> {
-        unsafe {
+        
             let mut new_size_without_footer =
                 new_size_without_footer.unwrap_or(DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER);
 
@@ -482,24 +482,24 @@ impl Bump {
             let size = new_size_without_footer
                 .checked_add(FOOTER_SIZE)
                 .unwrap_or_else(allocation_size_overflow);
-            let layout = layout_from_size_align(size, align);
+            let layout = unsafe { layout_from_size_align(size, align) };
 
             debug_assert!(requested_layout.map_or(true, |layout| size >= layout.size()));
 
-            let data = alloc(layout);
+            let data = unsafe { alloc(layout) };
             let data = NonNull::new(data)?;
 
             // The `ChunkFooter` is at the end of the chunk.
-            let footer_ptr = data.as_ptr().add(new_size_without_footer);
+            let footer_ptr = unsafe { data.as_ptr().add(new_size_without_footer) };
             debug_assert_eq!((data.as_ptr() as usize) % align, 0);
             debug_assert_eq!(footer_ptr as usize % CHUNK_ALIGN, 0);
             let footer_ptr = footer_ptr as *mut ChunkFooter;
 
             // The bump pointer is initialized to the end of the range we will
             // bump out of.
-            let ptr = Cell::new(NonNull::new_unchecked(footer_ptr as *mut u8));
+            let ptr = Cell::new(unsafe { NonNull::new_unchecked(footer_ptr as *mut u8) });
 
-            ptr::write(
+            unsafe { ptr::write(
                 footer_ptr,
                 ChunkFooter {
                     data,
@@ -507,10 +507,10 @@ impl Bump {
                     prev: Cell::new(prev),
                     ptr,
                 },
-            );
+            ) };
 
-            Some(NonNull::new_unchecked(footer_ptr))
-        }
+            Some(unsafe { NonNull::new_unchecked(footer_ptr) })
+        
     }
 
     /// Reset this bump allocator.
@@ -659,9 +659,9 @@ impl Bump {
 
         let layout = Layout::new::<T>();
 
+        let p = self.alloc_layout(layout);
+        let p = p.as_ptr() as *mut T;
         unsafe {
-            let p = self.alloc_layout(layout);
-            let p = p.as_ptr() as *mut T;
             inner_writer(p, f);
             &mut *p
         }
@@ -1212,9 +1212,9 @@ impl Bump {
         // be handled properly: the pointer will be bumped by zero bytes,
         // modulo alignment. This keeps the fast path optimized for non-ZSTs,
         // which are much more common.
-        unsafe {
+    
             let footer = self.current_chunk_footer.get();
-            let footer = footer.as_ref();
+            let footer = unsafe { footer.as_ref() };
             let ptr = footer.ptr.get().as_ptr();
             let start = footer.data.as_ptr();
             debug_assert!(start <= ptr);
@@ -1229,13 +1229,13 @@ impl Bump {
             let aligned_ptr = ptr.wrapping_sub(rem);
 
             if aligned_ptr >= start {
-                let aligned_ptr = NonNull::new_unchecked(aligned_ptr as *mut u8);
+                let aligned_ptr = unsafe { NonNull::new_unchecked(aligned_ptr as *mut u8) };
                 footer.ptr.set(aligned_ptr);
                 Some(aligned_ptr)
             } else {
                 None
             }
-        }
+        
     }
 
     /// Gets the remaining capacity in the current chunk (in bytes).
@@ -1261,12 +1261,12 @@ impl Bump {
     /// parent bump set because there isn't enough room in our current chunk.
     #[inline(never)]
     fn alloc_layout_slow(&self, layout: Layout) -> Option<NonNull<u8>> {
-        unsafe {
+        
             let size = layout.size();
 
             // Get a new chunk from the global allocator.
             let current_footer = self.current_chunk_footer.get();
-            let current_layout = current_footer.as_ref().layout;
+            let current_layout = unsafe { current_footer.as_ref().layout };
 
             // By default, we want our new chunk to be about twice as big
             // as the previous chunk. If the global allocator refuses it,
@@ -1291,33 +1291,33 @@ impl Bump {
                 .next()?;
 
             debug_assert_eq!(
-                new_footer.as_ref().data.as_ptr() as usize % layout.align(),
+                unsafe { new_footer.as_ref().data.as_ptr() as usize % layout.align() },
                 0
             );
 
             // Set the new chunk as our new current chunk.
             self.current_chunk_footer.set(new_footer);
 
-            let new_footer = new_footer.as_ref();
+            let new_footer = unsafe { new_footer.as_ref() };
 
             // Move the bump ptr finger down to allocate room for `val`. We know
             // this can't overflow because we successfully allocated a chunk of
             // at least the requested size.
-            let mut ptr = new_footer.ptr.get().as_ptr().sub(size);
+            let mut ptr = unsafe { new_footer.ptr.get().as_ptr().sub(size) };
             // Round the pointer down to the requested alignment.
-            ptr = ptr.sub(ptr as usize % layout.align());
+            ptr = unsafe { ptr.sub(ptr as usize % layout.align()) };
             debug_assert!(
                 ptr as *const _ <= new_footer,
                 "{:p} <= {:p}",
                 ptr,
                 new_footer
             );
-            let ptr = NonNull::new_unchecked(ptr as *mut u8);
+            let ptr = unsafe { NonNull::new_unchecked(ptr as *mut u8) };
             new_footer.ptr.set(ptr);
 
             // Return a pointer to the freshly allocated region in this chunk.
             Some(ptr)
-        }
+        
     }
 
     /// Returns an iterator over each chunk of allocated memory that
@@ -1616,12 +1616,12 @@ pub struct ChunkRawIter<'a> {
 impl Iterator for ChunkRawIter<'_> {
     type Item = (*mut u8, usize);
     fn next(&mut self) -> Option<(*mut u8, usize)> {
-        unsafe {
-            let foot = self.footer?.as_ref();
+        
+            let foot = unsafe { self.footer?.as_ref() };
             let (ptr, len) = foot.as_raw_parts();
             self.footer = foot.prev.get();
             Some((ptr as *mut u8, len))
-        }
+        
     }
 }
 
