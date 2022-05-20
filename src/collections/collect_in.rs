@@ -57,7 +57,10 @@ impl<T, V: FromIteratorIn<T>> FromIteratorIn<Option<T>> for Option<V> {
     where
         I: IntoIterator<Item = Option<T>>,
     {
-        iter.into_iter().map(|x| x.ok_or(())).collect_in::<Result<_, _>>(alloc).ok()
+        iter.into_iter()
+            .map(|x| x.ok_or(()))
+            .collect_in::<Result<_, _>>(alloc)
+            .ok()
     }
 }
 
@@ -93,16 +96,15 @@ impl<T, E, V: FromIteratorIn<T>> FromIteratorIn<Result<T, E>> for Result<V, E> {
     {
         let mut iter = iter.into_iter();
         let mut error = None;
-        let container = core::iter::from_fn(|| {
-            match iter.next() {
-                Some(Ok(x)) => Some(x),
-                Some(Err(e)) => {
-                    error = Some(e);
-                    None
-                }
-                None => None,
+        let container = core::iter::from_fn(|| match iter.next() {
+            Some(Ok(x)) => Some(x),
+            Some(Err(e)) => {
+                error = Some(e);
+                None
             }
-        }).collect_in(alloc);
+            None => None,
+        })
+        .collect_in(alloc);
 
         match error {
             Some(e) => Err(e),
