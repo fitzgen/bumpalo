@@ -1,7 +1,7 @@
 use bumpalo::Bump;
 use std::alloc::Layout;
-use std::mem;
 use std::cmp;
+use std::mem;
 
 #[test]
 fn alloc_slice_fill_zero() {
@@ -20,7 +20,10 @@ fn alloc_slice_fill_zero() {
     b.alloc_slice_fill_default::<String>(0);
     let ptr2 = b.alloc(MyZeroSizedType);
     let alignment = cmp::max(mem::align_of::<u64>(), mem::align_of::<String>());
-    assert_eq!(ptr1.as_ptr() as usize & !(alignment - 1), ptr2 as *mut _ as usize);
+    assert_eq!(
+        ptr1.as_ptr() as usize & !(alignment - 1),
+        ptr2 as *mut _ as usize
+    );
 
     let ptr3 = b.alloc_layout(layout);
     assert_eq!(ptr2 as *mut _ as usize, ptr3.as_ptr() as usize + 1);
