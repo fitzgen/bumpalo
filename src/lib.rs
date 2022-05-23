@@ -426,7 +426,7 @@ impl Bump {
     pub fn try_with_capacity(capacity: usize) -> Result<Self, AllocErr> {
         let chunk_footer = Self::new_chunk(
             None,
-            Some(unsafe { layout_from_size_align(capacity, 1) }),
+            unsafe { layout_from_size_align(capacity, 1) },
             None,
         )
         .ok_or(AllocErr)?;
@@ -443,7 +443,7 @@ impl Bump {
     /// allocating a new chunk of memory.
     fn new_chunk(
         new_size_without_footer: Option<usize>,
-        requested_layout: Option<Layout>,
+        requested_layout: Layout,
         prev: Option<NonNull<ChunkFooter>>,
     ) -> Option<NonNull<ChunkFooter>> {
         unsafe {
@@ -455,12 +455,10 @@ impl Bump {
 
             // If we already know we need to fulfill some request,
             // make sure we allocate at least enough to satisfy it
-            if let Some(requested_layout) = requested_layout {
-                align = align.max(requested_layout.align());
-                let requested_size = round_up_to(requested_layout.size(), align)
-                    .unwrap_or_else(allocation_size_overflow);
-                new_size_without_footer = new_size_without_footer.max(requested_size);
-            }
+            align = align.max(requested_layout.align());
+            let requested_size = round_up_to(requested_layout.size(), align)
+                .unwrap_or_else(allocation_size_overflow);
+            new_size_without_footer = new_size_without_footer.max(requested_size);
 
             // We want our allocations to play nice with the memory allocator,
             // and waste as little memory as possible.
@@ -484,7 +482,7 @@ impl Bump {
                 .unwrap_or_else(allocation_size_overflow);
             let layout = layout_from_size_align(size, align);
 
-            debug_assert!(requested_layout.map_or(true, |layout| size >= layout.size()));
+            debug_assert!(size >= requested_layout.size());
 
             let data = alloc(layout);
             let data = NonNull::new(data)?;
@@ -1287,7 +1285,7 @@ impl Bump {
             });
 
             let new_footer = sizes
-                .filter_map(|size| Bump::new_chunk(Some(size), Some(layout), Some(current_footer)))
+                .filter_map(|size| Bump::new_chunk(Some(size), layout, Some(current_footer)))
                 .next()?;
 
             debug_assert_eq!(
