@@ -19,6 +19,8 @@ jobs:
         include:
           - rust_channel: "nightly"
             feature_set: "--all-features"
+          - rust_channel: "stable"
+            feature_set: "--no-default-features"
         exclude:
           - rust_channel: "nightly"
             feature_set: "--features collections,boxed"
