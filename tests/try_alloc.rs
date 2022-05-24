@@ -124,7 +124,7 @@ fn main() {
     let tests = [
         test!("Bump::try_new fails when global allocator fails", || {
             GLOBAL_ALLOCATOR.with_alloc_failures(|| {
-                assert!(Bump::try_new().is_err());
+                assert!(Bump::try_with_capacity(1).is_err());
             });
         }),
         test!(
