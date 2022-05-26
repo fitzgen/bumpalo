@@ -268,11 +268,35 @@ struct ChunkFooter {
     // The layout of this chunk's allocation.
     layout: Layout,
 
-    // Link to the previous chunk, if any.
-    prev: Cell<Option<NonNull<ChunkFooter>>>,
+    // Link to the previous chunk. Last empty chunk points to self.
+    prev: Cell<NonNull<ChunkFooter>>,
 
     // Bump allocation finger that is always in the range `self.data..=self`.
     ptr: Cell<NonNull<u8>>,
+}
+
+/// Wrapper for statically allocated empty chunk.
+/// To place it into `static`, it needs to be `Sync`.`
+/// It is safe to mark it as `Sync` because it is never modified.
+#[repr(transparent)]
+struct EmptyChunkFooter(ChunkFooter);
+unsafe impl Sync for EmptyChunkFooter {}
+
+static EMPTY_CHUNK: EmptyChunkFooter = EmptyChunkFooter(ChunkFooter {
+    data: unsafe { NonNull::new_unchecked(&EMPTY_CHUNK as *const EmptyChunkFooter as *mut u8) },
+    layout: Layout::new::<ChunkFooter>(),
+    prev: Cell::new(unsafe {
+        NonNull::new_unchecked(&EMPTY_CHUNK as *const EmptyChunkFooter as *mut ChunkFooter)
+    }),
+    ptr: Cell::new(unsafe {
+        NonNull::new_unchecked(&EMPTY_CHUNK as *const EmptyChunkFooter as *mut u8)
+    }),
+});
+
+impl EmptyChunkFooter {
+    fn get(&'static self) -> NonNull<ChunkFooter> {
+        unsafe { NonNull::new_unchecked(&self.0 as *const ChunkFooter as *mut ChunkFooter) }
+    }
 }
 
 impl ChunkFooter {
@@ -286,6 +310,11 @@ impl ChunkFooter {
         let len = unsafe { (self as *const ChunkFooter as *const u8).offset_from(ptr) as usize };
         (ptr, len)
     }
+
+    /// Is this chunk the last empty chunk?
+    fn is_empty(&self) -> bool {
+        ptr::eq(self, EMPTY_CHUNK.get().as_ptr())
+    }
 }
 
 impl Default for Bump {
@@ -297,14 +326,15 @@ impl Default for Bump {
 impl Drop for Bump {
     fn drop(&mut self) {
         unsafe {
-            dealloc_chunk_list(Some(self.current_chunk_footer.get()));
+            dealloc_chunk_list(self.current_chunk_footer.get());
         }
     }
 }
 
 #[inline]
-unsafe fn dealloc_chunk_list(mut footer: Option<NonNull<ChunkFooter>>) {
-    while let Some(f) = footer {
+unsafe fn dealloc_chunk_list(mut footer: NonNull<ChunkFooter>) {
+    while !footer.as_ref().is_empty() {
+        let f = footer;
         footer = f.as_ref().prev.get();
         dealloc(f.as_ref().data.as_ptr(), f.as_ref().layout);
     }
@@ -424,10 +454,16 @@ impl Bump {
     /// # let _ = bump.unwrap();
     /// ```
     pub fn try_with_capacity(capacity: usize) -> Result<Self, AllocErr> {
+        if capacity == 0 {
+            return Ok(Bump {
+                current_chunk_footer: Cell::new(EMPTY_CHUNK.get()),
+            });
+        }
+
         let chunk_footer = Self::new_chunk(
             None,
             unsafe { layout_from_size_align(capacity, 1) },
-            None,
+            EMPTY_CHUNK.get(),
         )
         .ok_or(AllocErr)?;
 
@@ -444,7 +480,7 @@ impl Bump {
     fn new_chunk(
         new_size_without_footer: Option<usize>,
         requested_layout: Layout,
-        prev: Option<NonNull<ChunkFooter>>,
+        prev: NonNull<ChunkFooter>,
     ) -> Option<NonNull<ChunkFooter>> {
         unsafe {
             let mut new_size_without_footer =
@@ -546,10 +582,14 @@ impl Bump {
         // Takes `&mut self` so `self` must be unique and there can't be any
         // borrows active that would get invalidated by resetting.
         unsafe {
+            if self.current_chunk_footer.get().as_ref().is_empty() {
+                return;
+            }
+
             let cur_chunk = self.current_chunk_footer.get();
 
             // Deallocate all chunks except the current one
-            let prev_chunk = cur_chunk.as_ref().prev.replace(None);
+            let prev_chunk = cur_chunk.as_ref().prev.replace(EMPTY_CHUNK.get());
             dealloc_chunk_list(prev_chunk);
 
             // Reset the bump finger to the end of the chunk.
@@ -561,7 +601,8 @@ impl Bump {
                     .as_ref()
                     .prev
                     .get()
-                    .is_none(),
+                    .as_ref()
+                    .is_empty(),
                 "We should only have a single chunk"
             );
             debug_assert_eq!(
@@ -1285,7 +1326,7 @@ impl Bump {
             });
 
             let new_footer = sizes
-                .filter_map(|size| Bump::new_chunk(Some(size), layout, Some(current_footer)))
+                .filter_map(|size| Bump::new_chunk(Some(size), layout, current_footer))
                 .next()?;
 
             debug_assert_eq!(
@@ -1429,7 +1470,7 @@ impl Bump {
     /// [`iter_allocated_chunks()`](Bump::iter_allocated_chunks) still apply.
     pub unsafe fn iter_allocated_chunks_raw(&self) -> ChunkRawIter<'_> {
         ChunkRawIter {
-            footer: Some(self.current_chunk_footer.get()),
+            footer: self.current_chunk_footer.get(),
             bump: PhantomData,
         }
     }
@@ -1453,19 +1494,21 @@ impl Bump {
     /// assert!(bytes >= core::mem::size_of::<u32>() * 5);
     /// ```
     pub fn allocated_bytes(&self) -> usize {
-        let mut footer = Some(self.current_chunk_footer.get());
+        let mut footer = self.current_chunk_footer.get();
 
         let mut bytes = 0;
 
-        while let Some(f) = footer {
-            let foot = unsafe { f.as_ref() };
+        unsafe {
+            while !footer.as_ref().is_empty() {
+                let foot = footer.as_ref();
 
-            let ptr = foot.ptr.get().as_ptr() as usize;
-            debug_assert!(ptr <= foot as *const _ as usize);
+                let ptr = foot.ptr.get().as_ptr() as usize;
+                debug_assert!(ptr <= foot as *const _ as usize);
 
-            bytes += foot as *const _ as usize - ptr;
+                bytes += foot as *const _ as usize - ptr;
 
-            footer = foot.prev.get();
+                footer = foot.prev.get();
+            }
         }
 
         bytes
@@ -1607,7 +1650,7 @@ impl<'a> iter::FusedIterator for ChunkIter<'a> {}
 /// [`iter_allocated_chunks_raw`]: struct.Bump.html#method.iter_allocated_chunks_raw
 #[derive(Debug)]
 pub struct ChunkRawIter<'a> {
-    footer: Option<NonNull<ChunkFooter>>,
+    footer: NonNull<ChunkFooter>,
     bump: PhantomData<&'a Bump>,
 }
 
@@ -1615,7 +1658,10 @@ impl Iterator for ChunkRawIter<'_> {
     type Item = (*mut u8, usize);
     fn next(&mut self) -> Option<(*mut u8, usize)> {
         unsafe {
-            let foot = self.footer?.as_ref();
+            let foot = self.footer.as_ref();
+            if foot.is_empty() {
+                return None;
+            }
             let (ptr, len) = foot.as_raw_parts();
             self.footer = foot.prev.get();
             Some((ptr as *mut u8, len))
