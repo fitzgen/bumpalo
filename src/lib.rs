@@ -268,28 +268,42 @@ struct ChunkFooter {
     // The layout of this chunk's allocation.
     layout: Layout,
 
-    // Link to the previous chunk. Last empty chunk points to self.
+    // Link to the previous chunk.
+    //
+    // Note that the last node in the `prev` linked list is the canonical empty
+    // chunk, whose `prev` link points to itself.
     prev: Cell<NonNull<ChunkFooter>>,
 
     // Bump allocation finger that is always in the range `self.data..=self`.
     ptr: Cell<NonNull<u8>>,
 }
 
-/// Wrapper for statically allocated empty chunk.
-/// To place it into `static`, it needs to be `Sync`.`
-/// It is safe to mark it as `Sync` because it is never modified.
+/// A wrapper type for the canonical, statically allocated empty chunk.
+///
+/// For the canonical empty chunk to be `static`, its type must be `Sync`, which
+/// is the purpose of this wrapper type. This is safe because the empty chunk is
+/// immutable and never actually modified.
 #[repr(transparent)]
 struct EmptyChunkFooter(ChunkFooter);
+
 unsafe impl Sync for EmptyChunkFooter {}
 
 static EMPTY_CHUNK: EmptyChunkFooter = EmptyChunkFooter(ChunkFooter {
-    data: unsafe { NonNull::new_unchecked(&EMPTY_CHUNK as *const EmptyChunkFooter as *mut u8) },
+    // This chunk is empty (except the foot itself).
     layout: Layout::new::<ChunkFooter>(),
-    prev: Cell::new(unsafe {
-        NonNull::new_unchecked(&EMPTY_CHUNK as *const EmptyChunkFooter as *mut ChunkFooter)
-    }),
+
+    // The start of the (empty) allocatable region for this chunk is itself.
+    data: unsafe { NonNull::new_unchecked(&EMPTY_CHUNK as *const EmptyChunkFooter as *mut u8) },
+
+    // The end of the (empty) allocatable region for this chunk is also itself.
     ptr: Cell::new(unsafe {
         NonNull::new_unchecked(&EMPTY_CHUNK as *const EmptyChunkFooter as *mut u8)
+    }),
+
+    // Invariant: the last chunk footer in all `ChunkFooter::prev` linked lists
+    // is the empty chunk footer, whose `prev` points to itself.
+    prev: Cell::new(unsafe {
+        NonNull::new_unchecked(&EMPTY_CHUNK as *const EmptyChunkFooter as *mut ChunkFooter)
     }),
 });
 
