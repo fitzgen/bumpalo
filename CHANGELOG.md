@@ -28,6 +28,34 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.10.0
+
+Released 2022-06-01.
+
+### Added
+
+* Implement `bumpalo::collections::FromIteratorIn` for `Option` and `Result`,
+  just like `core` does for `FromIterator`.
+* Implement `bumpalo::collections::FromIteratorIn` for `bumpalo::boxed::Box<'a,
+  [T]>`.
+* Added running tests under MIRI in CI for additional confidence in unsafe code.
+* Publicly exposed `bumpalo::collections::Vec::drain_filter` since the
+  corresponding `std::vec::Vec` method has stabilized.
+
+### Changed
+
+* `Bump::new` will not allocate a backing chunk until the first allocation
+  inside the bump arena now.
+
+### Fixed
+
+* Properly account for alignment changes when growing or shrinking an existing
+  allocation.
+* Removed all internal integer-to-pointer casts, to play better with UB checkers
+  like MIRI.
+
+--------------------------------------------------------------------------------
+
 ## 3.9.1
 
 Released 2022-01-06.
