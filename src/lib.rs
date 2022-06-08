@@ -567,7 +567,6 @@ impl Bump {
 
     /// How much headroom an arena has before it hits its allocation
     /// limit.
-    #[inline(always)]
     fn allocation_limit_remaining(&self) -> Option<usize> {
         self.allocation_limit
             .get()
@@ -583,7 +582,6 @@ impl Bump {
     }
 
     /// Whether a new allocation fits within the headroom before the allocation limit.
-    #[inline(always)]
     fn new_allocation_fits_under_limit(
         allocation_limit_remaining: Option<usize>,
         allocation_size: usize,
