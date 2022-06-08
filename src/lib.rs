@@ -257,8 +257,7 @@ impl<E: Display> Display for AllocOrInitError<E> {
 ///
 /// `bumpalo` supports setting a limit on the maximum bytes of memory that can
 /// be allocated for use in a particular `Bump` arena. This limit can be set and removed with
-/// [`set_allocation_limit`][Bump::set_allocation_limit] and
-/// [`remove_allocation_limit`][Bump::remove_allocation_limit].
+/// [`set_allocation_limit`][Bump::set_allocation_limit].
 /// Changing the limit for a `Bump` while it has live allocations does
 /// nothing until a new allocation is attempted, at which point it may fail
 /// due to the new limit.
@@ -269,15 +268,15 @@ impl<E: Display> Display for AllocOrInitError<E> {
 /// let bump = bumpalo::Bump::new();
 ///
 /// assert_eq!(bump.allocation_limit(), None);
-/// bump.set_allocation_limit(0);
+/// bump.set_allocation_limit(Some(0));
 ///
 /// assert!(bump.try_alloc(5).is_err());
 ///
-/// bump.set_allocation_limit(6);
+/// bump.set_allocation_limit(Some(6));
 ///
 /// assert_eq!(bump.allocation_limit(), Some(6));
 ///
-/// bump.remove_allocation_limit();
+/// bump.set_allocation_limit(None);
 ///
 /// assert_eq!(bump.allocation_limit(), None);
 /// ```
@@ -535,11 +534,11 @@ impl Bump {
     ///
     /// assert_eq!(bump.allocation_limit(), None);
     ///
-    /// bump.set_allocation_limit(6);
+    /// bump.set_allocation_limit(Some(6));
     ///
     /// assert_eq!(bump.allocation_limit(), Some(6));
     ///
-    /// bump.remove_allocation_limit();
+    /// bump.set_allocation_limit(None);
     ///
     /// assert_eq!(bump.allocation_limit(), None);
     /// ```
@@ -558,31 +557,12 @@ impl Bump {
     /// ```
     /// let bump = bumpalo::Bump::with_capacity(0);
     ///
-    /// bump.set_allocation_limit(0);
+    /// bump.set_allocation_limit(Some(0));
     ///
     /// assert!(bump.try_alloc(5).is_err());
     /// ```
-    pub fn set_allocation_limit(&self, new_limit: usize) {
-        self.allocation_limit.set(Some(new_limit))
-    }
-
-    /// Remove the allocation limit in bytes for this arena.
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// let bump = bumpalo::Bump::with_capacity(0);
-    ///
-    /// bump.set_allocation_limit(0);
-    ///
-    /// assert!(bump.try_alloc(5).is_err());
-    ///
-    /// bump.remove_allocation_limit();
-    ///
-    /// assert!(bump.try_alloc(5).is_ok());
-    /// ```
-    pub fn remove_allocation_limit(&self) {
-        self.allocation_limit.set(None)
+    pub fn set_allocation_limit(&self, limit: Option<usize>) {
+        self.allocation_limit.set(limit)
     }
 
     /// How much headroom an arena has before it hits its allocation
