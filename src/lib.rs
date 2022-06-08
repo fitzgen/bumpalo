@@ -255,8 +255,8 @@ impl<E: Display> Display for AllocOrInitError<E> {
 ///
 /// ### `Bump` Allocation Limits
 ///
-/// `Bump` supports setting a limit on the maximum bytes of memory that can
-/// be allocated for use. This limit can be set and removed with
+/// `bumpalo` supports setting a limit on the maximum bytes of memory that can
+/// be allocated for use in a particular `Bump` arena. This limit can be set and removed with
 /// [`set_allocation_limit`][Bump::set_allocation_limit] and
 /// [`remove_allocation_limit`][Bump::remove_allocation_limit].
 /// Changing the limit for a `Bump` while it has live allocations does
