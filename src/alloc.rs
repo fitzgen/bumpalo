@@ -99,7 +99,7 @@ fn size_align<T>() -> (usize, usize) {
 }
 
 /// The `AllocErr` error indicates an allocation failure
-/// that may be due to resource exhaustion, reaching an allocation limit, or
+/// that may be due to resource exhaustion or to
 /// something wrong when combining the given input arguments with this
 /// allocator.
 // #[unstable(feature = "allocator_api", issue = "32838")]
