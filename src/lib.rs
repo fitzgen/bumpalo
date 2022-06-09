@@ -312,6 +312,12 @@ struct ChunkFooter {
 
     // Bump allocation finger that is always in the range `self.data..=self`.
     ptr: Cell<NonNull<u8>>,
+
+    // The bytes allocated in all chunks so far, the canonical empty chunk has
+    // a size of 0 and for all other chunks, `allocated_bytes` will be
+    // the allocated_bytes of the current chunk plus the allocated bytes
+    // of the `prev` chunk.
+    allocated_bytes: usize,
 }
 
 /// A wrapper type for the canonical, statically allocated empty chunk.
@@ -341,6 +347,9 @@ static EMPTY_CHUNK: EmptyChunkFooter = EmptyChunkFooter(ChunkFooter {
     prev: Cell::new(unsafe {
         NonNull::new_unchecked(&EMPTY_CHUNK as *const EmptyChunkFooter as *mut ChunkFooter)
     }),
+
+    // Empty chunks count as 0 allocated bytes in an arena.
+    allocated_bytes: 0,
 });
 
 impl EmptyChunkFooter {
@@ -658,6 +667,10 @@ impl Bump {
             // bump out of.
             let ptr = Cell::new(NonNull::new_unchecked(footer_ptr as *mut u8));
 
+            // The `allocated_bytes` of a new chunk counts the total size
+            // of the chunks, not how much of the chunks are used.
+            let allocated_bytes = prev.as_ref().allocated_bytes + new_size_without_footer;
+
             ptr::write(
                 footer_ptr,
                 ChunkFooter {
@@ -665,6 +678,7 @@ impl Bump {
                     layout,
                     prev: Cell::new(prev),
                     ptr,
+                    allocated_bytes,
                 },
             );
 
@@ -711,7 +725,7 @@ impl Bump {
                 return;
             }
 
-            let cur_chunk = self.current_chunk_footer.get();
+            let mut cur_chunk = self.current_chunk_footer.get();
 
             // Deallocate all chunks except the current one
             let prev_chunk = cur_chunk.as_ref().prev.replace(EMPTY_CHUNK.get());
@@ -719,6 +733,9 @@ impl Bump {
 
             // Reset the bump finger to the end of the chunk.
             cur_chunk.as_ref().ptr.set(cur_chunk.cast());
+
+            // Reset the allocated size of the chunk.
+            cur_chunk.as_mut().allocated_bytes = cur_chunk.as_ref().layout.size();
 
             debug_assert!(
                 self.current_chunk_footer
@@ -1633,24 +1650,9 @@ impl Bump {
     /// assert!(bytes >= core::mem::size_of::<u32>() * 5);
     /// ```
     pub fn allocated_bytes(&self) -> usize {
-        let mut footer = self.current_chunk_footer.get();
+        let footer = self.current_chunk_footer.get();
 
-        let mut bytes = 0;
-
-        unsafe {
-            while !footer.as_ref().is_empty() {
-                let foot = footer.as_ref();
-
-                let ptr = foot.ptr.get().as_ptr() as usize;
-                debug_assert!(ptr <= foot as *const _ as usize);
-
-                bytes += foot as *const _ as usize - ptr;
-
-                footer = foot.prev.get();
-            }
-        }
-
-        bytes
+        unsafe { footer.as_ref().allocated_bytes }
     }
 
     #[inline]
@@ -1901,7 +1903,7 @@ mod tests {
 
     #[test]
     fn chunk_footer_is_five_words() {
-        assert_eq!(mem::size_of::<ChunkFooter>(), mem::size_of::<usize>() * 5);
+        assert_eq!(mem::size_of::<ChunkFooter>(), mem::size_of::<usize>() * 6);
     }
 
     #[test]
