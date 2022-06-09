@@ -258,9 +258,9 @@ impl<E: Display> Display for AllocOrInitError<E> {
 /// `bumpalo` supports setting a limit on the maximum bytes of memory that can
 /// be allocated for use in a particular `Bump` arena. This limit can be set and removed with
 /// [`set_allocation_limit`][Bump::set_allocation_limit].
-/// Changing the limit for a `Bump` while it has live allocations does
-/// nothing until a new allocation is attempted, at which point it may fail
-/// due to the new limit.
+/// The allocation limit is only enforced when allocating new backing chunks for
+/// a `Bump`. Updating the allocation limit will not affect existing allocations
+/// or any future allocations within the `Bump`'s current chunk.
 ///
 /// ## Example
 ///
@@ -557,9 +557,9 @@ impl Bump {
 
     /// Set the allocation limit in bytes for this arena.
     ///
-    /// Changing the limit for a `Bump` while it has live allocations does
-    /// nothing until a new allocation is attempted, at which point it may fail
-    /// due to the new limit.
+    /// The allocation limit is only enforced when allocating new backing chunks for
+    /// a `Bump`. Updating the allocation limit will not affect existing allocations
+    /// or any future allocations within the `Bump`'s current chunk.
     ///
     /// ## Example
     ///
