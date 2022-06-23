@@ -144,7 +144,7 @@ use {
 ///
 /// See the [module-level documentation][crate::boxed] for more details.
 #[repr(transparent)]
-pub struct Box<'a, T: ?Sized>(&'a mut T);
+pub struct Box<'a, T: ?Sized>(&'a mut mem::ManuallyDrop<T>);
 
 impl<'a, T> Box<'a, T> {
     /// Allocates memory on the heap and then places `x` into it.
@@ -162,14 +162,35 @@ impl<'a, T> Box<'a, T> {
     /// ```
     #[inline(always)]
     pub fn new_in(x: T, a: &'a Bump) -> Box<'a, T> {
-        Box(a.alloc(x))
+        Box(a.alloc(mem::ManuallyDrop::new(x)))
     }
 
     /// Constructs a new `Pin<Box<T>>`. If `T` does not implement `Unpin`, then
     /// `x` will be pinned in memory and unable to be moved.
     #[inline(always)]
     pub fn pin_in(x: T, a: &'a Bump) -> Pin<Box<'a, T>> {
-        Box(a.alloc(x)).into()
+        Box(a.alloc(mem::ManuallyDrop::new(x))).into()
+    }
+
+    /// Consumes the `Box`, returning the wrapped value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bumpalo::{Bump, boxed::Box};
+    ///
+    /// let b = Bump::new();
+    ///
+    /// let c = Box::new_in(5, &b);
+    ///
+    /// assert_eq!(Box::into_inner(c), 5);
+    /// ```
+    #[inline]
+    pub fn into_inner(boxed: Self) -> T {
+        // SAFETY: take the wrapped value and forget the box to disable drop
+        let inner = unsafe { mem::ManuallyDrop::take(boxed.0) };
+        mem::forget(boxed);
+        inner
     }
 }
 
@@ -216,7 +237,7 @@ impl<'a, T: ?Sized> Box<'a, T> {
     /// ```
     #[inline]
     pub unsafe fn from_raw(raw: *mut T) -> Self {
-        Box(&mut *raw)
+        Box(&mut *(raw as *mut _))
     }
 
     /// Consumes the `Box`, returning a wrapped raw pointer.
@@ -262,9 +283,9 @@ impl<'a, T: ?Sized> Box<'a, T> {
     /// ```
     #[inline]
     pub fn into_raw(b: Box<'a, T>) -> *mut T {
-        let ptr = b.0 as *mut T;
+        let ptr = b.0 as *mut mem::ManuallyDrop<T>;
         mem::forget(b);
-        ptr
+        ptr as _
     }
 
     /// Consumes and leaks the `Box`, returning a mutable reference,
@@ -320,8 +341,8 @@ impl<'a, T: ?Sized> Box<'a, T> {
 impl<'a, T: ?Sized> Drop for Box<'a, T> {
     fn drop(&mut self) {
         unsafe {
-            // `Box` owns value of `T`, but not memory behind it.
-            core::ptr::drop_in_place(self.0);
+            // `Box` owns value of `T`, but only borrows memory behind it.
+            mem::ManuallyDrop::drop(self.0);
         }
     }
 }
@@ -329,7 +350,7 @@ impl<'a, T: ?Sized> Drop for Box<'a, T> {
 impl<'a, T> Default for Box<'a, [T]> {
     fn default() -> Box<'a, [T]> {
         // It should be OK to `drop_in_place` empty slice of anything.
-        Box(&mut [])
+        unsafe { Box(mem::transmute::<&'a mut [T], &'a mut _>(&mut [])) }
     }
 }
 
@@ -337,7 +358,11 @@ impl<'a> Default for Box<'a, str> {
     fn default() -> Box<'a, str> {
         // Empty slice is valid string.
         // It should be OK to `drop_in_place` empty str.
-        unsafe { Box::from_raw(Box::into_raw(Box::<[u8]>::default()) as *mut str) }
+        unsafe {
+            Box(mem::transmute::<&'a mut str, &'a mut _>(
+                core::str::from_utf8_unchecked_mut(&mut []),
+            ))
+        }
     }
 }
 
