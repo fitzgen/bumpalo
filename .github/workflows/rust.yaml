@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      MIRIFLAGS: "-Zmiri-tag-raw-pointers -Zmiri-check-number-validity -Zmiri-ignore-leaks"
+      MIRIFLAGS: "-Zmiri-tag-raw-pointers -Zmiri-ignore-leaks"
 
     steps:
     - name: Install rustup
