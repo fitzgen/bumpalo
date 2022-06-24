@@ -522,7 +522,6 @@ impl Bump {
 
         let chunk_footer = Self::new_chunk(
             None,
-            None,
             unsafe { layout_from_size_align(capacity, 1) },
             EMPTY_CHUNK.get(),
         )
@@ -607,7 +606,6 @@ impl Bump {
     /// allocating a new chunk of memory.
     fn new_chunk(
         new_size_without_footer: Option<usize>,
-        allocation_limit_remaining: Option<usize>,
         requested_layout: Layout,
         prev: NonNull<ChunkFooter>,
     ) -> Option<NonNull<ChunkFooter>> {
@@ -645,10 +643,6 @@ impl Bump {
             let size = new_size_without_footer
                 .checked_add(FOOTER_SIZE)
                 .unwrap_or_else(allocation_size_overflow);
-
-            if !Bump::new_allocation_fits_under_limit(allocation_limit_remaining, size) {
-                return None;
-            }
 
             let layout = layout_from_size_align(size, align);
 
@@ -1446,12 +1440,6 @@ impl Bump {
             let size = layout.size();
             let allocation_limit_remaining = self.allocation_limit_remaining();
 
-            // This is also checked within `new_chunk` but the check here
-            // acts as an early exit if the request could never be satisfied given the limit
-            if !Bump::new_allocation_fits_under_limit(allocation_limit_remaining, size) {
-                return None;
-            }
-
             // Get a new chunk from the global allocator.
             let current_footer = self.current_chunk_footer.get();
             let current_layout = current_footer.as_ref().layout;
@@ -1476,12 +1464,11 @@ impl Bump {
 
             let new_footer = sizes
                 .filter_map(|size| {
-                    Bump::new_chunk(
-                        Some(size),
-                        allocation_limit_remaining,
-                        layout,
-                        current_footer,
-                    )
+                    if Bump::new_allocation_fits_under_limit(allocation_limit_remaining, size) {
+                        Bump::new_chunk(Some(size), layout, current_footer)
+                    } else {
+                        None
+                    }
                 })
                 .next()?;
 
