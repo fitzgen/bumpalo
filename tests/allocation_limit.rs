@@ -86,21 +86,21 @@ fn new_bump_allocated_bytes_is_zero() {
 }
 
 quickcheck! {
-    fn limit_is_never_exceeded(xs: usize) -> bool {
+    fn limit_is_never_exceeded(limit: usize) -> bool {
         let b = Bump::new();
 
-        b.set_allocation_limit(Some(xs));
+        b.set_allocation_limit(Some(limit));
 
         // The exact numbers here on how much to allocate are a bit murky but we
         // have two main goals.
         //
         // - Attempt to allocate over the allocation limit imposed
         // - Allocate in increments small enough that at least a few allocations succeed
-        let layout = Layout::array::<u8>(xs / 16).unwrap();
+        let layout = Layout::array::<u8>(limit / 16).unwrap();
         for _ in 0..32 {
             let _ = b.try_alloc_layout(layout);
         }
 
-        b.allocation_limit().unwrap() >= b.allocated_bytes()
+        limit >= b.allocated_bytes()
     }
 }
