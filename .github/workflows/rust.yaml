@@ -54,7 +54,7 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Run miri
-      run: cargo miri test
+      run: cargo miri test --features boxed
 
   valgrind:
     runs-on: ubuntu-latest
