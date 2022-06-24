@@ -262,7 +262,7 @@ impl<E: Display> Display for AllocOrInitError<E> {
 /// a `Bump`. Updating the allocation limit will not affect existing allocations
 /// or any future allocations within the `Bump`'s current chunk.
 ///
-/// ## Example
+/// #### Example
 ///
 /// ```
 /// let bump = bumpalo::Bump::new();
