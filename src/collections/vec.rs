@@ -1026,19 +1026,27 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
     /// ```
     ///
     /// In this example, the vector gets expanded from zero to four items
-    /// without any memory allocations occurring, resulting in vector
-    /// values of unallocated memory:
+    /// but we directly initialize uninitialized memory:
     ///
+    // TODO: rely upon `spare_capacity_mut`
     /// ```
     /// use bumpalo::{Bump, collections::Vec};
     ///
+    /// let len = 4;
     /// let b = Bump::new();
     ///
-    /// let mut vec: Vec<char> = Vec::new_in(&b);
+    /// let mut vec: Vec<u8> = Vec::with_capacity_in(len, &b);
+    ///
+    /// for i in 0..len {
+    ///     // SAFETY: we initialize memory via `pointer::write`
+    ///     unsafe { vec.as_mut_ptr().add(i).write(b'a') }
+    /// }
     ///
     /// unsafe {
-    ///     vec.set_len(4);
+    ///     vec.set_len(len);
     /// }
+    ///
+    /// assert_eq!(b"aaaa", &*vec);
     /// ```
     #[inline]
     pub unsafe fn set_len(&mut self, new_len: usize) {
