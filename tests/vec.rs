@@ -1,4 +1,8 @@
 #![cfg(feature = "collections")]
+#![cfg_attr(
+    all(miri, not(feature = "test_skip_miri_quickchecks")),
+    allow(unused_imports)
+)]
 use bumpalo::{collections::Vec, vec, Bump};
 use std::cell::{Cell, RefCell};
 use std::ops::Deref;
@@ -59,6 +63,7 @@ fn test_into_bump_slice_mut() {
     assert_eq!(slice, [3, 2, 1]);
 }
 
+#[cfg(not(all(miri, feature = "test_skip_miri_quickchecks")))]
 quickcheck::quickcheck! {
     fn vec_resizes_causing_reallocs(sizes: std::vec::Vec<usize>) -> () {
         // Exercise `realloc` by doing a bunch of `resize`s followed by

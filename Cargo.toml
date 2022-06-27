@@ -35,10 +35,12 @@ criterion = "0.3.0"
 rand = "0.7"
 
 [features]
-default = []
+default = ["test_skip_miri_quickchecks"]
 collections = []
 boxed = []
 allocator_api = []
+# quickchecks may take a long time to run in MIRI
+test_skip_miri_quickchecks = []
 
 # [profile.bench]
 # debug = true

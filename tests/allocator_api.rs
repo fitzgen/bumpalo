@@ -1,5 +1,9 @@
 #![feature(allocator_api)]
 #![cfg(feature = "allocator_api")]
+#![cfg_attr(
+    all(miri, not(feature = "test_skip_miri_quickchecks")),
+    allow(unused_imports)
+)]
 use bumpalo::Bump;
 use quickcheck::quickcheck;
 
@@ -116,6 +120,7 @@ fn allocator_grow_zeroed() {
     assert_eq!(unsafe { p.as_ref() }, [42, 42, 42, 42, 0, 0, 0, 0]);
 }
 
+#[cfg(not(all(miri, feature = "test_skip_miri_quickchecks")))]
 quickcheck! {
     fn allocator_grow_align_increase(layouts: Vec<(usize, usize)>) -> bool {
         let mut layouts: Vec<_> = layouts.into_iter().map(|(size, align)| {
@@ -158,9 +163,7 @@ quickcheck! {
 
         true
     }
-}
 
-quickcheck! {
     fn allocator_shrink_align_change(layouts: Vec<(usize, usize)>) -> bool {
         let mut layouts: Vec<_> = layouts.into_iter().map(|(size, align)| {
             const MIN_SIZE: usize = 1;
