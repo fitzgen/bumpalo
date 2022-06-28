@@ -1,8 +1,8 @@
 #![feature(allocator_api)]
 #![cfg(feature = "allocator_api")]
 #![cfg_attr(
-    all(miri, not(feature = "test_skip_miri_quickchecks")),
-    allow(unused_imports)
+    all(miri, feature = "test_skip_miri_quickchecks"),
+    allow(unused_imports, dead_code)
 )]
 use bumpalo::Bump;
 use quickcheck::quickcheck;

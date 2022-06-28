@@ -1,6 +1,6 @@
 #![cfg(feature = "collections")]
 #![cfg_attr(
-    all(miri, not(feature = "test_skip_miri_quickchecks")),
+    all(miri, feature = "test_skip_miri_quickchecks"),
     allow(unused_imports)
 )]
 use bumpalo::{collections::Vec, vec, Bump};
