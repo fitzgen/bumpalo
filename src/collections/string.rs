@@ -228,9 +228,9 @@ macro_rules! format {
 ///
 /// let b = Bump::new();
 ///
-/// let story = String::from_str_in("Once upon a time...", &b);
+/// let mut story = String::from_str_in("Once upon a time...", &b);
 ///
-/// let ptr = story.as_ptr();
+/// let ptr = story.as_mut_ptr();
 /// let len = story.len();
 /// let capacity = story.capacity();
 ///
@@ -243,7 +243,7 @@ macro_rules! format {
 /// // We can re-build a String out of ptr, len, and capacity. This is all
 /// // unsafe because we are responsible for making sure the components are
 /// // valid:
-/// let s = unsafe { String::from_raw_parts_in(ptr as *mut _, len, capacity, &b) } ;
+/// let s = unsafe { String::from_raw_parts_in(ptr, len, capacity, &b) } ;
 ///
 /// assert_eq!(String::from_str_in("Once upon a time...", &b), s);
 /// ```
