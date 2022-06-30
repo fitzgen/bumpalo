@@ -452,6 +452,13 @@ const FIRST_ALLOCATION_GOAL: usize = 1 << 9;
 // take the alignment into account.
 const DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER: usize = FIRST_ALLOCATION_GOAL - OVERHEAD;
 
+#[derive(Debug)]
+struct NewChunkMemoryDetails {
+    new_size_without_footer: usize,
+    align: usize,
+    size: usize,
+}
+
 /// Wrapper around `Layout::from_size_align` that adds debug assertions.
 #[inline]
 unsafe fn layout_from_size_align(size: usize, align: usize) -> Layout {
@@ -589,14 +596,75 @@ impl Bump {
             .unwrap_or(None)
     }
 
-    /// Whether a new allocation fits within the headroom before the allocation limit.
-    fn new_allocation_fits_under_limit(
+    /// Whether a request to allocate a new chunk with a given size for a given
+    /// requested layout will fit under the allocation limit set on a `Bump`.
+    fn chunk_alloc_request_fits_under_limit(
         allocation_limit_remaining: Option<usize>,
-        allocation_size: usize,
+        chunk_size: usize,
+        requested_layout: Layout,
     ) -> bool {
+        let NewChunkMemoryDetails {
+            new_size_without_footer,
+            align: _,
+            size: _,
+        } = match Bump::new_chunk_memory_details(Some(chunk_size), requested_layout) {
+            Some(memory_details) => memory_details,
+            None => {
+                return false;
+            }
+        };
+
         allocation_limit_remaining
-            .map(|allocation_limit_left| allocation_limit_left >= allocation_size)
+            .map(|allocation_limit_left| allocation_limit_left >= new_size_without_footer)
             .unwrap_or(true)
+    }
+
+    /// Determine the memory details including final size, alignment and
+    /// final size without footer for a new chunk that would be allocated
+    /// to fulfill an allocation request.
+    fn new_chunk_memory_details(
+        new_size_without_footer: Option<usize>,
+        requested_layout: Layout,
+    ) -> Option<NewChunkMemoryDetails> {
+        let mut new_size_without_footer =
+            new_size_without_footer.unwrap_or(DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER);
+
+        // We want to have CHUNK_ALIGN or better alignment
+        let mut align = CHUNK_ALIGN;
+
+        // If we already know we need to fulfill some request,
+        // make sure we allocate at least enough to satisfy it
+        align = align.max(requested_layout.align());
+        let requested_size =
+            round_up_to(requested_layout.size(), align).unwrap_or_else(allocation_size_overflow);
+        new_size_without_footer = new_size_without_footer.max(requested_size);
+
+        // We want our allocations to play nice with the memory allocator,
+        // and waste as little memory as possible.
+        // For small allocations, this means that the entire allocation
+        // including the chunk footer and mallocs internal overhead is
+        // as close to a power of two as we can go without going over.
+        // For larger allocations, we only need to get close to a page
+        // boundary without going over.
+        if new_size_without_footer < PAGE_STRATEGY_CUTOFF {
+            new_size_without_footer =
+                (new_size_without_footer + OVERHEAD).next_power_of_two() - OVERHEAD;
+        } else {
+            new_size_without_footer =
+                round_up_to(new_size_without_footer + OVERHEAD, 0x1000)? - OVERHEAD;
+        }
+
+        debug_assert_eq!(align % CHUNK_ALIGN, 0);
+        debug_assert_eq!(new_size_without_footer % CHUNK_ALIGN, 0);
+        let size = new_size_without_footer
+            .checked_add(FOOTER_SIZE)
+            .unwrap_or_else(allocation_size_overflow);
+
+        Some(NewChunkMemoryDetails {
+            new_size_without_footer,
+            size,
+            align,
+        })
     }
 
     /// Allocate a new chunk and return its initialized footer.
@@ -610,39 +678,11 @@ impl Bump {
         prev: NonNull<ChunkFooter>,
     ) -> Option<NonNull<ChunkFooter>> {
         unsafe {
-            let mut new_size_without_footer =
-                new_size_without_footer.unwrap_or(DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER);
-
-            // We want to have CHUNK_ALIGN or better alignment
-            let mut align = CHUNK_ALIGN;
-
-            // If we already know we need to fulfill some request,
-            // make sure we allocate at least enough to satisfy it
-            align = align.max(requested_layout.align());
-            let requested_size = round_up_to(requested_layout.size(), align)
-                .unwrap_or_else(allocation_size_overflow);
-            new_size_without_footer = new_size_without_footer.max(requested_size);
-
-            // We want our allocations to play nice with the memory allocator,
-            // and waste as little memory as possible.
-            // For small allocations, this means that the entire allocation
-            // including the chunk footer and mallocs internal overhead is
-            // as close to a power of two as we can go without going over.
-            // For larger allocations, we only need to get close to a page
-            // boundary without going over.
-            if new_size_without_footer < PAGE_STRATEGY_CUTOFF {
-                new_size_without_footer =
-                    (new_size_without_footer + OVERHEAD).next_power_of_two() - OVERHEAD;
-            } else {
-                new_size_without_footer =
-                    round_up_to(new_size_without_footer + OVERHEAD, 0x1000)? - OVERHEAD;
-            }
-
-            debug_assert_eq!(align % CHUNK_ALIGN, 0);
-            debug_assert_eq!(new_size_without_footer % CHUNK_ALIGN, 0);
-            let size = new_size_without_footer
-                .checked_add(FOOTER_SIZE)
-                .unwrap_or_else(allocation_size_overflow);
+            let NewChunkMemoryDetails {
+                new_size_without_footer,
+                align,
+                size,
+            } = Bump::new_chunk_memory_details(new_size_without_footer, requested_layout)?;
 
             let layout = layout_from_size_align(size, align);
 
@@ -1453,7 +1493,19 @@ impl Bump {
                 .checked_mul(2)?
                 .max(min_new_chunk_size);
             let sizes = iter::from_fn(|| {
-                if base_size >= min_new_chunk_size {
+                let bypass_min_chunk_size_for_small_limits = match self.allocation_limit() {
+                    Some(limit)
+                        if layout.size() < limit
+                            && base_size >= layout.size()
+                            && limit < DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER
+                            && self.allocated_bytes() == 0 =>
+                    {
+                        true
+                    }
+                    _ => false,
+                };
+
+                if base_size >= min_new_chunk_size || bypass_min_chunk_size_for_small_limits {
                     let size = base_size;
                     base_size = base_size / 2;
                     Some(size)
@@ -1464,7 +1516,11 @@ impl Bump {
 
             let new_footer = sizes
                 .filter_map(|size| {
-                    if Bump::new_allocation_fits_under_limit(allocation_limit_remaining, size) {
+                    if Bump::chunk_alloc_request_fits_under_limit(
+                        allocation_limit_remaining,
+                        size,
+                        layout,
+                    ) {
                         Bump::new_chunk(Some(size), layout, current_footer)
                     } else {
                         None
@@ -1887,6 +1943,7 @@ unsafe impl<'a> Allocator for &'a Bump {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use quickcheck::quickcheck;
 
     #[test]
     fn chunk_footer_is_five_words() {
@@ -1958,6 +2015,26 @@ mod tests {
             let p1 = b.realloc(p1, l1, 24000).unwrap();
             let l3 = Layout::from_size_align(24000, 4).unwrap();
             b.realloc(p1, l3, 48000).unwrap();
+        }
+    }
+
+    quickcheck! {
+        fn limit_is_never_exceeded(limit: usize) -> bool {
+            let bump = Bump::new();
+
+            bump.set_allocation_limit(Some(limit));
+
+            // The exact numbers here on how much to allocate are a bit murky but we
+            // have two main goals.
+            //
+            // - Attempt to allocate over the allocation limit imposed
+            // - Allocate in increments small enough that at least a few allocations succeed
+            let layout = Layout::array::<u8>(limit / 16).unwrap();
+            for _ in 0..32 {
+                let _ = bump.try_alloc_layout(layout);
+            }
+
+            limit >= bump.allocated_bytes()
         }
     }
 }

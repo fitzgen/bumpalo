@@ -1,7 +1,4 @@
-use std::alloc::Layout;
-
 use bumpalo::Bump;
-use quickcheck::quickcheck;
 
 #[test]
 fn allocation_limit_trivial() {
@@ -85,22 +82,14 @@ fn new_bump_allocated_bytes_is_zero() {
     assert_eq!(bump.allocated_bytes(), 0);
 }
 
-quickcheck! {
-    fn limit_is_never_exceeded(limit: usize) -> bool {
-        let b = Bump::new();
+#[test]
+fn small_allocation_limit() {
+    let bump = Bump::new();
 
-        b.set_allocation_limit(Some(limit));
-
-        // The exact numbers here on how much to allocate are a bit murky but we
-        // have two main goals.
-        //
-        // - Attempt to allocate over the allocation limit imposed
-        // - Allocate in increments small enough that at least a few allocations succeed
-        let layout = Layout::array::<u8>(limit / 16).unwrap();
-        for _ in 0..32 {
-            let _ = b.try_alloc_layout(layout);
-        }
-
-        limit >= b.allocated_bytes()
-    }
+    // 64 is chosen because any limit below 64 is
+    // unreasonably tight when trying to optimize the
+    // allocation and will always fail due to our attempts
+    // to allocate chunks in 'nice' sizes
+    bump.set_allocation_limit(Some(64));
+    assert!(bump.try_alloc([0; 1]).is_ok());
 }
