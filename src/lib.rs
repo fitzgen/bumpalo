@@ -452,7 +452,7 @@ const FIRST_ALLOCATION_GOAL: usize = 1 << 9;
 // take the alignment into account.
 const DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER: usize = FIRST_ALLOCATION_GOAL - OVERHEAD;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 struct NewChunkMemoryDetails {
     new_size_without_footer: usize,
     align: usize,
@@ -527,12 +527,16 @@ impl Bump {
             });
         }
 
-        let chunk_footer = Self::new_chunk(
-            None,
-            unsafe { layout_from_size_align(capacity, 1) },
-            EMPTY_CHUNK.get(),
-        )
-        .ok_or(AllocErr)?;
+        let layout = unsafe { layout_from_size_align(capacity, 1) };
+
+        let chunk_footer = unsafe {
+            Self::new_chunk(
+                Bump::new_chunk_memory_details(None, layout).ok_or(AllocErr)?,
+                layout,
+                EMPTY_CHUNK.get(),
+            )
+            .ok_or(AllocErr)?
+        };
 
         Ok(Bump {
             current_chunk_footer: Cell::new(chunk_footer),
@@ -598,24 +602,14 @@ impl Bump {
 
     /// Whether a request to allocate a new chunk with a given size for a given
     /// requested layout will fit under the allocation limit set on a `Bump`.
-    fn chunk_alloc_request_fits_under_limit(
+    fn chunk_fits_under_limit(
         allocation_limit_remaining: Option<usize>,
-        chunk_size: usize,
-        requested_layout: Layout,
+        new_chunk_memory_details: NewChunkMemoryDetails,
     ) -> bool {
-        let NewChunkMemoryDetails {
-            new_size_without_footer,
-            align: _,
-            size: _,
-        } = match Bump::new_chunk_memory_details(Some(chunk_size), requested_layout) {
-            Some(memory_details) => memory_details,
-            None => {
-                return false;
-            }
-        };
-
         allocation_limit_remaining
-            .map(|allocation_limit_left| allocation_limit_left >= new_size_without_footer)
+            .map(|allocation_limit_left| {
+                allocation_limit_left >= new_chunk_memory_details.new_size_without_footer
+            })
             .unwrap_or(true)
     }
 
@@ -672,52 +666,50 @@ impl Bump {
     /// If given, `layouts` is a tuple of the current chunk size and the
     /// layout of the allocation request that triggered us to fall back to
     /// allocating a new chunk of memory.
-    fn new_chunk(
-        new_size_without_footer: Option<usize>,
+    unsafe fn new_chunk(
+        new_chunk_memory_details: NewChunkMemoryDetails,
         requested_layout: Layout,
         prev: NonNull<ChunkFooter>,
     ) -> Option<NonNull<ChunkFooter>> {
-        unsafe {
-            let NewChunkMemoryDetails {
-                new_size_without_footer,
-                align,
-                size,
-            } = Bump::new_chunk_memory_details(new_size_without_footer, requested_layout)?;
+        let NewChunkMemoryDetails {
+            new_size_without_footer,
+            align,
+            size,
+        } = new_chunk_memory_details;
 
-            let layout = layout_from_size_align(size, align);
+        let layout = layout_from_size_align(size, align);
 
-            debug_assert!(size >= requested_layout.size());
+        debug_assert!(size >= requested_layout.size());
 
-            let data = alloc(layout);
-            let data = NonNull::new(data)?;
+        let data = alloc(layout);
+        let data = NonNull::new(data)?;
 
-            // The `ChunkFooter` is at the end of the chunk.
-            let footer_ptr = data.as_ptr().add(new_size_without_footer);
-            debug_assert_eq!((data.as_ptr() as usize) % align, 0);
-            debug_assert_eq!(footer_ptr as usize % CHUNK_ALIGN, 0);
-            let footer_ptr = footer_ptr as *mut ChunkFooter;
+        // The `ChunkFooter` is at the end of the chunk.
+        let footer_ptr = data.as_ptr().add(new_size_without_footer);
+        debug_assert_eq!((data.as_ptr() as usize) % align, 0);
+        debug_assert_eq!(footer_ptr as usize % CHUNK_ALIGN, 0);
+        let footer_ptr = footer_ptr as *mut ChunkFooter;
 
-            // The bump pointer is initialized to the end of the range we will
-            // bump out of.
-            let ptr = Cell::new(NonNull::new_unchecked(footer_ptr as *mut u8));
+        // The bump pointer is initialized to the end of the range we will
+        // bump out of.
+        let ptr = Cell::new(NonNull::new_unchecked(footer_ptr as *mut u8));
 
-            // The `allocated_bytes` of a new chunk counts the total size
-            // of the chunks, not how much of the chunks are used.
-            let allocated_bytes = prev.as_ref().allocated_bytes + new_size_without_footer;
+        // The `allocated_bytes` of a new chunk counts the total size
+        // of the chunks, not how much of the chunks are used.
+        let allocated_bytes = prev.as_ref().allocated_bytes + new_size_without_footer;
 
-            ptr::write(
-                footer_ptr,
-                ChunkFooter {
-                    data,
-                    layout,
-                    prev: Cell::new(prev),
-                    ptr,
-                    allocated_bytes,
-                },
-            );
+        ptr::write(
+            footer_ptr,
+            ChunkFooter {
+                data,
+                layout,
+                prev: Cell::new(prev),
+                ptr,
+                allocated_bytes,
+            },
+        );
 
-            Some(NonNull::new_unchecked(footer_ptr))
-        }
+        Some(NonNull::new_unchecked(footer_ptr))
     }
 
     /// Reset this bump allocator.
@@ -1492,7 +1484,7 @@ impl Bump {
             let mut base_size = (current_layout.size() - FOOTER_SIZE)
                 .checked_mul(2)?
                 .max(min_new_chunk_size);
-            let sizes = iter::from_fn(|| {
+            let chunk_memory_details = iter::from_fn(|| {
                 let bypass_min_chunk_size_for_small_limits = match self.allocation_limit() {
                     Some(limit)
                         if layout.size() < limit
@@ -1508,20 +1500,19 @@ impl Bump {
                 if base_size >= min_new_chunk_size || bypass_min_chunk_size_for_small_limits {
                     let size = base_size;
                     base_size = base_size / 2;
-                    Some(size)
+                    Some(Bump::new_chunk_memory_details(Some(size), layout)).flatten()
                 } else {
                     None
                 }
             });
 
-            let new_footer = sizes
-                .filter_map(|size| {
-                    if Bump::chunk_alloc_request_fits_under_limit(
+            let new_footer = chunk_memory_details
+                .filter_map(|chunk_memory_details| {
+                    if Bump::chunk_fits_under_limit(
                         allocation_limit_remaining,
-                        size,
-                        layout,
+                        chunk_memory_details,
                     ) {
-                        Bump::new_chunk(Some(size), layout, current_footer)
+                        Bump::new_chunk(chunk_memory_details, layout, current_footer)
                     } else {
                         None
                     }
