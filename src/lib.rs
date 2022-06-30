@@ -1500,7 +1500,7 @@ impl Bump {
                 if base_size >= min_new_chunk_size || bypass_min_chunk_size_for_small_limits {
                     let size = base_size;
                     base_size = base_size / 2;
-                    Some(Bump::new_chunk_memory_details(Some(size), layout)).flatten()
+                    Bump::new_chunk_memory_details(Some(size), layout)
                 } else {
                     None
                 }
