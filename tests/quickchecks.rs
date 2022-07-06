@@ -1,9 +1,7 @@
-// Miri is very slow. Even with QUICKCHECK_MAX_TESTS=1 the tests in this module run for more than
-// an hour.
-#![cfg(not(all(miri, feature = "test_skip_miri_quickchecks")))]
+mod quickcheck;
 
+use ::quickcheck::{Arbitrary, Gen};
 use bumpalo::Bump;
-use quickcheck::{quickcheck, Arbitrary, Gen};
 use std::mem;
 
 #[derive(Clone, Debug, PartialEq)]
