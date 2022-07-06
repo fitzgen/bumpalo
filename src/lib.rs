@@ -587,17 +587,14 @@ impl Bump {
     /// How much headroom an arena has before it hits its allocation
     /// limit.
     fn allocation_limit_remaining(&self) -> Option<usize> {
-        self.allocation_limit
-            .get()
-            .map(|allocation_limit| {
-                let allocated_bytes = self.allocated_bytes();
-                if allocated_bytes > allocation_limit {
-                    None
-                } else {
-                    Some(allocation_limit.abs_diff(allocated_bytes))
-                }
-            })
-            .unwrap_or(None)
+        self.allocation_limit.get().and_then(|allocation_limit| {
+            let allocated_bytes = self.allocated_bytes();
+            if allocated_bytes > allocation_limit {
+                None
+            } else {
+                Some(allocation_limit.abs_diff(allocated_bytes))
+            }
+        })
     }
 
     /// Whether a request to allocate a new chunk with a given size for a given
