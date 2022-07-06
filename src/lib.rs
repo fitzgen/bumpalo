@@ -452,6 +452,8 @@ const FIRST_ALLOCATION_GOAL: usize = 1 << 9;
 // take the alignment into account.
 const DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER: usize = FIRST_ALLOCATION_GOAL - OVERHEAD;
 
+/// The memory size and alignment details for a potential new chunk
+/// allocation.
 #[derive(Debug, Clone, Copy)]
 struct NewChunkMemoryDetails {
     new_size_without_footer: usize,
