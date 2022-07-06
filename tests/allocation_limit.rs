@@ -86,10 +86,6 @@ fn new_bump_allocated_bytes_is_zero() {
 fn small_allocation_limit() {
     let bump = Bump::new();
 
-    // 64 is chosen because any limit below 64 is
-    // unreasonably tight when trying to optimize the
-    // allocation and will always fail due to our attempts
-    // to allocate chunks in 'nice' sizes
     bump.set_allocation_limit(Some(64));
     assert!(bump.try_alloc([0; 1]).is_ok());
 }
