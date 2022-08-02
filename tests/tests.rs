@@ -71,7 +71,7 @@ fn oom_instead_of_bump_pointer_overflow() {
     let p = x as *mut u8 as usize;
 
     // A size guaranteed to overflow the bump pointer.
-    let size = usize::MAX - p + 1;
+    let size = (isize::MAX as usize) - p + 1;
     let align = 1;
     let layout = match Layout::from_size_align(size, align) {
         Err(e) => {
