@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      MIRIFLAGS: "-Zmiri-tag-raw-pointers -Zmiri-ignore-leaks"
+      MIRIFLAGS: "-Zmiri-strict-provenance -Zmiri-ignore-leaks"
 
     steps:
     - name: Install rustup
@@ -54,7 +54,7 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Run miri
-      run: cargo miri test --features boxed,allocator_api
+      run: cargo miri test --all-features
 
   valgrind:
     runs-on: ubuntu-latest

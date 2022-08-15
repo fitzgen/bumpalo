@@ -1,11 +1,12 @@
-#![feature(allocator_api)]
 #![cfg(feature = "allocator_api")]
+
 use bumpalo::Bump;
-use quickcheck::quickcheck;
 
 use std::alloc::{AllocError, Allocator, Layout};
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
+
+use crate::quickcheck;
 
 #[derive(Debug)]
 struct AllocatorDebug {
@@ -158,9 +159,7 @@ quickcheck! {
 
         true
     }
-}
 
-quickcheck! {
     fn allocator_shrink_align_change(layouts: Vec<(usize, usize)>) -> bool {
         let mut layouts: Vec<_> = layouts.into_iter().map(|(size, align)| {
             const MIN_SIZE: usize = 1;

@@ -1,4 +1,6 @@
 #![cfg(feature = "collections")]
+
+use crate::quickcheck;
 use bumpalo::{collections::Vec, vec, Bump};
 use std::cell::{Cell, RefCell};
 use std::ops::Deref;
@@ -59,7 +61,7 @@ fn test_into_bump_slice_mut() {
     assert_eq!(slice, [3, 2, 1]);
 }
 
-quickcheck::quickcheck! {
+quickcheck! {
     fn vec_resizes_causing_reallocs(sizes: std::vec::Vec<usize>) -> () {
         // Exercise `realloc` by doing a bunch of `resize`s followed by
         // `shrink_to_fit`s.
