@@ -1,7 +1,6 @@
 #![cfg(feature = "collections")]
 
-mod quickcheck;
-
+use crate::quickcheck;
 use bumpalo::collections::{CollectIn, String, Vec};
 use bumpalo::Bump;
 use std::string::String as StdString;

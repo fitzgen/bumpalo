@@ -1,5 +1,4 @@
-mod quickcheck;
-
+use crate::quickcheck;
 use ::quickcheck::{Arbitrary, Gen};
 use bumpalo::Bump;
 use std::mem;

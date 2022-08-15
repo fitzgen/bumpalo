@@ -1,13 +1,12 @@
-#![feature(allocator_api)]
 #![cfg(feature = "allocator_api")]
-
-mod quickcheck;
 
 use bumpalo::Bump;
 
 use std::alloc::{AllocError, Allocator, Layout};
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
+
+use crate::quickcheck;
 
 #[derive(Debug)]
 struct AllocatorDebug {
