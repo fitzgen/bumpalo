@@ -3,12 +3,12 @@ authors = ["Nick Fitzgerald <fitzgen@gmail.com>"]
 categories = ["memory-management", "rust-patterns", "no-std"]
 description = "A fast bump allocation arena for Rust."
 documentation = "https://docs.rs/bumpalo"
-edition = "2018"
+edition = "2021"
 license = "MIT/Apache-2.0"
 name = "bumpalo"
 readme = "README.md"
 repository = "https://github.com/fitzgen/bumpalo"
-version = "3.10.0"
+version = "3.11.0"
 exclude = ["/.github/*", "/benches", "/tests", "valgrind.supp", "bumpalo.png"]
 
 [package.metadata.docs.rs]

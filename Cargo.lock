@@ -48,17 +48,17 @@ dependencies = [
 [[package]]
 name = "bumpalo"
 version = "3.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37ccbd214614c6783386c1af30caf03192f17891059cecc394b4fb119e363de3"
+
+[[package]]
+name = "bumpalo"
+version = "3.11.0"
 dependencies = [
  "criterion",
  "quickcheck",
  "rand",
 ]
-
-[[package]]
-name = "bumpalo"
-version = "3.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37ccbd214614c6783386c1af30caf03192f17891059cecc394b4fb119e363de3"
 
 [[package]]
 name = "byteorder"
@@ -621,7 +621,7 @@ version = "0.2.82"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "662cd44805586bd52971b9586b1df85cdbbd9112e4ef4d8f41559c334dc6ac3f"
 dependencies = [
- "bumpalo 3.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bumpalo 3.10.0",
  "log",
  "once_cell",
  "proc-macro2",
