@@ -263,7 +263,10 @@ quickcheck! {
         }
     }
 
-
+    // MIRI exits with failure when we try to allocate more memory than its
+    // sandbox has, rather than returning null from the allocation
+    // function. This test runs afoul of that bug.
+    #[cfg(not(miri))]
     fn limit_is_never_exceeded(limit: usize) -> bool {
         let bump = Bump::new();
 
