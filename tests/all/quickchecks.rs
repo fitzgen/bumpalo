@@ -20,7 +20,7 @@ impl BigValue {
 }
 
 impl Arbitrary for BigValue {
-    fn arbitrary<G: Gen>(g: &mut G) -> BigValue {
+    fn arbitrary(g: &mut Gen) -> BigValue {
         BigValue::new(u64::arbitrary(g))
     }
 }
@@ -40,7 +40,7 @@ where
     T: Arbitrary + Clone,
     U: Arbitrary + Clone,
 {
-    fn arbitrary<G: Gen>(g: &mut G) -> Elems<T, U> {
+    fn arbitrary(g: &mut Gen) -> Elems<T, U> {
         let x: u8 = u8::arbitrary(g);
         match x % 6 {
             0 => Elems::OneT(T::arbitrary(g)),

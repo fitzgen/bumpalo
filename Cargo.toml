@@ -30,9 +30,9 @@ path = "tests/try_alloc.rs"
 harness = false
 
 [dev-dependencies]
-quickcheck = "0.9.0"
-criterion = "0.3.0"
-rand = "0.7"
+quickcheck = "1.0.3"
+criterion = "0.3.6"
+rand = "0.8.5"
 
 [features]
 default = []
