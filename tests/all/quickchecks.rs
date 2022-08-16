@@ -282,6 +282,6 @@ quickcheck! {
             let _ = bump.try_alloc_layout(layout);
         }
 
-        limit >= bump.allocated_bytes()
+        bump.allocated_bytes() <= limit
     }
 }
