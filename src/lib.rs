@@ -1934,16 +1934,20 @@ unsafe impl<'a> Allocator for &'a Bump {
     }
 }
 
+// NB: Only tests which require private types, fields, or methods should be in
+// here. Anything that can just be tested via public API surface should be in
+// `bumpalo/tests/all/*`.
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quickcheck::quickcheck;
 
+    // Uses private type `ChunkFooter`.
     #[test]
     fn chunk_footer_is_five_words() {
         assert_eq!(mem::size_of::<ChunkFooter>(), mem::size_of::<usize>() * 6);
     }
 
+    // Uses private `alloc` module.
     #[test]
     #[allow(clippy::cognitive_complexity)]
     fn test_realloc() {
@@ -1993,6 +1997,7 @@ mod tests {
         }
     }
 
+    // Uses our private `alloc` module.
     #[test]
     fn invalid_read() {
         use alloc::Alloc;
@@ -2009,26 +2014,6 @@ mod tests {
             let p1 = b.realloc(p1, l1, 24000).unwrap();
             let l3 = Layout::from_size_align(24000, 4).unwrap();
             b.realloc(p1, l3, 48000).unwrap();
-        }
-    }
-
-    quickcheck! {
-        fn limit_is_never_exceeded(limit: usize) -> bool {
-            let bump = Bump::new();
-
-            bump.set_allocation_limit(Some(limit));
-
-            // The exact numbers here on how much to allocate are a bit murky but we
-            // have two main goals.
-            //
-            // - Attempt to allocate over the allocation limit imposed
-            // - Allocate in increments small enough that at least a few allocations succeed
-            let layout = Layout::array::<u8>(limit / 16).unwrap();
-            for _ in 0..32 {
-                let _ = bump.try_alloc_layout(layout);
-            }
-
-            limit >= bump.allocated_bytes()
         }
     }
 }

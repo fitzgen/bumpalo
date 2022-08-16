@@ -262,4 +262,23 @@ quickcheck! {
             assert_eq!(size, chunk.len());
         }
     }
+
+
+    fn limit_is_never_exceeded(limit: usize) -> bool {
+        let bump = Bump::new();
+
+        bump.set_allocation_limit(Some(limit));
+
+        // The exact numbers here on how much to allocate are a bit murky but we
+        // have two main goals.
+        //
+        // - Attempt to allocate over the allocation limit imposed
+        // - Allocate in increments small enough that at least a few allocations succeed
+        let layout = std::alloc::Layout::array::<u8>(limit / 16).unwrap();
+        for _ in 0..32 {
+            let _ = bump.try_alloc_layout(layout);
+        }
+
+        limit >= bump.allocated_bytes()
+    }
 }
