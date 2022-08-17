@@ -20,7 +20,7 @@ impl BigValue {
 }
 
 impl Arbitrary for BigValue {
-    fn arbitrary<G: Gen>(g: &mut G) -> BigValue {
+    fn arbitrary(g: &mut Gen) -> BigValue {
         BigValue::new(u64::arbitrary(g))
     }
 }
@@ -40,7 +40,7 @@ where
     T: Arbitrary + Clone,
     U: Arbitrary + Clone,
 {
-    fn arbitrary<G: Gen>(g: &mut G) -> Elems<T, U> {
+    fn arbitrary(g: &mut Gen) -> Elems<T, U> {
         let x: u8 = u8::arbitrary(g);
         match x % 6 {
             0 => Elems::OneT(T::arbitrary(g)),
@@ -261,5 +261,27 @@ quickcheck! {
             assert_eq!(ptr as *const _, chunk.as_ptr() as *const _);
             assert_eq!(size, chunk.len());
         }
+    }
+
+    // MIRI exits with failure when we try to allocate more memory than its
+    // sandbox has, rather than returning null from the allocation
+    // function. This test runs afoul of that bug.
+    #[cfg(not(miri))]
+    fn limit_is_never_exceeded(limit: usize) -> bool {
+        let bump = Bump::new();
+
+        bump.set_allocation_limit(Some(limit));
+
+        // The exact numbers here on how much to allocate are a bit murky but we
+        // have two main goals.
+        //
+        // - Attempt to allocate over the allocation limit imposed
+        // - Allocate in increments small enough that at least a few allocations succeed
+        let layout = std::alloc::Layout::array::<u8>(limit / 16).unwrap();
+        for _ in 0..32 {
+            let _ = bump.try_alloc_layout(layout);
+        }
+
+        bump.allocated_bytes() <= limit
     }
 }

@@ -24,6 +24,7 @@ macro_rules! quickcheck {
                 let mut qc = ::quickcheck::QuickCheck::new();
 
                 if let Some(tests) = tests {
+                    eprintln!("Executing {} quickchecks", tests);
                     qc = qc.tests(tests)
                 }
 
