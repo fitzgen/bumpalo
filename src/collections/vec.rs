@@ -2345,6 +2345,13 @@ impl<'bump, T: 'bump> ExactSizeIterator for IntoIter<'bump, T> {}
 
 impl<'bump, T: 'bump> FusedIterator for IntoIter<'bump, T> {}
 
+impl<'bump, T> Drop for IntoIter<'bump, T> {
+    fn drop(&mut self) {
+        // drop all remaining elements
+        self.for_each(drop);
+    }
+}
+
 /// A draining iterator for `Vec<'bump, T>`.
 ///
 /// This `struct` is created by the [`Vec::drain`] method.
