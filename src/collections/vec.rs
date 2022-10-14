@@ -1941,7 +1941,7 @@ impl<'bump, T: 'bump> ops::DerefMut for Vec<'bump, T> {
 
 impl<'bump, T: 'bump> IntoIterator for Vec<'bump, T> {
     type Item = T;
-    type IntoIter = IntoIter<T>;
+    type IntoIter = IntoIter<'bump, T>;
 
     /// Creates a consuming iterator, that is, one that moves each value out of
     /// the vector (from start to end). The vector cannot be used after calling
@@ -1961,7 +1961,7 @@ impl<'bump, T: 'bump> IntoIterator for Vec<'bump, T> {
     /// }
     /// ```
     #[inline]
-    fn into_iter(mut self) -> IntoIter<T> {
+    fn into_iter(mut self) -> IntoIter<'bump, T> {
         unsafe {
             let begin = self.as_mut_ptr();
             // assume(!begin.is_null());
@@ -2222,19 +2222,19 @@ impl<'bump, T> Drop for Vec<'bump, T> {
 /// (provided by the [`IntoIterator`] trait).
 ///
 /// [`IntoIterator`]: https://doc.rust-lang.org/std/iter/trait.IntoIterator.html
-pub struct IntoIter<T> {
-    phantom: PhantomData<T>,
+pub struct IntoIter<'bump, T> {
+    phantom: PhantomData<&'bump [T]>,
     ptr: *const T,
     end: *const T,
 }
 
-impl<T: fmt::Debug> fmt::Debug for IntoIter<T> {
+impl<'bump, T: fmt::Debug> fmt::Debug for IntoIter<'bump, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_tuple("IntoIter").field(&self.as_slice()).finish()
     }
 }
 
-impl<'bump, T: 'bump> IntoIter<T> {
+impl<'bump, T: 'bump> IntoIter<'bump, T> {
     /// Returns the remaining items of this iterator as a slice.
     ///
     /// # Examples
@@ -2276,10 +2276,10 @@ impl<'bump, T: 'bump> IntoIter<T> {
     }
 }
 
-unsafe impl<T: Send> Send for IntoIter<T> {}
-unsafe impl<T: Sync> Sync for IntoIter<T> {}
+unsafe impl<'bump, T: Send> Send for IntoIter<'bump, T> {}
+unsafe impl<'bump, T: Sync> Sync for IntoIter<'bump, T> {}
 
-impl<'bump, T: 'bump> Iterator for IntoIter<T> {
+impl<'bump, T: 'bump> Iterator for IntoIter<'bump, T> {
     type Item = T;
 
     #[inline]
@@ -2320,7 +2320,7 @@ impl<'bump, T: 'bump> Iterator for IntoIter<T> {
     }
 }
 
-impl<'bump, T: 'bump> DoubleEndedIterator for IntoIter<T> {
+impl<'bump, T: 'bump> DoubleEndedIterator for IntoIter<'bump, T> {
     #[inline]
     fn next_back(&mut self) -> Option<T> {
         unsafe {
@@ -2341,9 +2341,9 @@ impl<'bump, T: 'bump> DoubleEndedIterator for IntoIter<T> {
     }
 }
 
-impl<'bump, T: 'bump> ExactSizeIterator for IntoIter<T> {}
+impl<'bump, T: 'bump> ExactSizeIterator for IntoIter<'bump, T> {}
 
-impl<'bump, T: 'bump> FusedIterator for IntoIter<T> {}
+impl<'bump, T: 'bump> FusedIterator for IntoIter<'bump, T> {}
 
 /// A draining iterator for `Vec<'bump, T>`.
 ///
