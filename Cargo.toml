@@ -8,7 +8,7 @@ license = "MIT/Apache-2.0"
 name = "bumpalo"
 readme = "README.md"
 repository = "https://github.com/fitzgen/bumpalo"
-version = "3.11.0"
+version = "3.11.1"
 exclude = ["/.github/*", "/benches", "/tests", "valgrind.supp", "bumpalo.png"]
 
 [package.metadata.docs.rs]

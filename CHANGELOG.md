@@ -28,6 +28,20 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.11.1
+
+Released 2022-10-18.
+
+### Security
+
+* Fixed a bug where when `std::vec::IntoIter` was ported to
+  `bumpalo::collections::vec::IntoIter`, it didn't get its underlying `Bump`'s
+  lifetime threaded through. This meant that `rustc` was not checking the
+  borrows for `bumpalo::collections::IntoIter` and this could result in
+  use-after-free bugs.
+
+--------------------------------------------------------------------------------
+
 ## 3.11.0
 
 Released 2022-08-17.
