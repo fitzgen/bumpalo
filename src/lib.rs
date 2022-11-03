@@ -1696,6 +1696,16 @@ impl Bump {
         unsafe { footer.as_ref().allocated_bytes }
     }
 
+    /// Calculates the number of bytes requested from the Rust allocator for this `Bump`.
+    ///
+    /// This number is equal to the [`allocated_bytes()`](Self::allocated_bytes) plus
+    /// the size of the bump metadata.
+    pub fn allocated_bytes_including_metadata(&self) -> usize {
+        let metadata_size =
+            unsafe { self.iter_allocated_chunks_raw().count() * mem::size_of::<ChunkFooter>() };
+        self.allocated_bytes() + metadata_size
+    }
+
     #[inline]
     unsafe fn is_last_allocation(&self, ptr: NonNull<u8>) -> bool {
         let footer = self.current_chunk_footer.get();
