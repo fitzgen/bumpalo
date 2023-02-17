@@ -1488,21 +1488,14 @@ impl Bump {
                 .checked_mul(2)?
                 .max(min_new_chunk_size);
             let chunk_memory_details = iter::from_fn(|| {
-                let bypass_min_chunk_size_for_small_limits = match self.allocation_limit() {
-                    Some(limit)
-                        if layout.size() < limit
+                let bypass_min_chunk_size_for_small_limits = matches!(self.allocation_limit(), Some(limit) if layout.size() < limit
                             && base_size >= layout.size()
                             && limit < DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER
-                            && self.allocated_bytes() == 0 =>
-                    {
-                        true
-                    }
-                    _ => false,
-                };
+                            && self.allocated_bytes() == 0);
 
                 if base_size >= min_new_chunk_size || bypass_min_chunk_size_for_small_limits {
                     let size = base_size;
-                    base_size = base_size / 2;
+                    base_size /= 2;
                     Bump::new_chunk_memory_details(Some(size), layout)
                 } else {
                     None
@@ -1760,9 +1753,9 @@ impl Bump {
             // in the `if` condition.
             ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), new_size);
 
-            return Ok(new_ptr);
+            Ok(new_ptr)
         } else {
-            return Ok(ptr);
+            Ok(ptr)
         }
     }
 
