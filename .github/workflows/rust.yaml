@@ -32,7 +32,7 @@ jobs:
     - name: Install rust channel
       run: rustup install ${{matrix.rust_channel}} && rustup default ${{matrix.rust_channel}}
 
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
     - name: Run tests (no features)
       run: cargo test --verbose
@@ -51,7 +51,7 @@ jobs:
     - name: Install miri
       run: rustup toolchain install nightly --allow-downgrade --profile minimal --component miri
 
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
     - name: Run miri
       run: cargo miri test --all-features
@@ -72,7 +72,7 @@ jobs:
     - name: Install valgrind
       run: sudo apt update && sudo apt install valgrind
 
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
     - name: Test under valgrind (no features)
       run: cargo test --verbose
@@ -88,7 +88,7 @@ jobs:
     - name: Install rust nightly
       run: rustup install nightly && rustup default nightly
 
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
     - name: Check that benches build
       run: cargo check --benches --all-features
