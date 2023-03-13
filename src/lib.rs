@@ -476,12 +476,6 @@ fn allocation_size_overflow<T>() -> T {
     panic!("requested allocation size overflowed")
 }
 
-// This can be migrated to directly use `usize::abs_diff` when the MSRV
-// reaches `1.60`
-fn abs_diff(a: usize, b: usize) -> usize {
-    usize::max(a, b) - usize::min(a, b)
-}
-
 impl Bump {
     /// Construct a new arena to bump allocate into.
     ///
@@ -600,7 +594,7 @@ impl Bump {
             if allocated_bytes > allocation_limit {
                 None
             } else {
-                Some(abs_diff(allocation_limit, allocated_bytes))
+                Some(usize::abs_diff(allocation_limit, allocated_bytes))
             }
         })
     }
