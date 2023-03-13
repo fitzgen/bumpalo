@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![deny(missing_debug_implementations)]
 #![deny(missing_docs)]
+#![deny(clippy::missing_inline_in_public_items)]
 #![no_std]
 #![cfg_attr(
     feature = "allocator_api",
@@ -44,11 +45,13 @@ pub enum AllocOrInitError<E> {
     Init(E),
 }
 impl<E> From<AllocErr> for AllocOrInitError<E> {
+    #[inline]
     fn from(e: AllocErr) -> Self {
         Self::Alloc(e)
     }
 }
 impl<E: Display> Display for AllocOrInitError<E> {
+    #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             AllocOrInitError::Alloc(err) => err.fmt(f),
@@ -353,6 +356,7 @@ static EMPTY_CHUNK: EmptyChunkFooter = EmptyChunkFooter(ChunkFooter {
 });
 
 impl EmptyChunkFooter {
+    #[inline]
     fn get(&'static self) -> NonNull<ChunkFooter> {
         unsafe { NonNull::new_unchecked(&self.0 as *const ChunkFooter as *mut ChunkFooter) }
     }
@@ -361,6 +365,7 @@ impl EmptyChunkFooter {
 impl ChunkFooter {
     // Returns the start and length of the currently allocated region of this
     // chunk.
+    #[inline]
     fn as_raw_parts(&self) -> (*const u8, usize) {
         let data = self.data.as_ptr() as *const u8;
         let ptr = self.ptr.get().as_ptr() as *const u8;
@@ -371,18 +376,21 @@ impl ChunkFooter {
     }
 
     /// Is this chunk the last empty chunk?
+    #[inline]
     fn is_empty(&self) -> bool {
         ptr::eq(self, EMPTY_CHUNK.get().as_ptr())
     }
 }
 
 impl Default for Bump {
+    #[inline]
     fn default() -> Bump {
         Bump::new()
     }
 }
 
 impl Drop for Bump {
+    #[inline]
     fn drop(&mut self) {
         unsafe {
             dealloc_chunk_list(self.current_chunk_footer.get());
@@ -478,6 +486,7 @@ fn allocation_size_overflow<T>() -> T {
 
 // This can be migrated to directly use `usize::abs_diff` when the MSRV
 // reaches `1.60`
+#[inline]
 fn abs_diff(a: usize, b: usize) -> usize {
     usize::max(a, b) - usize::min(a, b)
 }
@@ -491,6 +500,7 @@ impl Bump {
     /// let bump = bumpalo::Bump::new();
     /// # let _ = bump;
     /// ```
+    #[inline]
     pub fn new() -> Bump {
         Self::with_capacity(0)
     }
@@ -503,6 +513,7 @@ impl Bump {
     /// let bump = bumpalo::Bump::try_new();
     /// # let _ = bump.unwrap();
     /// ```
+    #[inline]
     pub fn try_new() -> Result<Bump, AllocErr> {
         Bump::try_with_capacity(0)
     }
@@ -515,6 +526,7 @@ impl Bump {
     /// let bump = bumpalo::Bump::with_capacity(100);
     /// # let _ = bump;
     /// ```
+    #[inline]
     pub fn with_capacity(capacity: usize) -> Bump {
         Bump::try_with_capacity(capacity).unwrap_or_else(|_| oom())
     }
@@ -527,6 +539,7 @@ impl Bump {
     /// let bump = bumpalo::Bump::try_with_capacity(100);
     /// # let _ = bump.unwrap();
     /// ```
+    #[inline]
     pub fn try_with_capacity(capacity: usize) -> Result<Self, AllocErr> {
         if capacity == 0 {
             return Ok(Bump {
@@ -569,6 +582,7 @@ impl Bump {
     ///
     /// assert_eq!(bump.allocation_limit(), None);
     /// ```
+    #[inline]
     pub fn allocation_limit(&self) -> Option<usize> {
         self.allocation_limit.get()
     }
@@ -588,12 +602,14 @@ impl Bump {
     ///
     /// assert!(bump.try_alloc(5).is_err());
     /// ```
+    #[inline]
     pub fn set_allocation_limit(&self, limit: Option<usize>) {
         self.allocation_limit.set(limit)
     }
 
     /// How much headroom an arena has before it hits its allocation
     /// limit.
+    #[inline]
     fn allocation_limit_remaining(&self) -> Option<usize> {
         self.allocation_limit.get().and_then(|allocation_limit| {
             let allocated_bytes = self.allocated_bytes();
@@ -607,6 +623,7 @@ impl Bump {
 
     /// Whether a request to allocate a new chunk with a given size for a given
     /// requested layout will fit under the allocation limit set on a `Bump`.
+    #[inline]
     fn chunk_fits_under_limit(
         allocation_limit_remaining: Option<usize>,
         new_chunk_memory_details: NewChunkMemoryDetails,
@@ -621,6 +638,7 @@ impl Bump {
     /// Determine the memory details including final size, alignment and
     /// final size without footer for a new chunk that would be allocated
     /// to fulfill an allocation request.
+    #[inline]
     fn new_chunk_memory_details(
         new_size_without_footer: Option<usize>,
         requested_layout: Layout,
@@ -671,6 +689,7 @@ impl Bump {
     /// If given, `layouts` is a tuple of the current chunk size and the
     /// layout of the allocation request that triggered us to fall back to
     /// allocating a new chunk of memory.
+    #[inline]
     unsafe fn new_chunk(
         new_chunk_memory_details: NewChunkMemoryDetails,
         requested_layout: Layout,
@@ -748,6 +767,7 @@ impl Bump {
     ///     bump.alloc(j);
     /// }
     ///```
+    #[inline]
     pub fn reset(&mut self) {
         // Takes `&mut self` so `self` must be unique and there can't be any
         // borrows active that would get invalidated by resetting.
@@ -1460,6 +1480,7 @@ impl Bump {
     /// let capacity = bump.chunk_capacity();
     /// assert!(capacity >= 100);
     /// ```
+    #[inline]
     pub fn chunk_capacity(&self) -> usize {
         let current_footer = self.current_chunk_footer.get();
         let current_footer = unsafe { current_footer.as_ref() };
@@ -1628,6 +1649,7 @@ impl Bump {
     ///     assert_eq!(chunk[2].assume_init(), b'a');
     /// }
     /// ```
+    #[inline]
     pub fn iter_allocated_chunks(&mut self) -> ChunkIter<'_> {
         // SAFE: Ensured by mutable borrow of `self`.
         let raw = unsafe { self.iter_allocated_chunks_raw() };
@@ -1654,6 +1676,7 @@ impl Bump {
     ///
     /// In addition, all of the caveats when reading the chunk data from
     /// [`iter_allocated_chunks()`](Bump::iter_allocated_chunks) still apply.
+    #[inline]
     pub unsafe fn iter_allocated_chunks_raw(&self) -> ChunkRawIter<'_> {
         ChunkRawIter {
             footer: self.current_chunk_footer.get(),
@@ -1683,6 +1706,7 @@ impl Bump {
     /// let bytes = bump.allocated_bytes();
     /// assert!(bytes >= core::mem::size_of::<u32>() * 5);
     /// ```
+    #[inline]
     pub fn allocated_bytes(&self) -> usize {
         let footer = self.current_chunk_footer.get();
 
@@ -1693,6 +1717,7 @@ impl Bump {
     ///
     /// This number is equal to the [`allocated_bytes()`](Self::allocated_bytes) plus
     /// the size of the bump metadata.
+    #[inline]
     pub fn allocated_bytes_including_metadata(&self) -> usize {
         let metadata_size =
             unsafe { self.iter_allocated_chunks_raw().count() * mem::size_of::<ChunkFooter>() };
@@ -1811,6 +1836,7 @@ pub struct ChunkIter<'a> {
 
 impl<'a> Iterator for ChunkIter<'a> {
     type Item = &'a [mem::MaybeUninit<u8>];
+    #[inline]
     fn next(&mut self) -> Option<&'a [mem::MaybeUninit<u8>]> {
         unsafe {
             let (ptr, len) = self.raw.next()?;
@@ -1841,6 +1867,7 @@ pub struct ChunkRawIter<'a> {
 
 impl Iterator for ChunkRawIter<'_> {
     type Item = (*mut u8, usize);
+    #[inline]
     fn next(&mut self) -> Option<(*mut u8, usize)> {
         unsafe {
             let foot = self.footer.as_ref();
@@ -1856,8 +1883,7 @@ impl Iterator for ChunkRawIter<'_> {
 
 impl iter::FusedIterator for ChunkRawIter<'_> {}
 
-#[inline(never)]
-#[cold]
+#[inline]
 fn oom() -> ! {
     panic!("out of memory")
 }

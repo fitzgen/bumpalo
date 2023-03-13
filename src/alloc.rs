@@ -109,6 +109,7 @@ pub struct AllocErr;
 // (we need this for downstream impl of trait Error)
 // #[unstable(feature = "allocator_api", issue = "32838")]
 impl fmt::Display for AllocErr {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str("memory allocation failed")
     }
