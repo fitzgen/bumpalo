@@ -1464,6 +1464,7 @@ impl Bump {
     /// Slow path allocation for when we need to allocate a new chunk from the
     /// parent bump set because there isn't enough room in our current chunk.
     #[inline(never)]
+    #[cold]
     fn alloc_layout_slow(&self, layout: Layout) -> Option<NonNull<u8>> {
         unsafe {
             let size = layout.size();
