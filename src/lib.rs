@@ -354,7 +354,7 @@ static EMPTY_CHUNK: EmptyChunkFooter = EmptyChunkFooter(ChunkFooter {
 
 impl EmptyChunkFooter {
     fn get(&'static self) -> NonNull<ChunkFooter> {
-        unsafe { NonNull::new_unchecked(&self.0 as *const ChunkFooter as *mut ChunkFooter) }
+        NonNull::from(&self.0)
     }
 }
 
