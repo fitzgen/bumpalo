@@ -14,7 +14,7 @@ jobs:
   build:
     strategy:
       matrix:
-        rust_channel: ["stable", "beta", "nightly", "1.60.0"]
+        rust_channel: ["stable", "beta", "nightly", "1.63.0"]
         feature_set: ["--features collections,boxed"]
         include:
           - rust_channel: "nightly"
