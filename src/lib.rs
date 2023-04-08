@@ -1255,49 +1255,19 @@ impl Bump {
     /// ```
     #[inline(always)]
     #[allow(clippy::mut_from_ref)]
-    pub fn alloc_str_concat<I>(&self, iter: I) -> &mut str
+    pub fn alloc_str_concat<'s, I, S>(&self, iter: I) -> &mut str
     where
-        I: IntoIterator,
+        I: IntoIterator<Item = &'s S>,
         I::IntoIter: Clone,
-        I::Item: AsRef<str>,
+        S: AsRef<str> + 's,
     {
-        let mut iter = iter.into_iter();
+        let iter = iter.into_iter();
         let total_len = iter.clone().fold(0_usize, |len, s| {
             len.checked_add(s.as_ref().len()).unwrap_or_else(|| oom())
         });
 
-        let buffer = if let Some(mut string) = iter.next() {
-            let bytes = string.as_ref().bytes();
-
-            // SAFETY: We lifetime-extend bytes to prevent a borrowchecker error where we can’t
-            // assign to `string` in the closure because it is borrowed by `bytes`. In reality,
-            // it’s perfectly fine because `bytes` is immediately also assigned to afterward (it is
-            // dead at that point, so there are no aliasing violations either).
-            let mut bytes = unsafe { mem::transmute::<str::Bytes<'_>, str::Bytes<'_>>(bytes) };
-
-            let buffer = self.alloc_slice_fill_with(total_len, |_| loop {
-                match bytes.next() {
-                    Some(byte) => break byte,
-                    None => {
-                        string = iter.next().unwrap();
-                        bytes = unsafe {
-                            mem::transmute::<str::Bytes<'_>, str::Bytes<'_>>(
-                                string.as_ref().bytes(),
-                            )
-                        };
-                    }
-                }
-            });
-
-            // This assert is necessary to guard against misbehaving `Iterator` implementations
-            // leading to invalid UTF-8 in strings.
-            assert_eq!(bytes.next(), None);
-
-            buffer
-        } else {
-            assert_eq!(total_len, 0);
-            self.alloc_slice_copy(&[])
-        };
+        let mut bytes = iter.flat_map(|s| s.as_ref().bytes());
+        let buffer = self.alloc_slice_fill_with(total_len, |_| bytes.next().unwrap());
 
         unsafe {
             // This is OK, because it already came in as str, so it is guaranteed to be utf8
