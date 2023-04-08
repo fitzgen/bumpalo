@@ -1269,6 +1269,10 @@ impl Bump {
         let mut bytes = iter.flat_map(|s| s.as_ref().bytes());
         let buffer = self.alloc_slice_fill_with(total_len, |_| bytes.next().unwrap());
 
+        // This assert is necessary to guard against misbehaving `Iterator` implementations leading
+        // to invalid UTF-8 in strings.
+        assert_eq!(bytes.next(), None);
+
         unsafe {
             // This is OK, because it already came in as str, so it is guaranteed to be utf8
             str::from_utf8_unchecked_mut(buffer)
