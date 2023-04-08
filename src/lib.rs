@@ -1239,6 +1239,72 @@ impl Bump {
         }
     }
 
+    /// `Copy` an array of string slices into this `Bump` and return an exclusive reference.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if the iterator is misbehaved (changes its behaviour after cloning) or if reserving
+    /// space for the string fails.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let hello = bump.alloc_str_concat(["hello ", "", "world"]);
+    /// assert_eq!("hello world", hello);
+    /// ```
+    #[inline(always)]
+    #[allow(clippy::mut_from_ref)]
+    pub fn alloc_str_concat<I>(&self, iter: I) -> &mut str
+    where
+        I: IntoIterator,
+        I::IntoIter: Clone,
+        I::Item: AsRef<str>,
+    {
+        let mut iter = iter.into_iter();
+        let total_len = iter.clone().fold(0_usize, |len, s| {
+            len.checked_add(s.as_ref().len()).unwrap_or_else(|| oom())
+        });
+
+        let buffer = if let Some(mut string) = iter.next() {
+            let bytes = string.as_ref().bytes();
+
+            // SAFETY: We lifetime-extend bytes to prevent a borrowchecker error where we can’t
+            // assign to `string` in the closure because it is borrowed by `bytes`. In reality,
+            // it’s perfectly fine because `bytes` is immediately also assigned to afterward (it is
+            // dead at that point, so there are no aliasing violations either).
+            let mut bytes = unsafe { mem::transmute::<str::Bytes<'_>, str::Bytes<'_>>(bytes) };
+
+            let buffer = self.alloc_slice_fill_with(total_len, |_| loop {
+                match bytes.next() {
+                    Some(byte) => break byte,
+                    None => {
+                        string = iter.next().unwrap();
+                        bytes = unsafe {
+                            mem::transmute::<str::Bytes<'_>, str::Bytes<'_>>(
+                                string.as_ref().bytes(),
+                            )
+                        };
+                    }
+                }
+            });
+
+            // This assert is necessary to guard against misbehaving `Iterator` implementations
+            // leading to invalid UTF-8 in strings.
+            assert_eq!(bytes.next(), None);
+
+            buffer
+        } else {
+            assert_eq!(total_len, 0);
+            self.alloc_slice_copy(&[])
+        };
+
+        unsafe {
+            // This is OK, because it already came in as str, so it is guaranteed to be utf8
+            str::from_utf8_unchecked_mut(buffer)
+        }
+    }
+
     /// Allocates a new slice of size `len` into this `Bump` and returns an
     /// exclusive reference to the copy.
     ///

@@ -236,6 +236,14 @@ quickcheck! {
         }
     }
 
+    fn alloc_str_concats(allocs: Vec<Vec<String>>) -> () {
+        let b = Bump::new();
+        let allocated: Vec<&str> = allocs.iter().map(|s| b.alloc_str_concat(s) as &_).collect();
+        for (val, alloc) in allocs.into_iter().zip(allocated) {
+            assert_eq!(val.concat(), alloc);
+        }
+    }
+
     fn all_allocations_in_a_chunk(values: Vec<BigValue>) -> () {
         let b = Bump::new();
         let allocated: Vec<&BigValue> = values.into_iter().map(|val| b.alloc(val) as &_).collect();
