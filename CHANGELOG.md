@@ -2,14 +2,17 @@
 
 Released YYYY-MM-DD.
 
-### Added
-
-* TODO (or remove section if none)
-
 ### Changed
 
-* The minimum supported Rust version (MSRV) is now 1.60.0.
-* TODO (or remove section if none)
+* The minimum supported Rust version (MSRV) is now 1.63.0.
+* `"allocator_api"` feature now uses either unstable API from `std` or 
+  `allocator-api2` crate - a mirror of the unstable API usable on stable.
+
+### Added
+
+* New `"nightly"` feature enables use of unstable API and requires nightly channel.
+  Enabling `allocator_api` nightly Rust feature is required
+  when using `"nightly"` feature
 
 ### Deprecated
 

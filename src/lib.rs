@@ -2,7 +2,7 @@
 #![deny(missing_debug_implementations)]
 #![deny(missing_docs)]
 #![no_std]
-#![cfg_attr(feature = "allocator_api", feature(allocator_api))]
+#![cfg_attr(feature = "nightly", feature(allocator_api))]
 
 #[doc(hidden)]
 pub extern crate alloc as core_alloc;
@@ -22,8 +22,13 @@ use core::mem;
 use core::ptr::{self, NonNull};
 use core::slice;
 use core::str;
+use core_alloc::alloc::{alloc, dealloc, Layout};
 
-use allocator_api2::alloc::{alloc, dealloc, AllocError, Allocator, Layout};
+#[cfg(feature = "nightly")]
+use core_alloc::alloc::{AllocError, Allocator};
+
+#[cfg(all(feature = "allocator_api", not(feature = "nightly")))]
+use allocator_api2::alloc::{AllocError, Allocator};
 
 pub use alloc::AllocErr;
 
@@ -1882,6 +1887,7 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
     }
 }
 
+#[cfg(feature = "allocator_api")]
 unsafe impl<'a> Allocator for &'a Bump {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         self.try_alloc_layout(layout)
