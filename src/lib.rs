@@ -463,12 +463,8 @@ struct NewChunkMemoryDetails {
 
 /// Wrapper around `Layout::from_size_align` that adds debug assertions.
 #[inline]
-unsafe fn layout_from_size_align(size: usize, align: usize) -> Layout {
-    if cfg!(debug_assertions) {
-        Layout::from_size_align(size, align).unwrap()
-    } else {
-        Layout::from_size_align_unchecked(size, align)
-    }
+fn layout_from_size_align(size: usize, align: usize) -> Result<Layout, AllocErr> {
+    Layout::from_size_align(size, align).map_err(|_| AllocErr)
 }
 
 #[inline(never)]
@@ -529,7 +525,7 @@ impl Bump {
             });
         }
 
-        let layout = unsafe { layout_from_size_align(capacity, 1) };
+        let layout = layout_from_size_align(capacity, 1)?;
 
         let chunk_footer = unsafe {
             Self::new_chunk(
@@ -676,7 +672,7 @@ impl Bump {
             size,
         } = new_chunk_memory_details;
 
-        let layout = layout_from_size_align(size, align);
+        let layout = layout_from_size_align(size, align).ok()?;
 
         debug_assert!(size >= requested_layout.size());
 
@@ -1770,7 +1766,7 @@ impl Bump {
             // reuse the currently allocated space.
             let delta = new_size - old_size;
             if let Some(p) =
-                self.try_alloc_layout_fast(layout_from_size_align(delta, old_layout.align()))
+                self.try_alloc_layout_fast(layout_from_size_align(delta, old_layout.align())?)
             {
                 ptr::copy(ptr.as_ptr(), p.as_ptr(), old_size);
                 return Ok(p);
@@ -1881,7 +1877,7 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
             return self.try_alloc_layout(layout);
         }
 
-        let new_layout = layout_from_size_align(new_size, layout.align());
+        let new_layout = layout_from_size_align(new_size, layout.align())?;
         if new_size <= old_size {
             self.shrink(ptr, layout, new_layout)
         } else {
