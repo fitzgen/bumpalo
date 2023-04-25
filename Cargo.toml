@@ -10,6 +10,7 @@ readme = "README.md"
 repository = "https://github.com/fitzgen/bumpalo"
 version = "3.12.1"
 exclude = ["/.github/*", "/benches", "/tests", "valgrind.supp", "bumpalo.png"]
+rust-version = "1.60.0"
 
 [package.metadata.docs.rs]
 all-features = true
