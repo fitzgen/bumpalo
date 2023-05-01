@@ -31,7 +31,7 @@ path = "tests/try_alloc.rs"
 harness = false
 
 [dependencies]
-allocator-api2 = { version = "0.2.7-rc.1", default-features = false, optional = true, features = ["alloc"] }
+allocator-api2 = { version = "0.2.8", default-features = false, optional = true, features = ["alloc"] }
 
 [dev-dependencies]
 quickcheck = "1.0.3"
@@ -42,8 +42,7 @@ rand = "0.8.5"
 default = []
 collections = []
 boxed = []
-allocator_api = ["allocator-api2"]
-nightly = ["allocator_api"]
+allocator_api = []
 
 # [profile.bench]
 # debug = true
