@@ -29,6 +29,17 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.12.2
+
+Released 2023-05-09.
+
+### Changed
+
+* Added `rust-version` metadata to `Cargo.toml` which helps `cargo` with version
+  resolution.
+
+--------------------------------------------------------------------------------
+
 ## 3.12.1
 
 Released 2023-04-21.
