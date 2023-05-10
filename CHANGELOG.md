@@ -2,17 +2,19 @@
 
 Released YYYY-MM-DD.
 
+### Added
+
+* New `"allocator-api2"` feature enables use of allocator API on stable.
+  This feature uses a crate that mirrors the API of
+  unstable `allocator_api` feature.
+  If feature is enabled, references to `Bump` implement
+  `allocator_api2::Allocator`.
+  This allows `Bump` to be used as allocator for collection types from
+  `allocator-api2` and any other crates that support `allocator-api2`.
+
 ### Changed
 
 * The minimum supported Rust version (MSRV) is now 1.63.0.
-* `"allocator_api"` feature now uses either unstable API from `std` or 
-  `allocator-api2` crate - a mirror of the unstable API usable on stable.
-
-### Added
-
-* New `"nightly"` feature enables use of unstable API and requires nightly channel.
-  Enabling `allocator_api` nightly Rust feature is required
-  when using `"nightly"` feature
 
 ### Deprecated
 
