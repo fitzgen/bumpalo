@@ -30,6 +30,9 @@ name = "try_alloc"
 path = "tests/try_alloc.rs"
 harness = false
 
+[dependencies]
+allocator-api2 = { version = "0.2.8", default-features = false, optional = true, features = ["alloc"] }
+
 [dev-dependencies]
 quickcheck = "1.0.3"
 criterion = "0.3.6"

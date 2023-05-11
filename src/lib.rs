@@ -2,10 +2,7 @@
 #![deny(missing_debug_implementations)]
 #![deny(missing_docs)]
 #![no_std]
-#![cfg_attr(
-    feature = "allocator_api",
-    feature(allocator_api, nonnull_slice_from_raw_parts)
-)]
+#![cfg_attr(feature = "allocator_api", feature(allocator_api))]
 
 #[doc(hidden)]
 pub extern crate alloc as core_alloc;
@@ -26,8 +23,12 @@ use core::ptr::{self, NonNull};
 use core::slice;
 use core::str;
 use core_alloc::alloc::{alloc, dealloc, Layout};
+
 #[cfg(feature = "allocator_api")]
 use core_alloc::alloc::{AllocError, Allocator};
+
+#[cfg(all(feature = "allocator-api2", not(feature = "allocator_api")))]
+use allocator_api2::alloc::{AllocError, Allocator};
 
 pub use alloc::AllocErr;
 
@@ -1886,11 +1887,13 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
     }
 }
 
-#[cfg(feature = "allocator_api")]
+#[cfg(any(feature = "allocator_api", feature = "allocator-api2"))]
 unsafe impl<'a> Allocator for &'a Bump {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         self.try_alloc_layout(layout)
-            .map(|p| NonNull::slice_from_raw_parts(p, layout.size()))
+            .map(|p| unsafe {
+                NonNull::new_unchecked(ptr::slice_from_raw_parts_mut(p.as_ptr(), layout.size()))
+            })
             .map_err(|_| AllocError)
     }
 
@@ -1905,7 +1908,9 @@ unsafe impl<'a> Allocator for &'a Bump {
         new_layout: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
         Bump::shrink(self, ptr, old_layout, new_layout)
-            .map(|p| NonNull::slice_from_raw_parts(p, new_layout.size()))
+            .map(|p| unsafe {
+                NonNull::new_unchecked(ptr::slice_from_raw_parts_mut(p.as_ptr(), new_layout.size()))
+            })
             .map_err(|_| AllocError)
     }
 
@@ -1916,7 +1921,9 @@ unsafe impl<'a> Allocator for &'a Bump {
         new_layout: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
         Bump::grow(self, ptr, old_layout, new_layout)
-            .map(|p| NonNull::slice_from_raw_parts(p, new_layout.size()))
+            .map(|p| unsafe {
+                NonNull::new_unchecked(ptr::slice_from_raw_parts_mut(p.as_ptr(), new_layout.size()))
+            })
             .map_err(|_| AllocError)
     }
 
