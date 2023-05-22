@@ -207,7 +207,15 @@ v.push(2);
 
 [`Allocator`]: https://doc.rust-lang.org/std/alloc/trait.Allocator.html
 
-#### Minimum Supported Rust Version (MSRV)
+### Using the `Allocator` API on Stable Rust
+
+You can enable the `allocator_api2` Cargo feature and `bumpalo` will use [the
+`allocator_api2` crate](https://crates.io/crates/allocator-api2) to implement
+the unstable nightly`Allocator` API on stable Rust. This means that
+`bumpalo::Bump` will be usable with any collection that is generic over
+`allocator_api2::Allocator`.
+
+### Minimum Supported Rust Version (MSRV)
 
 This crate is guaranteed to compile on stable Rust **1.63** and up. It might
 compile with older versions but that may change in any new patch release.

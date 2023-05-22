@@ -4,17 +4,11 @@ Released YYYY-MM-DD.
 
 ### Added
 
-* New `"allocator-api2"` feature enables use of allocator API on stable.
-  This feature uses a crate that mirrors the API of
-  unstable `allocator_api` feature.
-  If feature is enabled, references to `Bump` implement
-  `allocator_api2::Allocator`.
-  This allows `Bump` to be used as allocator for collection types from
-  `allocator-api2` and any other crates that support `allocator-api2`.
+* TODO (or remove section if none)
 
 ### Changed
 
-* The minimum supported Rust version (MSRV) is now 1.63.0.
+* TODO (or remove section if none)
 
 ### Deprecated
 
@@ -31,6 +25,25 @@ Released YYYY-MM-DD.
 ### Security
 
 * TODO (or remove section if none)
+
+--------------------------------------------------------------------------------
+
+## 3.13.0
+
+Released 2023-05-22.
+
+### Added
+
+* New `"allocator-api2"` feature enables the use of the allocator API on
+  stable. This feature uses a crate that mirrors the API of the unstable Rust
+  `allocator_api` feature. If the feature is enabled, references to `Bump` will
+  implement `allocator_api2::Allocator`. This allows `Bump` to be used as an
+  allocator for collection types from `allocator-api2` and any other crates that
+  support `allocator-api2`.
+
+### Changed
+
+* The minimum supported Rust version (MSRV) is now 1.63.0.
 
 --------------------------------------------------------------------------------
 
