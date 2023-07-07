@@ -1455,7 +1455,7 @@ impl Bump {
         let current_footer = self.current_chunk_footer.get();
         let current_footer = unsafe { current_footer.as_ref() };
 
-        current_footer as *const _ as usize - current_footer.data.as_ptr() as usize
+        current_footer.ptr.get().as_ptr() as usize - current_footer.data.as_ptr() as usize
     }
 
     /// Slow path allocation for when we need to allocate a new chunk from the

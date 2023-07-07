@@ -201,3 +201,11 @@ fn test_alignment() {
         }
     }
 }
+
+#[test]
+fn test_chunk_capacity() {
+    let b = Bump::with_capacity(512);
+    let orig_capacity = b.chunk_capacity();
+    b.alloc(true);
+    assert!(b.chunk_capacity() < orig_capacity);
+}
