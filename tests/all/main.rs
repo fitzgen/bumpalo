@@ -16,4 +16,7 @@ mod try_alloc_try_with;
 mod try_alloc_with;
 mod vec;
 
+#[cfg(feature = "serde")]
+mod serde;
+
 fn main() {}
