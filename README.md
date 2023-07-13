@@ -102,7 +102,32 @@ arenas.
 }
 ```
 
-Eventually [all `std` collection types will be parameterized by an
+#### Serde
+
+Adding the `serde` feature flag will enable transparent serialization for Vec.
+
+```toml
+[dependencies]
+bumpalo = { version = "3.9", features = ["collections", "serde"] }
+```
+
+```rust,ignore
+use bumpalo::{Bump, collections::Vec};
+
+// Create a new bump arena.
+let bump = Bump::new();
+
+// Create a `Box`
+let vec = Vec::new_in( &bump);
+vec.push(1);
+vec.push(2);
+
+// Serialize with serde_json
+assert_eq!(serde_json::to_string(&vec).unwrap(), "[1, 2]");
+```
+
+Eventually
+[all `std` collection types will be parameterized by an
 allocator](https://github.com/rust-lang/rust/issues/42774) and we can remove
 this `collections` module and use the `std` versions.
 
@@ -151,6 +176,29 @@ in its space itself.
     // incremented.
     assert_eq!(NUM_DROPPED.load(Ordering::SeqCst), 1);
 }
+```
+
+#### Serde
+
+Adding the `serde` feature flag will enable transparent serialization of boxed
+values.
+
+```toml
+[dependencies]
+bumpalo = { version = "3.9", features = ["boxed", "serde"] }
+```
+
+```rust,ignore
+use bumpalo::{Bump, boxed::Box};
+
+// Create a new bump arena.
+let bump = Bump::new();
+
+// Create a `Box`
+let box = Box::new_in("hello", &bump);
+
+// Serialize with serde_json
+assert_eq!(serde_json::to_string(&box).unwrap(), "\"hello\"");
 ```
 
 ### `#![no_std]` Support

@@ -681,3 +681,16 @@ impl<'a, T, const N: usize> TryFrom<Box<'a, [T]>> for Box<'a, [T; N]> {
         }
     }
 }
+
+#[cfg(feature = "serde")]
+use serde::{Serialize, Serializer};
+
+#[cfg(feature = "serde")]
+impl<'a, T> Serialize for Box<'a, T>
+where
+    T: Serialize,
+{
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        (**self).serialize(serializer)
+    }
+}
