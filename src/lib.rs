@@ -1430,7 +1430,7 @@ impl Bump {
             let aligned_ptr = ptr.wrapping_sub(rem);
 
             if aligned_ptr >= start {
-                let aligned_ptr = NonNull::new_unchecked(aligned_ptr as *mut u8);
+                let aligned_ptr = NonNull::new_unchecked(aligned_ptr);
                 footer.ptr.set(aligned_ptr);
                 Some(aligned_ptr)
             } else {
@@ -1529,7 +1529,7 @@ impl Bump {
                 ptr,
                 new_footer
             );
-            let ptr = NonNull::new_unchecked(ptr as *mut u8);
+            let ptr = NonNull::new_unchecked(ptr);
             new_footer.ptr.set(ptr);
 
             // Return a pointer to the freshly allocated region in this chunk.
