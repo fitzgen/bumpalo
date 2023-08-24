@@ -105,3 +105,16 @@ fn test_vec_items_get_dropped() {
     }
     assert_eq!("Dropped!Dropped!", buffer.borrow().deref());
 }
+
+#[cfg(feature = "serde")]
+#[test]
+fn test_vec_serializes() {
+    let bump = Bump::new();
+    let mut vec = Vec::new_in(&bump);
+    vec.push("hello");
+    vec.push("world");
+    assert_eq!(
+        serde_json::to_string(&vec).unwrap(),
+        "[\"hello\",\"world\"]"
+    );
+}

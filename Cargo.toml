@@ -36,16 +36,21 @@ harness = false
 # implement its `Allocator` trait.
 allocator-api2 = { version = "0.2.8", default-features = false, optional = true }
 
+# This dependency is here to allow integration with Serde, if the `serde` feature is enabled
+serde = { version = "1.0.171", optional = true }
+
 [dev-dependencies]
 quickcheck = "1.0.3"
 criterion = "0.3.6"
 rand = "0.8.5"
+serde_json = "1.0.102"
 
 [features]
 default = []
 collections = []
 boxed = []
 allocator_api = []
+serde = ["dep:serde"]
 
 # [profile.bench]
 # debug = true
