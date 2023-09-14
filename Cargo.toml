@@ -46,6 +46,7 @@ default = []
 collections = []
 boxed = []
 allocator_api = []
+std = []
 
 # [profile.bench]
 # debug = true

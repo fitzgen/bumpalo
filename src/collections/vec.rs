@@ -104,6 +104,8 @@ use core::ops::{Index, IndexMut, RangeBounds};
 use core::ptr;
 use core::ptr::NonNull;
 use core::slice;
+#[cfg(feature = "std")]
+use std::io;
 
 unsafe fn arith_offset<T>(p: *const T, offset: isize) -> *const T {
     p.offset(offset)
@@ -2610,5 +2612,25 @@ where
         unsafe {
             self.vec.set_len(self.old_len - self.del);
         }
+    }
+}
+
+#[cfg(feature = "std")]
+impl<'bump> io::Write for Vec<'bump, u8> {
+    #[inline]
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    #[inline]
+    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+        self.extend_from_slice(buf);
+        Ok(())
+    }
+
+    #[inline]
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
     }
 }

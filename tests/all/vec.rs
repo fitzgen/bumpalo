@@ -105,3 +105,30 @@ fn test_vec_items_get_dropped() {
     }
     assert_eq!("Dropped!Dropped!", buffer.borrow().deref());
 }
+
+#[cfg(feature = "std")]
+#[test]
+fn test_vec_write() {
+    use std::io::Write;
+
+    let b = Bump::new();
+    let mut v = bumpalo::vec![in &b];
+
+    assert_eq!(v.write(&[]).unwrap(), 0);
+
+    v.flush().unwrap();
+
+    assert_eq!(v.write(&[1]).unwrap(), 1);
+
+    v.flush().unwrap();
+
+    v.write_all(&[]).unwrap();
+
+    v.flush().unwrap();
+
+    v.write_all(&[2, 3]).unwrap();
+
+    v.flush().unwrap();
+
+    assert_eq!(v, &[1, 2, 3]);
+}
