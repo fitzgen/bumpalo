@@ -186,7 +186,7 @@ First, enable the `allocator_api` feature in your `Cargo.toml`:
 
 ```toml
 [dependencies]
-bumpalo = { version = "3.9", features = ["allocator_api"] }
+bumpalo = { version = "3", features = ["allocator_api"] }
 ```
 
 Next, enable the `allocator_api` nightly Rust feature in your `src/lib.rs` or

@@ -28,6 +28,18 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.14.0
+
+Released 2023-09-14.
+
+### Added
+
+* Added the `std` cargo feature, which enables implementations of `std` traits
+  for various things. Right now that is just `std::io::Write` for
+  `bumpalo::collections::Vec`, but could be more in the future.
+
+--------------------------------------------------------------------------------
+
 ## 3.13.0
 
 Released 2023-05-22.
