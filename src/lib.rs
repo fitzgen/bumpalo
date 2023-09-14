@@ -1,7 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![deny(missing_debug_implementations)]
 #![deny(missing_docs)]
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(feature = "allocator_api", feature(allocator_api))]
 
 #[doc(hidden)]
