@@ -114,9 +114,9 @@ fn main() {
             GLOBAL_ALLOCATOR.set_returning_null(fail_alloc);
 
             if fail_alloc {
-                assert_alloc_err(&bump)
+                assert_alloc_err(&bump);
             } else {
-                assert_alloc_ok(&bump)
+                assert_alloc_ok(&bump);
             }
         }
     }
@@ -169,7 +169,7 @@ fn main() {
                 test_static_size_alloc(
                     |bump| assert!(bump.try_alloc(1u8).is_ok()),
                     |bump| assert!(bump.try_alloc(1u8).is_err()),
-                )
+                );
             },
         ),
         test!(
@@ -178,7 +178,7 @@ fn main() {
                 test_static_size_alloc(
                     |bump| assert!(bump.try_alloc_with(|| 1u8).is_ok()),
                     |bump| assert!(bump.try_alloc_with(|| 1u8).is_err()),
-                )
+                );
             },
         ),
         test!(
@@ -187,7 +187,7 @@ fn main() {
                 test_static_size_alloc(
                     |bump| assert!(bump.try_alloc_try_with::<_, _, ()>(|| Ok(1u8)).is_ok()),
                     |bump| assert!(bump.try_alloc_try_with::<_, _, ()>(|| Ok(1u8)).is_err()),
-                )
+                );
             },
         ),
         test!(
@@ -198,15 +198,15 @@ fn main() {
                         assert!(matches!(
                             bump.try_alloc_try_with::<_, u8, _>(|| Err(())),
                             Err(AllocOrInitError::Init(_))
-                        ))
+                        ));
                     },
                     |bump| {
                         assert!(matches!(
                             bump.try_alloc_try_with::<_, u8, _>(|| Err(())),
                             Err(AllocOrInitError::Alloc(_))
-                        ))
+                        ));
                     },
-                )
+                );
             },
         ),
         #[cfg(feature = "collections")]
