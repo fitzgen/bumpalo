@@ -53,6 +53,7 @@ fn alloc_with_large_tuple() {
     });
 }
 
+#[allow(clippy::large_enum_variant)]
 enum LargeEnum {
     Small,
     #[allow(dead_code)]
