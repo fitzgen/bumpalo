@@ -216,8 +216,8 @@ v.push(2);
 
 ### Using the `Allocator` API on Stable Rust
 
-You can enable the `allocator_api2` Cargo feature and `bumpalo` will use [the
-`allocator_api2` crate](https://crates.io/crates/allocator-api2) to implement
+You can enable the `allocator-api2` Cargo feature and `bumpalo` will use [the
+`allocator-api2` crate](https://crates.io/crates/allocator-api2) to implement
 the unstable nightly`Allocator` API on stable Rust. This means that
 `bumpalo::Bump` will be usable with any collection that is generic over
 `allocator_api2::Allocator`.
