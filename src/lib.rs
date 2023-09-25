@@ -792,7 +792,6 @@ impl Bump {
     /// assert_eq!(*x, "hello");
     /// ```
     #[inline(always)]
-    #[allow(clippy::mut_from_ref)]
     pub fn alloc<T>(&self, val: T) -> &mut T {
         self.alloc_with(|| val)
     }
@@ -812,7 +811,6 @@ impl Bump {
     /// assert_eq!(x, Ok(&mut "hello"));
     /// ```
     #[inline(always)]
-    #[allow(clippy::mut_from_ref)]
     pub fn try_alloc<T>(&self, val: T) -> Result<&mut T, AllocErr> {
         self.try_alloc_with(|| val)
     }
@@ -837,7 +835,6 @@ impl Bump {
     /// assert_eq!(*x, "hello");
     /// ```
     #[inline(always)]
-    #[allow(clippy::mut_from_ref)]
     pub fn alloc_with<F, T>(&self, f: F) -> &mut T
     where
         F: FnOnce() -> T,
@@ -890,7 +887,6 @@ impl Bump {
     /// assert_eq!(x, Ok(&mut "hello"));
     /// ```
     #[inline(always)]
-    #[allow(clippy::mut_from_ref)]
     pub fn try_alloc_with<F, T>(&self, f: F) -> Result<&mut T, AllocErr>
     where
         F: FnOnce() -> T,
@@ -962,7 +958,6 @@ impl Bump {
     /// # Result::<_, ()>::Ok(())
     /// ```
     #[inline(always)]
-    #[allow(clippy::mut_from_ref)]
     pub fn alloc_try_with<F, T, E>(&self, f: F) -> Result<&mut T, E>
     where
         F: FnOnce() -> Result<T, E>,
@@ -1071,7 +1066,6 @@ impl Bump {
     /// # Result::<_, bumpalo::AllocOrInitError<()>>::Ok(())
     /// ```
     #[inline(always)]
-    #[allow(clippy::mut_from_ref)]
     pub fn try_alloc_try_with<F, T, E>(&self, f: F) -> Result<&mut T, AllocOrInitError<E>>
     where
         F: FnOnce() -> Result<T, E>,
@@ -1156,7 +1150,6 @@ impl Bump {
     /// assert_eq!(x, &[1, 2, 3]);
     /// ```
     #[inline(always)]
-    #[allow(clippy::mut_from_ref)]
     pub fn alloc_slice_copy<T>(&self, src: &[T]) -> &mut [T]
     where
         T: Copy,
@@ -1196,7 +1189,6 @@ impl Bump {
     /// assert_eq!(originals, clones);
     /// ```
     #[inline(always)]
-    #[allow(clippy::mut_from_ref)]
     pub fn alloc_slice_clone<T>(&self, src: &[T]) -> &mut [T]
     where
         T: Clone,
@@ -1227,7 +1219,6 @@ impl Bump {
     /// assert_eq!("hello world", hello);
     /// ```
     #[inline(always)]
-    #[allow(clippy::mut_from_ref)]
     pub fn alloc_str(&self, src: &str) -> &mut str {
         let buffer = self.alloc_slice_copy(src.as_bytes());
         unsafe {
@@ -1254,7 +1245,6 @@ impl Bump {
     /// assert_eq!(x, &[5, 10, 15, 20, 25]);
     /// ```
     #[inline(always)]
-    #[allow(clippy::mut_from_ref)]
     pub fn alloc_slice_fill_with<T, F>(&self, len: usize, mut f: F) -> &mut [T]
     where
         F: FnMut(usize) -> T,
@@ -1290,7 +1280,6 @@ impl Bump {
     /// assert_eq!(x, &[42, 42, 42, 42, 42]);
     /// ```
     #[inline(always)]
-    #[allow(clippy::mut_from_ref)]
     pub fn alloc_slice_fill_copy<T: Copy>(&self, len: usize, value: T) -> &mut [T] {
         self.alloc_slice_fill_with(len, |_| value)
     }
@@ -1315,7 +1304,6 @@ impl Bump {
     /// assert_eq!(&x[1], &s);
     /// ```
     #[inline(always)]
-    #[allow(clippy::mut_from_ref)]
     pub fn alloc_slice_fill_clone<T: Clone>(&self, len: usize, value: &T) -> &mut [T] {
         self.alloc_slice_fill_with(len, |_| value.clone())
     }
@@ -1338,7 +1326,6 @@ impl Bump {
     /// assert_eq!(x, [4, 9, 25]);
     /// ```
     #[inline(always)]
-    #[allow(clippy::mut_from_ref)]
     pub fn alloc_slice_fill_iter<T, I>(&self, iter: I) -> &mut [T]
     where
         I: IntoIterator<Item = T>,
@@ -1369,7 +1356,6 @@ impl Bump {
     /// assert_eq!(x, &[0, 0, 0, 0, 0]);
     /// ```
     #[inline(always)]
-    #[allow(clippy::mut_from_ref)]
     pub fn alloc_slice_fill_default<T: Default>(&self, len: usize) -> &mut [T] {
         self.alloc_slice_fill_with(len, |_| T::default())
     }
@@ -1954,7 +1940,6 @@ mod tests {
 
     // Uses private `alloc` module.
     #[test]
-    #[allow(clippy::cognitive_complexity)]
     fn test_realloc() {
         use crate::alloc::Alloc;
 

@@ -91,7 +91,6 @@ fn try_alloc_try_with_large_tuple_err() {
         .is_err());
 }
 
-#[allow(clippy::large_enum_variant)]
 enum LargeEnum {
     Small,
     #[allow(dead_code)]
