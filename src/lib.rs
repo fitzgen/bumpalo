@@ -580,7 +580,7 @@ impl Bump {
     /// assert!(bump.try_alloc(5).is_err());
     /// ```
     pub fn set_allocation_limit(&self, limit: Option<usize>) {
-        self.allocation_limit.set(limit)
+        self.allocation_limit.set(limit);
     }
 
     /// How much headroom an arena has before it hits its allocation
@@ -854,7 +854,7 @@ impl Bump {
             // directly into the heap instead. It seems we get it to realize
             // this most consistently if we put this critical line into it's
             // own function instead of inlining it into the surrounding code.
-            ptr::write(ptr, f())
+            ptr::write(ptr, f());
         }
 
         let layout = Layout::new::<T>();
@@ -906,7 +906,7 @@ impl Bump {
             // directly into the heap instead. It seems we get it to realize
             // this most consistently if we put this critical line into it's
             // own function instead of inlining it into the surrounding code.
-            ptr::write(ptr, f())
+            ptr::write(ptr, f());
         }
 
         //SAFETY: Self-contained:
@@ -1848,7 +1848,7 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
 
     #[inline]
     unsafe fn dealloc(&mut self, ptr: NonNull<u8>, layout: Layout) {
-        Bump::dealloc(self, ptr, layout)
+        Bump::dealloc(self, ptr, layout);
     }
 
     #[inline]
