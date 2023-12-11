@@ -8,7 +8,7 @@ Released YYYY-MM-DD.
 
 ### Changed
 
-* The minimum supported Rust version (MSRV) is now 1.63.0.
+* The minimum supported Rust version (MSRV) is now 1.65.0.
 
 ### Deprecated
 
