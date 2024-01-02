@@ -1875,6 +1875,7 @@ unsafe impl<'a> alloc::Alloc for &'a Bump {
 
 #[cfg(any(feature = "allocator_api", feature = "allocator-api2"))]
 unsafe impl<'a> Allocator for &'a Bump {
+    #[inline]
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         self.try_alloc_layout(layout)
             .map(|p| unsafe {
@@ -1883,10 +1884,12 @@ unsafe impl<'a> Allocator for &'a Bump {
             .map_err(|_| AllocError)
     }
 
+    #[inline]
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
         Bump::dealloc(self, ptr, layout)
     }
 
+    #[inline]
     unsafe fn shrink(
         &self,
         ptr: NonNull<u8>,
@@ -1900,6 +1903,7 @@ unsafe impl<'a> Allocator for &'a Bump {
             .map_err(|_| AllocError)
     }
 
+    #[inline]
     unsafe fn grow(
         &self,
         ptr: NonNull<u8>,
@@ -1913,6 +1917,7 @@ unsafe impl<'a> Allocator for &'a Bump {
             .map_err(|_| AllocError)
     }
 
+    #[inline]
     unsafe fn grow_zeroed(
         &self,
         ptr: NonNull<u8>,
