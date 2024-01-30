@@ -11,8 +11,12 @@ pub extern crate alloc as core_alloc;
 pub mod boxed;
 #[cfg(feature = "collections")]
 pub mod collections;
+#[cfg(feature = "pin")]
+pub mod pin;
 
 mod alloc;
+#[cfg(feature = "pin")]
+mod drop;
 
 use core::cell::Cell;
 use core::fmt::Display;
@@ -293,6 +297,8 @@ pub struct Bump {
     // The current chunk we are bump allocating within.
     current_chunk_footer: Cell<NonNull<ChunkFooter>>,
     allocation_limit: Cell<Option<usize>>,
+    #[cfg(feature = "pin")]
+    drop_list: Cell<*const drop::DropList>,
 }
 
 #[repr(C)]
@@ -386,6 +392,9 @@ impl Default for Bump {
 impl Drop for Bump {
     fn drop(&mut self) {
         unsafe {
+            #[cfg(feature = "pin")]
+            self.reset_drop_list();
+
             dealloc_chunk_list(self.current_chunk_footer.get());
         }
     }
@@ -523,6 +532,8 @@ impl Bump {
             return Ok(Bump {
                 current_chunk_footer: Cell::new(EMPTY_CHUNK.get()),
                 allocation_limit: Cell::new(None),
+                #[cfg(feature = "pin")]
+                drop_list: Cell::new(core::ptr::null()),
             });
         }
 
@@ -540,6 +551,8 @@ impl Bump {
         Ok(Bump {
             current_chunk_footer: Cell::new(chunk_footer),
             allocation_limit: Cell::new(None),
+            #[cfg(feature = "pin")]
+            drop_list: Cell::new(core::ptr::null()),
         })
     }
 
@@ -746,6 +759,9 @@ impl Bump {
             if self.current_chunk_footer.get().as_ref().is_empty() {
                 return;
             }
+
+            #[cfg(feature = "pin")]
+            self.reset_drop_list();
 
             let mut cur_chunk = self.current_chunk_footer.get();
 
@@ -1764,6 +1780,33 @@ impl Bump {
         let new_ptr = self.try_alloc_layout(new_layout)?;
         ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), old_size);
         Ok(new_ptr)
+    }
+}
+
+#[cfg(feature = "pin")]
+impl Bump {
+    fn drop_list(&self) -> &drop::DropList {
+        if self.drop_list.get().is_null() {
+            let drop_list = &*self.alloc(drop::DropList::default());
+            unsafe { drop_list.init() };
+            self.drop_list.set(drop_list);
+        }
+        unsafe { &*self.drop_list.get() }
+    }
+
+    fn take_drop_list(&mut self) -> Option<&drop::DropList> {
+        let drop_list_ptr = self.drop_list.replace(core::ptr::null());
+        if drop_list_ptr.is_null() {
+            return None;
+        }
+        unsafe { Some(&*drop_list_ptr) }
+    }
+
+    unsafe fn reset_drop_list(&mut self) {
+        let Some(drop_list) = self.take_drop_list() else {
+            return;
+        };
+        drop_list.run_drop();
     }
 }
 

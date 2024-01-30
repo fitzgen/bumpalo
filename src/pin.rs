@@ -9,7 +9,7 @@
 //! Move a value from the stack to the heap by creating a [`Box`]:
 //!
 //! ```
-//! use bumpalo::{Bump, boxed::Box};
+//! use bumpalo::{Bump, pin::Box};
 //!
 //! let b = Bump::new();
 //!
@@ -20,7 +20,7 @@
 //! Move a value from a [`Box`] back to the stack by [dereferencing]:
 //!
 //! ```
-//! use bumpalo::{Bump, boxed::Box};
+//! use bumpalo::{Bump, pin::Box};
 //!
 //! let b = Bump::new();
 //!
@@ -31,7 +31,7 @@
 //! Running [`Drop`] implementations on bump-allocated values:
 //!
 //! ```
-//! use bumpalo::{Bump, boxed::Box};
+//! use bumpalo::{Bump, pin::Box};
 //! use std::sync::atomic::{AtomicUsize, Ordering};
 //!
 //! static NUM_DROPPED: AtomicUsize = AtomicUsize::new(0);
@@ -63,7 +63,7 @@
 //! Creating a recursive data structure:
 //!
 //! ```
-//! use bumpalo::{Bump, boxed::Box};
+//! use bumpalo::{Bump, pin::Box};
 //!
 //! let b = Bump::new();
 //!
@@ -119,6 +119,8 @@
 //! [`Layout`]: https://doc.rust-lang.org/std/alloc/struct.Layout.html
 //! [`Layout::for_value(&*value)`]: https://doc.rust-lang.org/std/alloc/struct.Layout.html#method.for_value
 
+use core::marker::PhantomData;
+
 use {
     crate::Bump,
     {
@@ -126,7 +128,6 @@ use {
             any::Any,
             borrow,
             cmp::Ordering,
-            convert::TryFrom,
             future::Future,
             hash::{Hash, Hasher},
             iter::FusedIterator,
@@ -144,43 +145,46 @@ use {
 ///
 /// See the [module-level documentation][crate::boxed] for more details.
 #[repr(transparent)]
-pub struct Box<'a, T: ?Sized>(&'a mut T);
+pub struct Box<'a, T: ?Sized> {
+    ptr: *mut T,
+    _marker: PhantomData<&'a mut T>,
+}
 
 impl<'a, T> Box<'a, T> {
-    /// Allocates memory on the heap and then places `x` into it.
-    ///
-    /// This doesn't actually allocate if `T` is zero-sized.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use bumpalo::{Bump, boxed::Box};
-    ///
-    /// let b = Bump::new();
-    ///
-    /// let five = Box::new_in(5, &b);
-    /// ```
-    #[inline(always)]
+    /// Constructs a new `Pin<Box<T>>`. If `T` does not implement `Unpin`, then
+    /// `x` will be pinned in memory and unable to be moved.
     pub fn new_in(x: T, a: &'a Bump) -> Box<'a, T> {
-        Box(a.alloc(x))
+        let entry = &*a.alloc(crate::drop::DropEntry::new(x));
+
+        let (link, data) = unsafe { entry.link_and_data() };
+        unsafe { a.drop_list().insert(link) };
+
+        Box {
+            ptr: data,
+            _marker: PhantomData,
+        }
     }
 
-    /// Consumes the `Box`, returning the wrapped value.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use bumpalo::{Bump, boxed::Box};
-    ///
-    /// let b = Bump::new();
-    ///
-    /// let hello = Box::new_in("hello".to_owned(), &b);
-    /// assert_eq!(Box::into_inner(hello), "hello");
-    /// ```
-    pub fn into_inner(b: Box<'a, T>) -> T {
-        // `Box::into_raw` returns a pointer that is properly aligned and non-null.
-        // The underlying `Bump` only frees the memory, but won't call the destructor.
-        unsafe { core::ptr::read(Box::into_raw(b)) }
+    /// Constructs a new `Pin<Box<T>>`. If `T` does not implement `Unpin`, then
+    /// `x` will be pinned in memory and unable to be moved.
+    pub fn pin_in(x: T, a: &'a Bump) -> Pin<Box<'a, T>> {
+        Box::new_in(x, a).into()
+    }
+}
+
+impl<'a, T: ?Sized> Box<'a, T> {
+    #[inline]
+    unsafe fn release_from_drop_list(&self) {
+        crate::drop::DropEntry::link_from_data(self.ptr.cast::<()>())
+            .as_ref()
+            .unlink();
+    }
+
+    #[inline]
+    unsafe fn insert_into_drop_list(&self, b: &'a Bump) {
+        b.drop_list().insert(crate::drop::DropEntry::link_from_data(
+            self.ptr.cast::<()>(),
+        ));
     }
 }
 
@@ -204,30 +208,32 @@ impl<'a, T: ?Sized> Box<'a, T> {
     /// Recreate a `Box` which was previously converted to a raw pointer
     /// using [`Box::into_raw`]:
     /// ```
-    /// use bumpalo::{Bump, boxed::Box};
+    /// use bumpalo::{Bump, pin::Box};
     ///
     /// let b = Bump::new();
     ///
     /// let x = Box::new_in(5, &b);
     /// let ptr = Box::into_raw(x);
-    /// let x = unsafe { Box::from_raw(ptr) }; // Note that new `x`'s lifetime is unbound. It must be bound to the `b` immutable borrow before `b` is reset.
-    /// ```
-    /// Manually create a `Box` from scratch by using the bump allocator:
-    /// ```
-    /// use std::alloc::{alloc, Layout};
-    /// use bumpalo::{Bump, boxed::Box};
-    ///
-    /// let b = Bump::new();
-    ///
-    /// unsafe {
-    ///     let ptr = b.alloc_layout(Layout::new::<i32>()).as_ptr() as *mut i32;
-    ///     *ptr = 5;
-    ///     let x = Box::from_raw(ptr); // Note that `x`'s lifetime is unbound. It must be bound to the `b` immutable borrow before `b` is reset.
-    /// }
+    /// let x = unsafe { Box::from_raw(ptr, &b) }; // Note that new `x`'s lifetime is unbound. It must be bound to the `b` immutable borrow before `b` is reset.
     /// ```
     #[inline]
-    pub unsafe fn from_raw(raw: *mut T) -> Self {
-        Box(&mut *raw)
+    pub unsafe fn from_raw(raw: *mut T, b: &'a Bump) -> Self {
+        let val = Box {
+            ptr: raw,
+            _marker: PhantomData,
+        };
+        unsafe {
+            val.insert_into_drop_list(b);
+        }
+        val
+    }
+
+    #[inline]
+    unsafe fn from_raw_with_no_release(raw: *mut T) -> Self {
+        Box {
+            ptr: raw,
+            _marker: PhantomData,
+        }
     }
 
     /// Consumes the `Box`, returning a wrapped raw pointer.
@@ -250,18 +256,18 @@ impl<'a, T: ?Sized> Box<'a, T> {
     /// Converting the raw pointer back into a `Box` with [`Box::from_raw`]
     /// for automatic cleanup:
     /// ```
-    /// use bumpalo::{Bump, boxed::Box};
+    /// use bumpalo::{Bump, pin::Box};
     ///
     /// let b = Bump::new();
     ///
     /// let x = Box::new_in(String::from("Hello"), &b);
     /// let ptr = Box::into_raw(x);
-    /// let x = unsafe { Box::from_raw(ptr) }; // Note that new `x`'s lifetime is unbound. It must be bound to the `b` immutable borrow before `b` is reset.
+    /// let x = unsafe { Box::from_raw(ptr, &b) }; // Note that new `x`'s lifetime is unbound. It must be bound to the `b` immutable borrow before `b` is reset.
     /// ```
     /// Manual cleanup by explicitly running the destructor:
     /// ```
     /// use std::ptr;
-    /// use bumpalo::{Bump, boxed::Box};
+    /// use bumpalo::{Bump, pin::Box};
     ///
     /// let b = Bump::new();
     ///
@@ -273,81 +279,26 @@ impl<'a, T: ?Sized> Box<'a, T> {
     /// ```
     #[inline]
     pub fn into_raw(b: Box<'a, T>) -> *mut T {
-        let mut b = ManuallyDrop::new(b);
-        b.deref_mut().0 as *mut T
+        let b = ManuallyDrop::new(b);
+        unsafe {
+            b.release_from_drop_list();
+        }
+        b.ptr
     }
 
-    /// Consumes and leaks the `Box`, returning a mutable reference,
-    /// `&'a mut T`. Note that the type `T` must outlive the chosen lifetime
-    /// `'a`. If the type has only static references, or none at all, then this
-    /// may be chosen to be `'static`.
-    ///
-    /// This function is mainly useful for data that lives for the remainder of
-    /// the program's life. Dropping the returned reference will cause a memory
-    /// leak. If this is not acceptable, the reference should first be wrapped
-    /// with the [`Box::from_raw`] function producing a `Box`. This `Box` can
-    /// then be dropped which will properly destroy `T` and release the
-    /// allocated memory.
-    ///
-    /// Note: this is an associated function, which means that you have
-    /// to call it as `Box::leak(b)` instead of `b.leak()`. This
-    /// is so that there is no conflict with a method on the inner type.
-    ///
-    /// # Examples
-    ///
-    /// Simple usage:
-    ///
-    /// ```
-    /// use bumpalo::{Bump, boxed::Box};
-    ///
-    /// let b = Bump::new();
-    ///
-    /// let x = Box::new_in(41, &b);
-    /// let reference: &mut usize = Box::leak(x);
-    /// *reference += 1;
-    /// assert_eq!(*reference, 42);
-    /// ```
-    ///
-    ///```
-    /// # #[cfg(feature = "collections")]
-    /// # {
-    /// use bumpalo::{Bump, boxed::Box, vec};
-    ///
-    /// let b = Bump::new();
-    ///
-    /// let x = vec![in &b; 1, 2, 3].into_boxed_slice();
-    /// let reference = Box::leak(x);
-    /// reference[0] = 4;
-    /// assert_eq!(*reference, [4, 2, 3]);
-    /// # }
-    ///```
     #[inline]
-    pub fn leak(b: Box<'a, T>) -> &'a mut T {
-        unsafe { &mut *Box::into_raw(b) }
+    unsafe fn into_raw_with_no_release(b: Box<'a, T>) -> *mut T {
+        ManuallyDrop::new(b).ptr
     }
 }
 
 impl<'a, T: ?Sized> Drop for Box<'a, T> {
     fn drop(&mut self) {
         unsafe {
+            self.release_from_drop_list();
             // `Box` owns value of `T`, but not memory behind it.
-            core::ptr::drop_in_place(self.0);
+            core::ptr::drop_in_place(self.ptr);
         }
-    }
-}
-
-impl<'a, T> Default for Box<'a, [T]> {
-    fn default() -> Box<'a, [T]> {
-        // It should be OK to `drop_in_place` empty slice of anything.
-        Box(&mut [])
-    }
-}
-
-impl<'a> Default for Box<'a, str> {
-    fn default() -> Box<'a, str> {
-        // Empty slice is valid string.
-        // It should be OK to `drop_in_place` empty str.
-        unsafe { Box::from_raw(Box::into_raw(Box::<[u8]>::default()) as *mut str) }
     }
 }
 
@@ -445,6 +396,18 @@ impl<'a, T: ?Sized + Hasher> Hasher for Box<'a, T> {
     }
 }
 
+impl<'a, T> From<Box<'a, T>> for Pin<Box<'a, T>> {
+    /// Converts a `Box<T>` into a `Pin<Box<T>>`.
+    ///
+    /// This conversion does not allocate on the heap and happens in place.
+    fn from(boxed: Box<'a, T>) -> Self {
+        // It's not possible to move or replace the insides of a `Pin<Box<T>>`
+        // when `T: !Unpin`,  so it's safe to pin it directly without any
+        // additional requirements.
+        unsafe { Pin::new_unchecked(boxed) }
+    }
+}
+
 impl<'a> Box<'a, dyn Any> {
     #[inline]
     /// Attempt to downcast the box to a concrete type.
@@ -467,8 +430,8 @@ impl<'a> Box<'a, dyn Any> {
     pub fn downcast<T: Any>(self) -> Result<Box<'a, T>, Box<'a, dyn Any>> {
         if self.is::<T>() {
             unsafe {
-                let raw: *mut dyn Any = Box::into_raw(self);
-                Ok(Box::from_raw(raw as *mut T))
+                let raw: *mut dyn Any = Box::into_raw_with_no_release(self);
+                Ok(Box::from_raw_with_no_release(raw as *mut T))
             }
         } else {
             Err(self)
@@ -498,8 +461,8 @@ impl<'a> Box<'a, dyn Any + Send> {
     pub fn downcast<T: Any>(self) -> Result<Box<'a, T>, Box<'a, dyn Any + Send>> {
         if self.is::<T>() {
             unsafe {
-                let raw: *mut (dyn Any + Send) = Box::into_raw(self);
-                Ok(Box::from_raw(raw as *mut T))
+                let raw: *mut (dyn Any + Send) = Box::into_raw_with_no_release(self);
+                Ok(Box::from_raw_with_no_release(raw as *mut T))
             }
         } else {
             Err(self)
@@ -531,14 +494,16 @@ impl<'a, T: ?Sized> fmt::Pointer for Box<'a, T> {
 impl<'a, T: ?Sized> Deref for Box<'a, T> {
     type Target = T;
 
+    #[inline]
     fn deref(&self) -> &T {
-        &*self.0
+        unsafe { &*self.ptr }
     }
 }
 
 impl<'a, T: ?Sized> DerefMut for Box<'a, T> {
+    #[inline]
     fn deref_mut(&mut self) -> &mut T {
-        self.0
+        unsafe { &mut *self.ptr }
     }
 }
 
@@ -578,61 +543,33 @@ impl<'a, I: ExactSizeIterator + ?Sized> ExactSizeIterator for Box<'a, I> {
 
 impl<'a, I: FusedIterator + ?Sized> FusedIterator for Box<'a, I> {}
 
-#[cfg(feature = "collections")]
-impl<'a, A> Box<'a, [A]> {
-    /// Creates a value from an iterator.
-    /// This method is an adapted version of [`FromIterator::from_iter`][from_iter].
-    /// It cannot be made as that trait implementation given different signature.
-    ///
-    /// [from_iter]: https://doc.rust-lang.org/std/iter/trait.FromIterator.html#tymethod.from_iter
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
-    /// ```
-    /// use bumpalo::{Bump, boxed::Box, vec};
-    ///
-    /// let b = Bump::new();
-    ///
-    /// let five_fives = std::iter::repeat(5).take(5);
-    /// let slice = Box::from_iter_in(five_fives, &b);
-    /// assert_eq!(vec![in &b; 5, 5, 5, 5, 5], &*slice);
-    /// ```
-    pub fn from_iter_in<T: IntoIterator<Item = A>>(iter: T, a: &'a Bump) -> Self {
-        use crate::collections::Vec;
-        let mut vec = Vec::new_in(a);
-        vec.extend(iter);
-        vec.into_boxed_slice()
-    }
-}
-
 impl<'a, T: ?Sized> borrow::Borrow<T> for Box<'a, T> {
     fn borrow(&self) -> &T {
-        &**self
+        self
     }
 }
 
 impl<'a, T: ?Sized> borrow::BorrowMut<T> for Box<'a, T> {
     fn borrow_mut(&mut self) -> &mut T {
-        &mut **self
+        self
     }
 }
 
 impl<'a, T: ?Sized> AsRef<T> for Box<'a, T> {
     fn as_ref(&self) -> &T {
-        &**self
+        self
     }
 }
 
 impl<'a, T: ?Sized> AsMut<T> for Box<'a, T> {
     fn as_mut(&mut self) -> &mut T {
-        &mut **self
+        self
     }
 }
 
 impl<'a, T: ?Sized> Unpin for Box<'a, T> {}
 
-impl<'a, F: ?Sized + Future + Unpin> Future for Box<'a, F> {
+impl<'a, F: Future + Unpin> Future for Box<'a, F> {
     type Output = F::Output;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -640,25 +577,39 @@ impl<'a, F: ?Sized + Future + Unpin> Future for Box<'a, F> {
     }
 }
 
-/// This impl replaces unsize coercion.
-impl<'a, T, const N: usize> From<Box<'a, [T; N]>> for Box<'a, [T]> {
-    fn from(arr: Box<'a, [T; N]>) -> Box<'a, [T]> {
-        let mut arr = ManuallyDrop::new(arr);
-        let ptr = core::ptr::slice_from_raw_parts_mut(arr.as_mut_ptr(), N);
-        unsafe { Box::from_raw(ptr) }
+impl<'a, R, F> From<Box<'a, F>> for Box<'a, dyn Future<Output = R>>
+where
+    F: Future<Output = R>,
+{
+    fn from(fut: Box<'a, F>) -> Box<'a, dyn Future<Output = R>> {
+        unsafe {
+            let ptr = Box::into_raw_with_no_release(fut) as *mut dyn Future<Output = R>;
+            Box::from_raw_with_no_release(ptr)
+        }
     }
 }
 
-/// This impl replaces unsize coercion.
-impl<'a, T, const N: usize> TryFrom<Box<'a, [T]>> for Box<'a, [T; N]> {
-    type Error = Box<'a, [T]>;
-    fn try_from(slice: Box<'a, [T]>) -> Result<Box<'a, [T; N]>, Box<'a, [T]>> {
-        if slice.len() == N {
-            let mut slice = ManuallyDrop::new(slice);
-            let ptr = slice.as_mut_ptr() as *mut [T; N];
-            Ok(unsafe { Box::from_raw(ptr) })
-        } else {
-            Err(slice)
+impl<'a, R, F> From<Box<'a, F>> for Box<'a, dyn Future<Output = R> + Send>
+where
+    F: Future<Output = R> + Send,
+{
+    fn from(fut: Box<'a, F>) -> Box<'a, dyn Future<Output = R> + Send> {
+        unsafe {
+            let ptr = Box::into_raw_with_no_release(fut) as *mut (dyn Future<Output = R> + Send);
+            Box::from_raw_with_no_release(ptr)
+        }
+    }
+}
+
+impl<'a, R, F> From<Box<'a, F>> for Box<'a, dyn Future<Output = R> + Send + Sync>
+where
+    F: Future<Output = R> + Send + Sync,
+{
+    fn from(fut: Box<'a, F>) -> Box<'a, dyn Future<Output = R> + Send + Sync> {
+        unsafe {
+            let ptr =
+                Box::into_raw_with_no_release(fut) as *mut (dyn Future<Output = R> + Send + Sync);
+            Box::from_raw_with_no_release(ptr)
         }
     }
 }
