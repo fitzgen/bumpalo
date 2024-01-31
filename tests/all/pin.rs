@@ -34,6 +34,47 @@ fn box_pin() {
 }
 
 #[test]
+fn dyn_box_pin() {
+    struct Foo(Rc<AtomicBool>);
+    impl Drop for Foo {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
+
+    let bump = Bump::new();
+    let dropped = Rc::new(AtomicBool::new(false));
+
+    // --
+
+    let foo = Foo(dropped.clone());
+    let fut = Box::new_in(
+        async move {
+            mem::forget(foo);
+        },
+        &bump,
+    );
+    let fut: Box<'_, dyn Future<Output = ()>> = fut.into();
+    drop(fut);
+
+    assert_eq!(dropped.load(Ordering::SeqCst), true);
+
+    // --
+
+    dropped.store(false, Ordering::SeqCst);
+
+    let fut = Box::new_in(async move { 1 }, &bump);
+    let fut: Box<'_, dyn Future<Output = usize>> = fut.into();
+    let mut fut: Pin<Box<'_, dyn Future<Output = usize>>> = fut.into();
+    let fut = fut.as_mut();
+
+    let waker = Waker::from(Arc::new(NoopWaker));
+    let mut context = Context::from_waker(&waker);
+
+    assert_eq!(fut.poll(&mut context), Poll::Ready(1));
+}
+
+#[test]
 fn box_pin_drop() {
     struct Foo(Rc<AtomicBool>);
     impl Drop for Foo {

@@ -167,6 +167,7 @@ impl<'a, T> Box<'a, T> {
 
     /// Constructs a new `Pin<Box<T>>`. If `T` does not implement `Unpin`, then
     /// `x` will be pinned in memory and unable to be moved.
+    #[inline]
     pub fn pin_in(x: T, a: &'a Bump) -> Pin<Box<'a, T>> {
         Box::new_in(x, a).into()
     }
@@ -278,11 +279,58 @@ impl<'a, T: ?Sized> Box<'a, T> {
     /// }
     /// ```
     #[inline]
-    pub fn into_raw(b: Box<'a, T>) -> *mut T {
+    pub fn into_raw(b: Box<'a, T>) -> *mut T
+    where
+        T: Unpin,
+    {
+        unsafe { Box::into_raw_unchecked(b) }
+    }
+
+    /// Consumes the `Box`, returning a wrapped raw pointer.
+    ///
+    /// The pointer will be properly aligned and non-null.
+    ///
+    /// After calling this function, the caller is responsible for the
+    /// value previously managed by the `Box`. In particular, the
+    /// caller should properly destroy `T`. The easiest way to
+    /// do this is to convert the raw pointer back into a `Box` with the
+    /// [`Box::from_raw`] function, allowing the `Box` destructor to perform
+    /// the cleanup.
+    ///
+    /// Note: this is an associated function, which means that you have
+    /// to call it as `Box::into_raw(b)` instead of `b.into_raw()`. This
+    /// is so that there is no conflict with a method on the inner type.
+    ///
+    /// # Examples
+    ///
+    /// Converting the raw pointer back into a `Box` with [`Box::from_raw`]
+    /// for automatic cleanup:
+    /// ```
+    /// use bumpalo::{Bump, pin::Box};
+    ///
+    /// let b = Bump::new();
+    ///
+    /// let x = Box::new_in(String::from("Hello"), &b);
+    /// let ptr = unsafe { Box::into_raw_unchecked(x) };
+    /// let x = unsafe { Box::from_raw(ptr, &b) }; // Note that new `x`'s lifetime is unbound. It must be bound to the `b` immutable borrow before `b` is reset.
+    /// ```
+    /// Manual cleanup by explicitly running the destructor:
+    /// ```
+    /// use std::ptr;
+    /// use bumpalo::{Bump, pin::Box};
+    ///
+    /// let b = Bump::new();
+    ///
+    /// let mut x = Box::new_in(String::from("Hello"), &b);
+    /// let p = unsafe { Box::into_raw_unchecked(x) };
+    /// unsafe {
+    ///     ptr::drop_in_place(p);
+    /// }
+    /// ```
+    #[inline]
+    pub unsafe fn into_raw_unchecked(b: Box<'a, T>) -> *mut T {
         let b = ManuallyDrop::new(b);
-        unsafe {
-            b.release_from_drop_list();
-        }
+        b.release_from_drop_list();
         b.ptr
     }
 
@@ -396,7 +444,7 @@ impl<'a, T: ?Sized + Hasher> Hasher for Box<'a, T> {
     }
 }
 
-impl<'a, T> From<Box<'a, T>> for Pin<Box<'a, T>> {
+impl<'a, T: ?Sized> From<Box<'a, T>> for Pin<Box<'a, T>> {
     /// Converts a `Box<T>` into a `Pin<Box<T>>`.
     ///
     /// This conversion does not allocate on the heap and happens in place.
