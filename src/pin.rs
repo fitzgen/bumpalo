@@ -661,3 +661,10 @@ where
         }
     }
 }
+
+// Maybe put this behind a feature flag:
+//
+// impl<'a, T: ?Sized + core::marker::Unsize<U>, U: ?Sized> core::ops::CoerceUnsized<Box<'a, U>>
+//     for Box<'a, T>
+// {
+// }
