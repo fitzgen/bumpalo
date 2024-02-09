@@ -17,3 +17,20 @@ fn trailing_comma_in_format_macro() {
     let v = format![in &b, "{}{}", 1, 2, ];
     assert_eq!(v, "12");
 }
+
+#[test]
+fn push_str() {
+    let b = Bump::new();
+    let mut s = String::new_in(&b);
+    s.push_str("abc");
+    assert_eq!(s, "abc");
+    s.push_str("def");
+    assert_eq!(s, "abcdef");
+    s.push_str("");
+    assert_eq!(s, "abcdef");
+    s.push_str(&"x".repeat(4000));
+    assert_eq!(s.len(), 4006);
+    s.push_str("ghi");
+    assert_eq!(s.len(), 4009);
+    assert_eq!(&s[s.len() - 5..], "xxghi");
+}

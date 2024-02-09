@@ -89,6 +89,14 @@ fn format_realloc(bump: &bumpalo::Bump, n: usize) {
     criterion::black_box(s);
 }
 
+#[cfg(feature = "collections")]
+fn string_push_str(bump: &bumpalo::Bump, str: &str) {
+    let str = criterion::black_box(str);
+    let mut s = bumpalo::collections::string::String::with_capacity_in(str.len(), bump);
+    s.push_str(str);
+    criterion::black_box(s);
+}
+
 const ALLOCATIONS: usize = 10_000;
 
 fn bench_alloc(c: &mut Criterion) {
@@ -202,6 +210,21 @@ fn bench_format_realloc(c: &mut Criterion) {
     }
 }
 
+fn bench_string_push_str(c: &mut Criterion) {
+    let len: usize = 16 * 1024; // 16 KiB
+
+    let mut group = c.benchmark_group("alloc");
+    group.throughput(Throughput::Elements(len as u64));
+    group.bench_function("push_str", |b| {
+        let mut bump = bumpalo::Bump::with_capacity(len);
+        let str = "x".repeat(len);
+        b.iter(|| {
+            bump.reset();
+            string_push_str(&bump, &*str);
+        });
+    });
+}
+
 criterion_group!(
     benches,
     bench_alloc,
@@ -212,6 +235,7 @@ criterion_group!(
     bench_try_alloc_with,
     bench_try_alloc_try_with,
     bench_try_alloc_try_with_err,
-    bench_format_realloc
+    bench_format_realloc,
+    bench_string_push_str
 );
 criterion_main!(benches);
