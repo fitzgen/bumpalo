@@ -420,6 +420,7 @@ pub(crate) fn round_down_to(n: usize, divisor: usize) -> usize {
     n & !(divisor - 1)
 }
 
+/// Same as `round_down_to` but preserves pointer provenance.
 #[inline]
 pub(crate) fn round_mut_ptr_down_to(ptr: *mut u8, divisor: usize) -> *mut u8 {
     debug_assert!(divisor > 0);
