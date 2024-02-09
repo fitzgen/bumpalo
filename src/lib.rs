@@ -420,6 +420,14 @@ pub(crate) fn round_down_to(n: usize, divisor: usize) -> usize {
     n & !(divisor - 1)
 }
 
+/// Same as `round_down_to` but preserves pointer provenance.
+#[inline]
+pub(crate) fn round_mut_ptr_down_to(ptr: *mut u8, divisor: usize) -> *mut u8 {
+    debug_assert!(divisor > 0);
+    debug_assert!(divisor.is_power_of_two());
+    ptr.wrapping_sub(ptr as usize & (divisor - 1))
+}
+
 // After this point, we try to hit page boundaries instead of powers of 2
 const PAGE_STRATEGY_CUTOFF: usize = 0x1000;
 
@@ -1412,8 +1420,7 @@ impl Bump {
             }
 
             let ptr = ptr.wrapping_sub(layout.size());
-            let rem = ptr as usize % layout.align();
-            let aligned_ptr = ptr.wrapping_sub(rem);
+            let aligned_ptr = round_mut_ptr_down_to(ptr, layout.align());
 
             if aligned_ptr >= start {
                 let aligned_ptr = NonNull::new_unchecked(aligned_ptr);
@@ -1508,7 +1515,7 @@ impl Bump {
             // at least the requested size.
             let mut ptr = new_footer.ptr.get().as_ptr().sub(size);
             // Round the pointer down to the requested alignment.
-            ptr = ptr.sub(ptr as usize % layout.align());
+            ptr = round_mut_ptr_down_to(ptr, layout.align());
             debug_assert!(
                 ptr as *const _ <= new_footer,
                 "{:p} <= {:p}",
