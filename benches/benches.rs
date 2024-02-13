@@ -90,6 +90,13 @@ fn format_realloc(bump: &bumpalo::Bump, n: usize) {
 }
 
 #[cfg(feature = "collections")]
+fn string_from_str_in(bump: &bumpalo::Bump, str: &str) {
+    let str = criterion::black_box(str);
+    let s = bumpalo::collections::string::String::from_str_in(str, bump);
+    criterion::black_box(s);
+}
+
+#[cfg(feature = "collections")]
 fn string_push_str(bump: &bumpalo::Bump, str: &str) {
     let str = criterion::black_box(str);
     let mut s = bumpalo::collections::string::String::with_capacity_in(str.len(), bump);
@@ -210,6 +217,21 @@ fn bench_format_realloc(c: &mut Criterion) {
     }
 }
 
+fn bench_string_from_str_in(c: &mut Criterion) {
+    let len: usize = 16;
+
+    let mut group = c.benchmark_group("alloc");
+    group.throughput(Throughput::Elements(len as u64));
+    group.bench_function("from_str_in", |b| {
+        let mut bump = bumpalo::Bump::with_capacity(len);
+        let str = "x".repeat(len);
+        b.iter(|| {
+            bump.reset();
+            string_from_str_in(&bump, &*str);
+        });
+    });
+}
+
 fn bench_string_push_str(c: &mut Criterion) {
     let len: usize = 16 * 1024; // 16 KiB
 
@@ -236,6 +258,7 @@ criterion_group!(
     bench_try_alloc_try_with,
     bench_try_alloc_try_with_err,
     bench_format_realloc,
+    bench_string_from_str_in,
     bench_string_push_str
 );
 criterion_main!(benches);
