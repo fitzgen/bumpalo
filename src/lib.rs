@@ -1724,7 +1724,32 @@ impl Bump {
                 // Only reclaim the excess space (which requires a copy) if it
                 // is worth it: we are actually going to recover "enough" space
                 // and we can do a non-overlapping copy.
-                && delta >= old_size / 2
+                //
+                // We do `(old_size + 1) / 2` so division rounds up rather than
+                // down. Consider when:
+                //
+                //     old_size = 5
+                //     new_size = 3
+                //
+                // If we do not take care to round up, this will result in:
+                //
+                //     delta = 2
+                //     (old_size / 2) = (5 / 2) = 2
+                //
+                // And the the check will succeed even though we are have
+                // overlapping ranges:
+                //
+                //     |--------old-allocation-------|
+                //     |------from-------|
+                //                 |-------to--------|
+                //     +-----+-----+-----+-----+-----+
+                //     |  a  |  b  |  c  |  .  |  .  |
+                //     +-----+-----+-----+-----+-----+
+                //
+                // But we MUST NOT have overlapping ranges because we use
+                // `copy_nonoverlapping` below! Therefore, we round the
+                // division up to avoid this issue.
+                && delta >= (old_size + 1) / 2
         {
             let footer = self.current_chunk_footer.get();
             let footer = footer.as_ref();
