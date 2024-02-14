@@ -1724,7 +1724,10 @@ impl Bump {
                 // Only reclaim the excess space (which requires a copy) if it
                 // is worth it: we are actually going to recover "enough" space
                 // and we can do a non-overlapping copy.
-                && delta >= old_size / 2
+                // `(old_size + 1) / 2` so division rounds up rather than down,
+                // so this test fails for e.g. `old_size` = 1, `new_size` = 1
+                // or `old_size` = 5, `new_size` = 3 (which would overlap).
+                && delta >= (old_size + 1) / 2
         {
             let footer = self.current_chunk_footer.get();
             let footer = footer.as_ref();
