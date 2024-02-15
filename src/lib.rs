@@ -407,6 +407,15 @@ unsafe fn dealloc_chunk_list(mut footer: NonNull<ChunkFooter>) {
 unsafe impl Send for Bump {}
 
 #[inline]
+fn is_pointer_aligned_to<T>(pointer: *mut T, align: usize) -> bool {
+    debug_assert!(align.is_power_of_two());
+
+    let pointer = pointer as usize;
+    let pointer_aligned = round_down_to(pointer, align);
+    pointer == pointer_aligned
+}
+
+#[inline]
 pub(crate) fn round_up_to(n: usize, divisor: usize) -> Option<usize> {
     debug_assert!(divisor > 0);
     debug_assert!(divisor.is_power_of_two());
@@ -1708,13 +1717,31 @@ impl Bump {
         old_layout: Layout,
         new_layout: Layout,
     ) -> Result<NonNull<u8>, AllocErr> {
+        // If the new layout demands greater alignment than the old layout has,
+        // then either
+        //
+        // 1. the pointer happens to satisfy the new layout's alignment, so we
+        //    got lucky and can return the pointer as-is, or
+        //
+        // 2. the pointer is not aligned to the new layout's demanded alignment,
+        //    and we are unlucky.
+        //
+        // In the case of (2), to successfully "shrink" the allocation, we would
+        // have to allocate a whole new region for the new layout, without being
+        // able to free the old region. That is unacceptable, so simply return
+        // an allocation failure error instead.
+        if old_layout.align() < new_layout.align() {
+            if is_pointer_aligned_to(ptr.as_ptr(), new_layout.align()) {
+                return Ok(ptr);
+            } else {
+                return Err(AllocErr);
+            }
+        }
+
+        debug_assert!(is_pointer_aligned_to(ptr.as_ptr(), new_layout.align()));
+
         let old_size = old_layout.size();
         let new_size = new_layout.size();
-        let align_is_compatible = old_layout.align() >= new_layout.align();
-
-        if !align_is_compatible {
-            return Err(AllocErr);
-        }
 
         // This is how much space we would *actually* reclaim while satisfying
         // the requested alignment.
@@ -1747,8 +1774,8 @@ impl Bump {
                 //     +-----+-----+-----+-----+-----+
                 //
                 // But we MUST NOT have overlapping ranges because we use
-                // `copy_nonoverlapping` below! Therefore, we round the
-                // division up to avoid this issue.
+                // `copy_nonoverlapping` below! Therefore, we round the division
+                // up to avoid this issue.
                 && delta >= (old_size + 1) / 2
         {
             let footer = self.current_chunk_footer.get();
@@ -1763,10 +1790,12 @@ impl Bump {
             // in the `if` condition.
             ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), new_size);
 
-            Ok(new_ptr)
-        } else {
-            Ok(ptr)
+            return Ok(new_ptr);
         }
+
+        // If this wasn't the last allocation, or shrinking wasn't worth it,
+        // simply return the old pointer as-is.
+        Ok(ptr)
     }
 
     #[inline]
