@@ -1,12 +1,11 @@
 #![cfg(feature = "allocator_api")]
 
+use crate::quickcheck;
+use crate::quickcheck::arbitrary_layout;
 use bumpalo::Bump;
-
 use std::alloc::{AllocError, Allocator, Layout};
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
-
-use crate::quickcheck;
 
 #[derive(Debug)]
 struct AllocatorDebug {
@@ -120,21 +119,10 @@ fn allocator_grow_zeroed() {
 quickcheck! {
     fn allocator_grow_align_increase(layouts: Vec<(usize, usize)>) -> bool {
         let mut layouts: Vec<_> = layouts.into_iter().map(|(size, align)| {
-            const MIN_SIZE: usize = 1;
-            const MAX_SIZE: usize = 1024;
-            const MIN_ALIGN: usize = 1;
-            const MAX_ALIGN: usize = 64;
-
-            let align = usize::min(usize::max(align, MIN_ALIGN), MAX_ALIGN);
-            let align = usize::next_power_of_two(align);
-
-            let size = usize::min(usize::max(size, MIN_SIZE), MAX_SIZE);
-            let size = usize::max(size, align);
-
-            Layout::from_size_align(size, align).unwrap()
+            arbitrary_layout(size, align)
         }).collect();
 
-        layouts.sort_unstable_by_key(|l| (l.size(), l.align()));
+        layouts.sort_by_key(|l| (l.size(), l.align()));
 
         let b = AllocatorDebug::new(Bump::new());
         let mut layout_iter = layouts.into_iter();
@@ -160,23 +148,12 @@ quickcheck! {
         true
     }
 
-    fn allocator_shrink_align_change(layouts: Vec<(usize, usize)>) -> bool {
+    fn allocator_shrink_align_change(layouts: Vec<(usize, usize)>) -> () {
         let mut layouts: Vec<_> = layouts.into_iter().map(|(size, align)| {
-            const MIN_SIZE: usize = 1;
-            const MAX_SIZE: usize = 1024;
-            const MIN_ALIGN: usize = 1;
-            const MAX_ALIGN: usize = 64;
-
-            let align = usize::min(usize::max(align, MIN_ALIGN), MAX_ALIGN);
-            let align = usize::next_power_of_two(align);
-
-            let size = usize::min(usize::max(size, MIN_SIZE), MAX_SIZE);
-            let size = usize::max(size, align);
-
-            Layout::from_size_align(size, align).unwrap()
+            arbitrary_layout(size, align)
         }).collect();
 
-        layouts.sort_unstable_by_key(|l| l.size());
+        layouts.sort_by_key(|l| l.size());
         layouts.reverse();
 
         let b = AllocatorDebug::new(Bump::new());
@@ -184,30 +161,59 @@ quickcheck! {
 
         if let Some(initial_layout) = layout_iter.next() {
             let mut pointer = b.allocate(initial_layout).unwrap();
-            if !is_pointer_aligned_to(pointer, initial_layout.align()) {
-                return false;
-            }
+            assert!(is_pointer_aligned_to(pointer, initial_layout.align()));
 
             let mut old_layout = initial_layout;
 
             for new_layout in layout_iter {
                 let res = unsafe { b.shrink(pointer.cast(), old_layout, new_layout) };
                 if old_layout.align() < new_layout.align() {
-                    if res.is_ok() {
-                        return false;
+                    match res {
+                        Ok(p) => assert!(is_pointer_aligned_to(p, new_layout.align())),
+                        Err(_) => {}
                     }
                 } else {
                     pointer = res.unwrap();
-                    if !is_pointer_aligned_to(pointer, new_layout.align()) {
-                        return false;
-                    }
+                    assert!(is_pointer_aligned_to(pointer, new_layout.align()));
 
                     old_layout = new_layout;
                 }
             }
         }
+    }
 
-        true
+    fn allocator_grow_or_shrink(layouts: Vec<((usize, usize), (usize, usize))>) -> () {
+        let layouts = layouts
+            .into_iter()
+            .map(|((from_size, from_align), (to_size, to_align))| {
+                let from_layout = arbitrary_layout(from_size, from_align);
+                let to_layout = arbitrary_layout(to_size, to_align);
+                (from_layout, to_layout)
+            });
+
+        let b = AllocatorDebug::new(Bump::new());
+        for (from_layout, to_layout) in layouts {
+            let pointer = b.allocate(from_layout).unwrap();
+            assert!(is_pointer_aligned_to(pointer, from_layout.align()));
+            let pointer = pointer.cast::<u8>();
+
+            let result = if to_layout.size() <= from_layout.size() {
+                unsafe { b.shrink(pointer, from_layout, to_layout) }
+            } else {
+                unsafe { b.grow(pointer, from_layout, to_layout) }
+            };
+
+            match result {
+                Ok(new_pointer) => {
+                    assert!(is_pointer_aligned_to(new_pointer, to_layout.align()));
+                }
+                // Bumpalo can return allocation errors in various situations,
+                // for example if we try to shrink an allocation but also grow
+                // its alignment in such a way that we cannot satisfy the
+                // requested alignment, and that is okay.
+                Err(_) => continue,
+            }
+        }
     }
 }
 
@@ -223,7 +229,12 @@ fn allocator_shrink_layout_change() {
     let p4: NonNull<u8> = b.allocate(layout_align4).unwrap().cast();
     let p16_res = unsafe { b.shrink(p4, layout_align4, layout_align16) };
 
-    assert_eq!(p16_res, Err(AllocError));
+    // This could either happen to succeed because `p4` already happened to be
+    // 16-aligned and could be reused, or `bumpalo` could return an error.
+    match p16_res {
+        Ok(p16) => assert!(is_pointer_aligned_to(p16, 16)),
+        Err(_) => {}
+    }
 }
 
 fn is_pointer_aligned_to(p: NonNull<[u8]>, align: usize) -> bool {
