@@ -1777,6 +1777,39 @@ impl<'bump, T: 'bump + Clone> Vec<'bump, T> {
     }
 }
 
+impl<'bump, T: 'bump + Copy> Vec<'bump, T> {
+    /// Example implementation of `extend_from_slice` that is optimized for types that implement
+    /// the `Copy` trait.
+    pub fn extend_from_slice_copy(&mut self, other: &[T]) {
+
+        // Reserve space in the Vec for the values to be added
+        let old_len = self.len();
+        self.reserve(other.len());
+
+        let new_len = old_len + other.len();
+        debug_assert!(new_len <= self.capacity());
+
+        // Copy string into space just reserved
+        // SAFETY:
+        // * `src` is valid for reads of `string.len()` bytes by virtue of being an allocated `&str`.
+        // * `dst` is valid for writes of `string.len()` bytes as `self.vec.reserve(string.len())`
+        //   above guarantees that.
+        // * Alignment is not relevant as `u8` has no alignment requirements.
+        // * Source and destination ranges cannot overlap as we just reserved the destination
+        //   range from the bump.
+        unsafe {
+            let src = other.as_ptr();
+            let dst = self.as_mut_ptr().add(old_len);
+            ptr::copy_nonoverlapping(src, dst, other.len());
+        }
+
+        // Update length of Vec to include string just pushed
+        // SAFETY: We reserved sufficient capacity for the string above.
+        // The elements at `old_len..new_len` were initialized by `copy_nonoverlapping` above.
+        unsafe { self.set_len(new_len) };
+    }
+}
+
 // This code generalises `extend_with_{element,default}`.
 trait ExtendWith<T> {
     fn next(&mut self) -> T;
