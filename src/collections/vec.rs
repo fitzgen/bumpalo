@@ -1778,8 +1778,35 @@ impl<'bump, T: 'bump + Clone> Vec<'bump, T> {
 }
 
 impl<'bump, T: 'bump + Copy> Vec<'bump, T> {
-    /// Example implementation of `extend_from_slice` that is optimized for types that implement
-    /// the `Copy` trait.
+    /// Copies all elements in the slice `other` and appends them to the `Vec`.
+    ///
+    /// Note that this function is same as [`extend_from_slice`] except that it is optimized for
+    /// slices of types that implement the `Copy` trait. If and when Rust gets specialization
+    /// this function will likely be deprecated (but still available).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bumpalo::{Bump, collections::Vec};
+    ///
+    /// let b = Bump::new();
+    ///
+    /// let mut vec = bumpalo::vec![in &b; 1];
+    /// vec.extend_from_slice_copy(&[2, 3, 4]);
+    /// assert_eq!(vec, [1, 2, 3, 4]);
+    /// ```
+    ///
+    /// ```
+    /// use bumpalo::{Bump, collections::Vec};
+    ///
+    /// let b = Bump::new();
+    ///
+    /// let mut vec = bumpalo::vec![in &b; 'H' as u8];
+    /// vec.extend_from_slice_copy("ello, world!".as_bytes());
+    /// assert_eq!(vec, "Hello, world!".as_bytes());
+    /// ```
+    ///
+    /// [`extend`]: #method.extend_from_slice
     pub fn extend_from_slice_copy(&mut self, other: &[T]) {
 
         // Reserve space in the Vec for the values to be added
