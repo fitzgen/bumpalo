@@ -1789,12 +1789,15 @@ impl<'bump, T: 'bump + Copy> Vec<'bump, T> {
         let new_len = old_len + other.len();
         debug_assert!(new_len <= self.capacity());
 
-        // Copy string into space just reserved
+        // Copy values into the space that was just reserved
         // SAFETY:
-        // * `src` is valid for reads of `string.len()` bytes by virtue of being an allocated `&str`.
-        // * `dst` is valid for writes of `string.len()` bytes as `self.vec.reserve(string.len())`
+        // * `src` is valid for reads of `other.len()` values by virtue of being a `&[T]`.
+        // * `dst` is valid for writes of `other.len()` bytes as `self.reserve(other.len())`
         //   above guarantees that.
+        // !!! TODO Open question:
+        //    --> Now that we're operating on `&[T]` instead of bytes, is there an alignment requirement?
         // * Alignment is not relevant as `u8` has no alignment requirements.
+        //
         // * Source and destination ranges cannot overlap as we just reserved the destination
         //   range from the bump.
         unsafe {
@@ -1803,8 +1806,8 @@ impl<'bump, T: 'bump + Copy> Vec<'bump, T> {
             ptr::copy_nonoverlapping(src, dst, other.len());
         }
 
-        // Update length of Vec to include string just pushed
-        // SAFETY: We reserved sufficient capacity for the string above.
+        // Update length of Vec to include values just pushed
+        // SAFETY: We reserved sufficient capacity for the values above.
         // The elements at `old_len..new_len` were initialized by `copy_nonoverlapping` above.
         unsafe { self.set_len(new_len) };
     }
