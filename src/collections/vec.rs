@@ -1821,10 +1821,8 @@ impl<'bump, T: 'bump + Copy> Vec<'bump, T> {
         // * `src` is valid for reads of `other.len()` values by virtue of being a `&[T]`.
         // * `dst` is valid for writes of `other.len()` bytes as `self.reserve(other.len())`
         //   above guarantees that.
-        // !!! TODO Open question:
-        //    --> Now that we're operating on `&[T]` instead of bytes, is there an alignment requirement?
-        // * Alignment is not relevant as `u8` has no alignment requirements.
-        //
+        // * Because `src` is a `&[T]` and dst is a `&[T]` within the `Vec<T>`,
+        //   `copy_nonoverlapping`'s alignment requirements are met.
         // * Source and destination ranges cannot overlap as we just reserved the destination
         //   range from the bump.
         unsafe {
