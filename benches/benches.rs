@@ -131,34 +131,46 @@ fn extend_from_slice_copy_u8(bump: &bumpalo::Bump, slice: &[u8]) {
 const ALLOCATIONS: usize = 10_000;
 
 fn bench_extend_from_slice_copy(c: &mut Criterion) {
-    let len: usize = 16 * 1024; // 16 KiB
+    let lengths = &[
+        4usize,
+        8,
+        16,
+        64,
+        128,
+        1024,
+        4 * 1024,
+        16 * 1024,
+    ];
 
-    let mut group = c.benchmark_group("extend");
-    group.throughput(Throughput::Elements(len as u64));
-    group.bench_function("extend", |b| {
-        let mut bump = bumpalo::Bump::with_capacity(len);
+    for len in lengths.iter().copied() {
         let str = "x".repeat(len);
-        b.iter(|| {
-            bump.reset();
-            extend_u8(&bump, str.as_bytes());
+        let mut group = c.benchmark_group(format!("extend {len} bytes"));
+        group.throughput(Throughput::Elements(len as u64));
+        group.bench_function("extend", |b| {
+            let mut bump = bumpalo::Bump::with_capacity(len);
+            b.iter(|| {
+                bump.reset();
+                extend_u8(&bump, str.as_bytes());
+            });
         });
-    });
-    group.bench_function("extend_from_slice", |b| {
-        let mut bump = bumpalo::Bump::with_capacity(len);
-        let str = "x".repeat(len);
-        b.iter(|| {
-            bump.reset();
-            extend_from_slice_u8(&bump, str.as_bytes());
+        group.bench_function("extend_from_slice", |b| {
+            let mut bump = bumpalo::Bump::with_capacity(len);
+            let str = "x".repeat(len);
+            b.iter(|| {
+                bump.reset();
+                extend_from_slice_u8(&bump, str.as_bytes());
+            });
         });
-    });
-    group.bench_function("extend_from_slice_copy", |b| {
-        let mut bump = bumpalo::Bump::with_capacity(len);
-        let str = "x".repeat(len);
-        b.iter(|| {
-            bump.reset();
-            extend_from_slice_copy_u8(&bump, str.as_bytes());
+        group.bench_function("extend_from_slice_copy", |b| {
+            let mut bump = bumpalo::Bump::with_capacity(len);
+            let str = "x".repeat(len);
+            b.iter(|| {
+                bump.reset();
+                extend_from_slice_copy_u8(&bump, str.as_bytes());
+            });
         });
-    });
+        group.finish();
+    }
 }
 
 fn bench_alloc(c: &mut Criterion) {
