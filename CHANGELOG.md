@@ -28,6 +28,17 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.15.1
+
+Released 2024-02-20.
+
+### Fixed
+
+* Fixed the MSRV listed in `Cargo.toml`, whose update was forgotten when the
+  MSRV bumped in release 3.15.0.
+
+--------------------------------------------------------------------------------
+
 ## 3.15.0
 
 Released 2024-02-15.
