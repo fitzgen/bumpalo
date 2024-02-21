@@ -133,10 +133,13 @@ const ALLOCATIONS: usize = 10_000;
 fn bench_extend_from_slice_copy(c: &mut Criterion) {
     let lengths = &[
         4usize,
+        5,
         8,
+        11,
         16,
         64,
         128,
+        331,
         1024,
         4 * 1024,
         16 * 1024,
