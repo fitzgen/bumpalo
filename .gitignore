@@ -1,5 +1,2 @@
 target
 Cargo.lock
-
-# JetBrains IDE files (e.g. RustRover)
-.idea
