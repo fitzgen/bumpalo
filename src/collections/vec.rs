@@ -1777,6 +1777,67 @@ impl<'bump, T: 'bump + Clone> Vec<'bump, T> {
     }
 }
 
+impl<'bump, T: 'bump + Copy> Vec<'bump, T> {
+    /// Copies all elements in the slice `other` and appends them to the `Vec`.
+    ///
+    /// Note that this function is same as [`extend_from_slice`] except that it is optimized for
+    /// slices of types that implement the `Copy` trait. If and when Rust gets specialization
+    /// this function will likely be deprecated (but still available).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bumpalo::{Bump, collections::Vec};
+    ///
+    /// let b = Bump::new();
+    ///
+    /// let mut vec = bumpalo::vec![in &b; 1];
+    /// vec.extend_from_slice_copy(&[2, 3, 4]);
+    /// assert_eq!(vec, [1, 2, 3, 4]);
+    /// ```
+    ///
+    /// ```
+    /// use bumpalo::{Bump, collections::Vec};
+    ///
+    /// let b = Bump::new();
+    ///
+    /// let mut vec = bumpalo::vec![in &b; 'H' as u8];
+    /// vec.extend_from_slice_copy("ello, world!".as_bytes());
+    /// assert_eq!(vec, "Hello, world!".as_bytes());
+    /// ```
+    ///
+    /// [`extend`]: #method.extend_from_slice
+    pub fn extend_from_slice_copy(&mut self, other: &[T]) {
+
+        // Reserve space in the Vec for the values to be added
+        let old_len = self.len();
+        self.reserve(other.len());
+
+        let new_len = old_len + other.len();
+        debug_assert!(new_len <= self.capacity());
+
+        // Copy values into the space that was just reserved
+        // SAFETY:
+        // * `src` is valid for reads of `other.len()` values by virtue of being a `&[T]`.
+        // * `dst` is valid for writes of `other.len()` bytes as `self.reserve(other.len())`
+        //   above guarantees that.
+        // * Because `src` is a `&[T]` and dst is a `&[T]` within the `Vec<T>`,
+        //   `copy_nonoverlapping`'s alignment requirements are met.
+        // * Source and destination ranges cannot overlap as we just reserved the destination
+        //   range from the bump.
+        unsafe {
+            let src = other.as_ptr();
+            let dst = self.as_mut_ptr().add(old_len);
+            ptr::copy_nonoverlapping(src, dst, other.len());
+        }
+
+        // Update length of Vec to include values just pushed
+        // SAFETY: We reserved sufficient capacity for the values above.
+        // The elements at `old_len..new_len` were initialized by `copy_nonoverlapping` above.
+        unsafe { self.set_len(new_len) };
+    }
+}
+
 // This code generalises `extend_with_{element,default}`.
 trait ExtendWith<T> {
     fn next(&mut self) -> T;
@@ -2619,13 +2680,13 @@ where
 impl<'bump> io::Write for Vec<'bump, u8> {
     #[inline]
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.extend_from_slice(buf);
+        self.extend_from_slice_copy(buf);
         Ok(buf.len())
     }
 
     #[inline]
     fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
-        self.extend_from_slice(buf);
+        self.extend_from_slice_copy(buf);
         Ok(())
     }
 

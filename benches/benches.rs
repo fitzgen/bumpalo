@@ -104,7 +104,77 @@ fn string_push_str(bump: &bumpalo::Bump, str: &str) {
     criterion::black_box(s);
 }
 
+#[cfg(feature = "collections")]
+fn extend_u8(bump: &bumpalo::Bump, slice: &[u8]) {
+    let slice = criterion::black_box(slice);
+    let mut vec = bumpalo::collections::Vec::<u8>::with_capacity_in(slice.len(), bump);
+    vec.extend(slice.iter().copied());
+    criterion::black_box(vec);
+}
+
+#[cfg(feature = "collections")]
+fn extend_from_slice_u8(bump: &bumpalo::Bump, slice: &[u8]) {
+    let slice = criterion::black_box(slice);
+    let mut vec = bumpalo::collections::Vec::<u8>::with_capacity_in(slice.len(), bump);
+    vec.extend_from_slice(slice);
+    criterion::black_box(vec);
+}
+
+#[cfg(feature = "collections")]
+fn extend_from_slice_copy_u8(bump: &bumpalo::Bump, slice: &[u8]) {
+    let slice = criterion::black_box(slice);
+    let mut vec = bumpalo::collections::Vec::<u8>::with_capacity_in(slice.len(), bump);
+    vec.extend_from_slice_copy(slice);
+    criterion::black_box(vec);
+}
+
 const ALLOCATIONS: usize = 10_000;
+
+fn bench_extend_from_slice_copy(c: &mut Criterion) {
+    let lengths = &[
+        4usize,
+        5,
+        8,
+        11,
+        16,
+        64,
+        128,
+        331,
+        1024,
+        4 * 1024,
+        16 * 1024,
+    ];
+
+    for len in lengths.iter().copied() {
+        let str = "x".repeat(len);
+        let mut group = c.benchmark_group(format!("extend {len} bytes"));
+        group.throughput(Throughput::Elements(len as u64));
+        group.bench_function("extend", |b| {
+            let mut bump = bumpalo::Bump::with_capacity(len);
+            b.iter(|| {
+                bump.reset();
+                extend_u8(&bump, str.as_bytes());
+            });
+        });
+        group.bench_function("extend_from_slice", |b| {
+            let mut bump = bumpalo::Bump::with_capacity(len);
+            let str = "x".repeat(len);
+            b.iter(|| {
+                bump.reset();
+                extend_from_slice_u8(&bump, str.as_bytes());
+            });
+        });
+        group.bench_function("extend_from_slice_copy", |b| {
+            let mut bump = bumpalo::Bump::with_capacity(len);
+            let str = "x".repeat(len);
+            b.iter(|| {
+                bump.reset();
+                extend_from_slice_copy_u8(&bump, str.as_bytes());
+            });
+        });
+        group.finish();
+    }
+}
 
 fn bench_alloc(c: &mut Criterion) {
     let mut group = c.benchmark_group("alloc");
@@ -249,6 +319,7 @@ fn bench_string_push_str(c: &mut Criterion) {
 
 criterion_group!(
     benches,
+    bench_extend_from_slice_copy,
     bench_alloc,
     bench_alloc_with,
     bench_alloc_try_with,
