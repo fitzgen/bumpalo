@@ -28,6 +28,20 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.15.2
+
+Released 2024-02-21.
+
+### Added
+
+* Add a `bumpalo::collections::Vec::extend_from_slice_copy` method. This doesn't
+  exist on the standard library's `Vec` but they have access to specialization,
+  so their regular `extend_from_slice` has a specialization for `Copy`
+  types. Using this new method for `Copy` types is a ~80x performance
+  improvement over the plain `extend_from_slice` method.
+
+--------------------------------------------------------------------------------
+
 ## 3.15.1
 
 Released 2024-02-20.
