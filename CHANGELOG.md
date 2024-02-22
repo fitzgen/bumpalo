@@ -28,6 +28,17 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.15.3
+
+Released 2024-02-22.
+
+### Added
+
+* Added additional performance improvements to `bumpalo::collections::Vec`
+  related to reserving capacity.
+
+--------------------------------------------------------------------------------
+
 ## 3.15.2
 
 Released 2024-02-21.
