@@ -145,7 +145,13 @@ use {
 ///
 /// See the [module-level documentation][crate::boxed] for more details.
 #[repr(transparent)]
-pub struct Box<'a, T: ?Sized> {
+pub struct Box<'a, T: ?Sized>
+where
+    // The `'static` bound is required for soundness, since `T` isn't actually owned by `Box`
+    // but instead owned by the bump allocator. A pinned `Box` is really just a handle and therefore
+    // `mem:forget`-ting a pinned Box will still cause a value drop when the arena drops.
+    T: 'static,
+{
     ptr: *mut T,
     _marker: PhantomData<&'a mut T>,
 }
