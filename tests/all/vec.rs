@@ -106,6 +106,41 @@ fn test_vec_items_get_dropped() {
     assert_eq!("Dropped!Dropped!", buffer.borrow().deref());
 }
 
+#[test]
+fn test_extend_from_slice_copy() {
+    let bump = Bump::new();
+    let mut vec = vec![in &bump; 1, 2, 3];
+    assert_eq!(&[1, 2, 3][..], vec.as_slice());
+
+    vec.extend_from_slice_copy(&[4, 5, 6]);
+    assert_eq!(&[1, 2, 3, 4, 5, 6][..], vec.as_slice());
+
+    // Confirm that passing an empty slice is a no-op
+    vec.extend_from_slice_copy(&[]);
+    assert_eq!(&[1, 2, 3, 4, 5, 6][..], vec.as_slice());
+
+    vec.extend_from_slice_copy(&[7]);
+    assert_eq!(&[1, 2, 3, 4, 5, 6, 7][..], vec.as_slice());
+}
+
+#[test]
+fn test_extend_from_slices_copy() {
+    let bump = Bump::new();
+    let mut vec = vec![in &bump; 1, 2, 3];
+    assert_eq!(&[1, 2, 3][..], vec.as_slice());
+
+    // Confirm that passing an empty slice of slices is a no-op
+    vec.extend_from_slices_copy(&[]);
+    assert_eq!(&[1, 2, 3][..], vec.as_slice());
+
+    // Confirm that an empty slice in the slice-of-slices is a no-op
+    vec.extend_from_slices_copy(&[&[4, 5, 6], &[], &[7]]);
+    assert_eq!(&[1, 2, 3, 4, 5, 6, 7][..], vec.as_slice());
+
+    vec.extend_from_slices_copy(&[&[8], &[9, 10, 11], &[12]]);
+    assert_eq!(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], vec.as_slice());
+}
+
 #[cfg(feature = "std")]
 #[test]
 fn test_vec_write() {

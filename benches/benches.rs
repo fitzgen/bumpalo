@@ -176,6 +176,78 @@ fn bench_extend_from_slice_copy(c: &mut Criterion) {
     }
 }
 
+fn bench_extend_from_slices_copy(c: &mut Criterion) {
+    // The number of slices that will be copied into the Vec
+    let slice_counts = &[1, 2, 4, 8, 16, 32];
+
+    // Whether the Bump and its Vec have will already enough space to store the data without
+    // requiring reallocation
+    let is_preallocated_settings = &[false, true];
+
+    // Slices that can be used to extend the Vec; each may be used more than once.
+    let data: [&[u8]; 4] = [
+        black_box(b"wwwwwwwwwwwwwwww"),
+        black_box(b"xxxxxxxxxxxxxxxx"),
+        black_box(b"yyyyyyyyyyyyyyyy"),
+        black_box(b"zzzzzzzzzzzzzzzz"),
+    ];
+
+    // For each (`is_preallocated`, `num_slices`) pair...
+    for is_preallocated in is_preallocated_settings {
+        for num_slices in slice_counts.iter().copied() {
+            // Create an appropriately named benchmark group
+            let mut group = c.benchmark_group(
+                format!("extend_from_slices num_slices={num_slices}, is_preallocated={is_preallocated}")
+            );
+
+            // Cycle over `data` to construct a slice of slices to append
+            let slices = data
+                .iter()
+                .copied()
+                .cycle()
+                .take(num_slices)
+                .collect::<Vec<_>>();
+            let total_size = slices.iter().map(|s| s.len()).sum();
+
+            // If `is_preallocated` is true, both the Bump and the benchmark Vecs will have enough
+            // capacity to store the concatenated data. If it's false, the Bump and the Vec start
+            // out with no capacity allocated and grow on demand.
+            let size_to_allocate = match is_preallocated {
+                true => total_size,
+                false => 0,
+            };
+            let mut bump = bumpalo::Bump::with_capacity(size_to_allocate);
+
+            // This benchmark demonstrates the performance of looping over the slice-of-slices,
+            // calling `extend_from_slice_copy` (and transitively, `reserve`) for each slice.
+            group.bench_function("loop over extend_from_slice_copy", |b| {
+                b.iter(|| {
+                    bump.reset();
+                    let mut vec = bumpalo::collections::Vec::<u8>::with_capacity_in(size_to_allocate, &bump);
+                    for slice in black_box(&slices) {
+                        vec.extend_from_slice_copy(slice);
+                    }
+                    black_box(vec.as_slice());
+                });
+            });
+
+            // This benchmark demonstrates the performance of using a single call to
+            // `extend_from_slices_copy`, which performs a single `reserve` before appending
+            // all of the slices.
+            group.bench_function("extend_from_slices_copy", |b| {
+                b.iter(|| {
+                    bump.reset();
+                    let mut vec = bumpalo::collections::Vec::<u8>::with_capacity_in(size_to_allocate, &bump);
+                    vec.extend_from_slices_copy(black_box(slices.as_slice()));
+                    black_box(vec.as_slice());
+                });
+            });
+
+            group.finish();
+        }
+    }
+}
+
 fn bench_alloc(c: &mut Criterion) {
     let mut group = c.benchmark_group("alloc");
     group.throughput(Throughput::Elements(ALLOCATIONS as u64));
@@ -320,6 +392,7 @@ fn bench_string_push_str(c: &mut Criterion) {
 criterion_group!(
     benches,
     bench_extend_from_slice_copy,
+    bench_extend_from_slices_copy,
     bench_alloc,
     bench_alloc_with,
     bench_alloc_try_with,
