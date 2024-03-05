@@ -1894,11 +1894,11 @@ impl<'bump, T: 'bump + Copy> Vec<'bump, T> {
     pub fn extend_from_slices_copy(&mut self, slices: &[&[T]]) {
         // Reserve the total amount of capacity we'll need to safely append the aggregated contents
         // of each slice in `slices`.
-        let capacity_to_reserve: usize = slices.iter().map(|buf| buf.len()).sum();
+        let capacity_to_reserve: usize = slices.iter().map(|slice| slice.len()).sum();
         self.reserve(capacity_to_reserve);
 
         // SAFETY:
-        // * `dst` is valid for writes of `other.len()` bytes as `self.reserve(other.len())`
+        // * `dst` is valid for writes of `other.len()` items as `self.reserve(other.len())`
         //   above guarantees that.
         // * Source and destination ranges cannot overlap as we just reserved the destination
         //   range from the bump.
