@@ -1898,8 +1898,8 @@ impl<'bump, T: 'bump + Copy> Vec<'bump, T> {
         self.reserve(capacity_to_reserve);
 
         // SAFETY:
-        // * `dst` is valid for writes of `other.len()` items as `self.reserve(other.len())`
-        //   above guarantees that.
+        // * `dst` is valid for writes of `capacity_to_reserve` items as
+        //   `self.reserve(capacity_to_reserve)` above guarantees that.
         // * Source and destination ranges cannot overlap as we just reserved the destination
         //   range from the bump.
         unsafe {
