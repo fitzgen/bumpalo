@@ -1782,13 +1782,15 @@ impl<'bump, T: 'bump + Copy> Vec<'bump, T> {
     ///
     /// SAFETY:
     ///   * The caller is responsible for:
-    ///       * calling `reserve` beforehand to guarantee that there is enough capacity to
-    ///         store `other.len()` more items.
-    ///       * updating the length of the `Vec` afterward to reflect the number of items added.
+    ///       * calling [`reserve`](Self::reserve) beforehand to guarantee that there is enough
+    ///         capacity to store `other.len()` more items.
+    ///       * updating the length of the `Vec` afterward to reflect the number of items
+    ///         added (usually via [`set_len`](Self::set_len)).
     ///   * The caller must also guarantee that `self` and `other` do not overlap.
     unsafe fn extend_from_slice_copy_unchecked(&mut self, other: &[T]) {
         let old_len = self.len();
         debug_assert!(old_len + other.len() <= self.capacity());
+        debug_assert!(self.capacity() - self.len() >= other.len());
 
         // SAFETY:
         // * `src` is valid for reads of `other.len()` values by virtue of being a `&[T]`.
@@ -1892,8 +1894,8 @@ impl<'bump, T: 'bump + Copy> Vec<'bump, T> {
     pub fn extend_from_slices_copy(&mut self, slices: &[&[T]]) {
         // Reserve the total amount of capacity we'll need to safely append the aggregated contents
         // of each slice in `slices`.
-        let bytes_to_reserve: usize = slices.iter().map(|buf| buf.len()).sum();
-        self.reserve(bytes_to_reserve);
+        let capacity_to_reserve: usize = slices.iter().map(|buf| buf.len()).sum();
+        self.reserve(capacity_to_reserve);
 
         // SAFETY:
         // * `dst` is valid for writes of `other.len()` bytes as `self.reserve(other.len())`
