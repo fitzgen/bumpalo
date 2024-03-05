@@ -307,6 +307,7 @@ quickcheck! {
         }
     }
 
+    #[cfg(feature = "collections")]
     fn extending_from_slice(data1: Vec<usize>, data2: Vec<usize>) -> () {
         let bump = Bump::new();
 
@@ -325,6 +326,7 @@ quickcheck! {
         assert_eq!(&vec[data1.len()..], data2);
     }
 
+    #[cfg(feature = "collections")]
     fn extending_from_slices(data: Vec<Vec<usize>>) -> () {
         let bump = Bump::new();
 
@@ -354,6 +356,7 @@ quickcheck! {
         assert_eq!(vec.as_slice(), total_data.as_slice());
     }
 
+    #[cfg(feature = "collections")]
     fn compare_extending_from_slice_and_from_slices(data: Vec<Vec<usize>>) -> () {
         let bump = Bump::new();
 
