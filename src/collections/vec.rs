@@ -1784,13 +1784,10 @@ impl<'bump, T: 'bump + Copy> Vec<'bump, T> {
     ///   * The caller is responsible for:
     ///       * calling [`reserve`](Self::reserve) beforehand to guarantee that there is enough
     ///         capacity to store `other.len()` more items.
-    ///       * updating the length of the `Vec` afterward to reflect the number of items
-    ///         added (usually via [`set_len`](Self::set_len)).
-    ///   * The caller must also guarantee that `self` and `other` do not overlap.
+    ///       * guaranteeing that `self` and `other` do not overlap.
     unsafe fn extend_from_slice_copy_unchecked(&mut self, other: &[T]) {
         let old_len = self.len();
         debug_assert!(old_len + other.len() <= self.capacity());
-        debug_assert!(self.capacity() - self.len() >= other.len());
 
         // SAFETY:
         // * `src` is valid for reads of `other.len()` values by virtue of being a `&[T]`.
@@ -1804,6 +1801,7 @@ impl<'bump, T: 'bump + Copy> Vec<'bump, T> {
             let src = other.as_ptr();
             let dst = self.as_mut_ptr().add(old_len);
             ptr::copy_nonoverlapping(src, dst, other.len());
+            self.set_len(old_len + other.len());
         }
     }
 
@@ -1843,8 +1841,6 @@ impl<'bump, T: 'bump + Copy> Vec<'bump, T> {
     /// [`extend_from_slices`]: #method.extend_from_slices
     pub fn extend_from_slice_copy(&mut self, other: &[T]) {
         // Reserve space in the Vec for the values to be added
-        let old_len = self.len();
-        let new_len = old_len + other.len();
         self.reserve(other.len());
 
         // Copy values into the space that was just reserved
@@ -1853,12 +1849,8 @@ impl<'bump, T: 'bump + Copy> Vec<'bump, T> {
         //   above guarantees that.
         // * Source and destination data ranges cannot overlap as we just reserved the destination
         //   range from the bump.
-
         unsafe {
             self.extend_from_slice_copy_unchecked(other);
-            // The elements at `old_len..new_len` are initialized by `extend_from_slice_copy_unchecked`
-            // above. Update the Vec's length to reflect the number of items added.
-            self.set_len(new_len);
         }
     }
 
@@ -1906,10 +1898,6 @@ impl<'bump, T: 'bump + Copy> Vec<'bump, T> {
             // Copy the contents of each slice onto the end of `self`
             slices.iter().for_each(|slice| {
                 self.extend_from_slice_copy_unchecked(slice);
-                // Update the Vec's length to reflect the number of items we just added. This needs
-                // to happen for each slice so the next call to `extend_from_slice_copy_unchecked`
-                // will write to the correct (updated) offset.
-                self.set_len(self.len() + slice.len());
             });
         }
     }
