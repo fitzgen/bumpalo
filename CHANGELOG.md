@@ -28,6 +28,18 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.15.4
+
+Released 2024-03-07.
+
+### Added
+
+* Added the `bumpalo::collections::Vec::extend_from_slices_copy` method, which
+  is a faster way to extend a vec from multiple slices when the element is
+  `Copy` than calling `extend_from_slice_copy` N times.
+
+--------------------------------------------------------------------------------
+
 ## 3.15.3
 
 Released 2024-02-22.
