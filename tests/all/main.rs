@@ -8,6 +8,7 @@ mod allocator_api;
 mod boxed;
 mod capacity;
 mod collect_in;
+mod pin;
 mod quickcheck;
 mod quickchecks;
 mod string;
