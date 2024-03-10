@@ -38,7 +38,7 @@ allocator-api2 = { version = "0.2.8", default-features = false, optional = true 
 
 [dev-dependencies]
 quickcheck = "1.0.3"
-criterion = "0.3.6"
+criterion = { version = "0.5", features = ["html_reports"] }
 rand = "0.8.5"
 
 [features]
