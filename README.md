@@ -222,6 +222,14 @@ the unstable nightly`Allocator` API on stable Rust. This means that
 `bumpalo::Bump` will be usable with any collection that is generic over
 `allocator_api2::Allocator`.
 
+### Minimum alignment
+If the majority of your allocations are word aligned, than you might be able to
+get a modest speedup enabling the `min_align` feature. This will ensure all
+allocations are at least word aligned, which can save time in the alignment
+code. This may result in unused padding bytes for allocations with less than
+word alignment. As with any performance change, make sure you benchmark your
+application.
+
 ### Minimum Supported Rust Version (MSRV)
 
 This crate is guaranteed to compile on stable Rust **1.73** and up. It might

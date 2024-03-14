@@ -32,6 +32,13 @@ use allocator_api2::alloc::{AllocError, Allocator};
 
 pub use alloc::AllocErr;
 
+/// The minimum alignment guaranteed for all allocations.
+pub const MIN_ALIGN: usize = if cfg!(feature = "min_align") {
+    core::mem::align_of::<usize>()
+} else {
+    core::mem::align_of::<u8>()
+};
+
 /// An error returned from [`Bump::try_alloc_try_with`].
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum AllocOrInitError<E> {
@@ -435,6 +442,25 @@ pub(crate) fn round_mut_ptr_down_to(ptr: *mut u8, divisor: usize) -> *mut u8 {
     debug_assert!(divisor > 0);
     debug_assert!(divisor.is_power_of_two());
     ptr.wrapping_sub(ptr as usize & (divisor - 1))
+}
+
+#[cfg(not(feature = "min_align"))]
+#[inline]
+fn reserve_space_for(layout: Layout, ptr: *mut u8) -> *mut u8 {
+    let ptr = ptr.wrapping_sub(layout.size());
+    round_mut_ptr_down_to(ptr, layout.align())
+}
+
+#[cfg(feature = "min_align")]
+#[inline]
+fn reserve_space_for(layout: Layout, ptr: *mut u8) -> *mut u8 {
+    let size = (layout.size() + MIN_ALIGN - 1) & !(MIN_ALIGN - 1);
+    let ptr = ptr.wrapping_sub(size);
+    if layout.align() > MIN_ALIGN {
+        round_mut_ptr_down_to(ptr, layout.align())
+    } else {
+        ptr
+    }
 }
 
 // After this point, we try to hit page boundaries instead of powers of 2
@@ -1416,28 +1442,26 @@ impl Bump {
         // be handled properly: the pointer will be bumped by zero bytes,
         // modulo alignment. This keeps the fast path optimized for non-ZSTs,
         // which are much more common.
-        unsafe {
-            let footer = self.current_chunk_footer.get();
-            let footer = footer.as_ref();
-            let ptr = footer.ptr.get().as_ptr();
-            let start = footer.data.as_ptr();
-            debug_assert!(start <= ptr);
-            debug_assert!(ptr as *const u8 <= footer as *const _ as *const u8);
+        let footer = self.current_chunk_footer.get();
+        let footer = unsafe { footer.as_ref() };
+        let ptr = footer.ptr.get().as_ptr();
+        let start = footer.data.as_ptr();
+        debug_assert!(start <= ptr);
+        debug_assert!(ptr as *const u8 <= footer as *const _ as *const u8);
+        debug_assert!(is_pointer_aligned_to(ptr, MIN_ALIGN));
 
-            if (ptr as usize) < layout.size() {
-                return None;
-            }
+        if (ptr as usize) < layout.size() {
+            return None;
+        }
 
-            let ptr = ptr.wrapping_sub(layout.size());
-            let aligned_ptr = round_mut_ptr_down_to(ptr, layout.align());
+        let aligned_ptr = reserve_space_for(layout, ptr);
 
-            if aligned_ptr >= start {
-                let aligned_ptr = NonNull::new_unchecked(aligned_ptr);
-                footer.ptr.set(aligned_ptr);
-                Some(aligned_ptr)
-            } else {
-                None
-            }
+        if aligned_ptr >= start {
+            let aligned_ptr = unsafe { NonNull::new_unchecked(aligned_ptr) };
+            footer.ptr.set(aligned_ptr);
+            Some(aligned_ptr)
+        } else {
+            None
         }
     }
 
@@ -1466,7 +1490,6 @@ impl Bump {
     #[cold]
     fn alloc_layout_slow(&self, layout: Layout) -> Option<NonNull<u8>> {
         unsafe {
-            let size = layout.size();
             let allocation_limit_remaining = self.allocation_limit_remaining();
 
             // Get a new chunk from the global allocator.
@@ -1518,13 +1541,13 @@ impl Bump {
             self.current_chunk_footer.set(new_footer);
 
             let new_footer = new_footer.as_ref();
+            debug_assert!(is_pointer_aligned_to(new_footer.ptr.get().as_ptr(), MIN_ALIGN));
 
             // Move the bump ptr finger down to allocate room for `val`. We know
             // this can't overflow because we successfully allocated a chunk of
             // at least the requested size.
-            let mut ptr = new_footer.ptr.get().as_ptr().sub(size);
-            // Round the pointer down to the requested alignment.
-            ptr = round_mut_ptr_down_to(ptr, layout.align());
+            let ptr = reserve_space_for(layout, new_footer.ptr.get().as_ptr());
+
             debug_assert!(
                 ptr as *const _ <= new_footer,
                 "{:p} <= {:p}",
@@ -2031,7 +2054,7 @@ mod tests {
             let layout = Layout::from_size_align(10, 1).unwrap();
             let p = b.alloc_layout(layout);
             let q = (&b).realloc(p, layout, 11).unwrap();
-            assert_eq!(q.as_ptr() as usize, p.as_ptr() as usize - 1);
+            assert_eq!(q.as_ptr() as usize, p.as_ptr() as usize - MIN_ALIGN);
             b.reset();
 
             // `realloc` will allocate a new chunk when growing the last

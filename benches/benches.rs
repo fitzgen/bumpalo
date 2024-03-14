@@ -1,8 +1,15 @@
+use bumpalo::MIN_ALIGN;
 use criterion::*;
 
+#[allow(dead_code)]
 #[derive(Default)]
 struct Small(u8);
 
+#[allow(dead_code)]
+#[derive(Default)]
+struct Medium(usize);
+
+#[allow(dead_code)]
 #[derive(Default)]
 struct Big([usize; 32]);
 
@@ -25,7 +32,8 @@ fn alloc_with<T: Default>(n: usize) {
 }
 
 fn alloc_try_with<T: Default, E>(n: usize) {
-    let arena = bumpalo::Bump::with_capacity(n * std::mem::size_of::<Result<T, E>>());
+    let size = std::cmp::max(MIN_ALIGN, std::mem::size_of::<Result<T, E>>());
+    let arena = bumpalo::Bump::with_capacity(n * size);
     for _ in 0..n {
         let arena = black_box(&arena);
         let val: Result<&mut T, E> = arena.alloc_try_with(|| black_box(Ok(Default::default())));
@@ -62,7 +70,8 @@ fn try_alloc_with<T: Default>(n: usize) {
 }
 
 fn try_alloc_try_with<T: Default, E>(n: usize) {
-    let arena = bumpalo::Bump::with_capacity(n * std::mem::size_of::<Result<T, E>>());
+    let size = std::cmp::max(MIN_ALIGN, std::mem::size_of::<Result<T, E>>());
+    let arena = bumpalo::Bump::with_capacity(n * size);
     for _ in 0..n {
         let arena = black_box(&arena);
         let val: Result<&mut T, bumpalo::AllocOrInitError<E>> =
@@ -196,9 +205,9 @@ fn bench_extend_from_slices_copy(c: &mut Criterion) {
     for is_preallocated in is_preallocated_settings {
         for num_slices in slice_counts.iter().copied() {
             // Create an appropriately named benchmark group
-            let mut group = c.benchmark_group(
-                format!("extend_from_slices num_slices={num_slices}, is_preallocated={is_preallocated}")
-            );
+            let mut group = c.benchmark_group(format!(
+                "extend_from_slices num_slices={num_slices}, is_preallocated={is_preallocated}"
+            ));
 
             // Cycle over `data` to construct a slice of slices to append
             let slices = data
@@ -223,7 +232,8 @@ fn bench_extend_from_slices_copy(c: &mut Criterion) {
             group.bench_function("loop over extend_from_slice_copy", |b| {
                 b.iter(|| {
                     bump.reset();
-                    let mut vec = bumpalo::collections::Vec::<u8>::with_capacity_in(size_to_allocate, &bump);
+                    let mut vec =
+                        bumpalo::collections::Vec::<u8>::with_capacity_in(size_to_allocate, &bump);
                     for slice in black_box(&slices) {
                         vec.extend_from_slice_copy(slice);
                     }
@@ -237,7 +247,8 @@ fn bench_extend_from_slices_copy(c: &mut Criterion) {
             group.bench_function("extend_from_slices_copy", |b| {
                 b.iter(|| {
                     bump.reset();
-                    let mut vec = bumpalo::collections::Vec::<u8>::with_capacity_in(size_to_allocate, &bump);
+                    let mut vec =
+                        bumpalo::collections::Vec::<u8>::with_capacity_in(size_to_allocate, &bump);
                     vec.extend_from_slices_copy(black_box(slices.as_slice()));
                     black_box(vec.as_slice());
                 });
@@ -252,6 +263,7 @@ fn bench_alloc(c: &mut Criterion) {
     let mut group = c.benchmark_group("alloc");
     group.throughput(Throughput::Elements(ALLOCATIONS as u64));
     group.bench_function("small", |b| b.iter(|| alloc::<Small>(ALLOCATIONS)));
+    group.bench_function("medium", |b| b.iter(|| alloc::<Medium>(ALLOCATIONS)));
     group.bench_function("big", |b| b.iter(|| alloc::<Big>(ALLOCATIONS)));
 }
 
@@ -259,6 +271,7 @@ fn bench_alloc_with(c: &mut Criterion) {
     let mut group = c.benchmark_group("alloc-with");
     group.throughput(Throughput::Elements(ALLOCATIONS as u64));
     group.bench_function("small", |b| b.iter(|| alloc_with::<Small>(ALLOCATIONS)));
+    group.bench_function("medium", |b| b.iter(|| alloc_with::<Medium>(ALLOCATIONS)));
     group.bench_function("big", |b| b.iter(|| alloc_with::<Big>(ALLOCATIONS)));
 }
 
@@ -300,6 +313,7 @@ fn bench_try_alloc(c: &mut Criterion) {
     let mut group = c.benchmark_group("try-alloc");
     group.throughput(Throughput::Elements(ALLOCATIONS as u64));
     group.bench_function("small", |b| b.iter(|| try_alloc::<Small>(ALLOCATIONS)));
+    group.bench_function("medium", |b| b.iter(|| try_alloc::<Medium>(ALLOCATIONS)));
     group.bench_function("big", |b| b.iter(|| try_alloc::<Big>(ALLOCATIONS)));
 }
 
@@ -307,6 +321,9 @@ fn bench_try_alloc_with(c: &mut Criterion) {
     let mut group = c.benchmark_group("try-alloc-with");
     group.throughput(Throughput::Elements(ALLOCATIONS as u64));
     group.bench_function("small", |b| b.iter(|| try_alloc_with::<Small>(ALLOCATIONS)));
+    group.bench_function("medium", |b| {
+        b.iter(|| try_alloc_with::<Medium>(ALLOCATIONS))
+    });
     group.bench_function("big", |b| b.iter(|| try_alloc_with::<Big>(ALLOCATIONS)));
 }
 
