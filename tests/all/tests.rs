@@ -1,4 +1,4 @@
-use bumpalo::Bump;
+use bumpalo::{Bump, MIN_ALIGN};
 use std::alloc::Layout;
 use std::mem;
 use std::usize;
@@ -139,6 +139,11 @@ where
     T: Copy + Eq,
     I: Clone + Iterator<Item = T> + DoubleEndedIterator,
 {
+    // This test is not applicable if the minimum alignment is larger than the
+    // alignment of T
+    if MIN_ALIGN > std::mem::align_of::<T>() {
+        return;
+    }
     for &initial_size in &[0, 1, 8, 11, 0x1000, 0x12345] {
         let mut b = Bump::with_capacity(initial_size);
 

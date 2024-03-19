@@ -47,6 +47,7 @@ collections = []
 boxed = []
 allocator_api = []
 std = []
+min_align = []
 
 # [profile.bench]
 # debug = true

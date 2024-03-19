@@ -1,6 +1,6 @@
 use crate::quickcheck;
 use ::quickcheck::{Arbitrary, Gen};
-use bumpalo::Bump;
+use bumpalo::{Bump, MIN_ALIGN};
 use std::mem;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -187,7 +187,8 @@ quickcheck! {
 
     fn test_alignment_chunks(sizes: Vec<usize>) -> () {
         const SUPPORTED_ALIGNMENTS: &[usize] = &[1, 2, 4, 8, 16];
-        for &alignment in SUPPORTED_ALIGNMENTS {
+        let aligments = SUPPORTED_ALIGNMENTS.iter().filter(|x| **x >= MIN_ALIGN);
+        for &alignment in aligments {
             let mut b = Bump::with_capacity(513);
             let mut sizes = sizes.iter().map(|&size| (size % 10) * alignment).collect::<Vec<_>>();
 

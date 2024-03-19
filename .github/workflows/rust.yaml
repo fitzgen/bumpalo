@@ -15,7 +15,7 @@ jobs:
     strategy:
       matrix:
         rust_channel: ["stable", "beta", "nightly", "1.73.0"]
-        feature_set: ["--features collections,boxed"]
+        feature_set: ["--features collections,boxed,min_align"]
         include:
           - rust_channel: "nightly"
             feature_set: "--all-features"
@@ -23,7 +23,7 @@ jobs:
             feature_set: "--no-default-features"
         exclude:
           - rust_channel: "nightly"
-            feature_set: "--features collections,boxed"
+            feature_set: "--features collections,boxed,min_align"
 
     runs-on: ubuntu-latest
     steps:
@@ -78,6 +78,8 @@ jobs:
       run: cargo test --verbose
     - name: Test under valgrind (features)
       run: cargo test --verbose --features collections,boxed
+    - name: Test under valgrind (features + min_align)
+      run: cargo test --verbose --features collections,boxed,min_align
 
   benches:
     runs-on: ubuntu-latest

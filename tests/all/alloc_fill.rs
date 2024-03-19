@@ -1,4 +1,4 @@
-use bumpalo::Bump;
+use bumpalo::{Bump, MIN_ALIGN};
 use std::alloc::Layout;
 use std::cmp;
 use std::mem;
@@ -22,11 +22,11 @@ fn alloc_slice_fill_zero() {
     let alignment = cmp::max(mem::align_of::<u64>(), mem::align_of::<String>());
     assert_eq!(
         ptr1.as_ptr() as usize & !(alignment - 1),
-        ptr2 as *mut _ as usize
+        ptr2 as *mut _ as usize & !(MIN_ALIGN - 1),
     );
 
     let ptr3 = b.alloc_layout(layout);
-    assert_eq!(ptr2 as *mut _ as usize, ptr3.as_ptr() as usize + 1);
+    assert_eq!(ptr2 as *mut _ as usize, ptr3.as_ptr() as usize + MIN_ALIGN);
 }
 
 #[test]
