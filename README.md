@@ -153,6 +153,37 @@ in its space itself.
 }
 ```
 
+#### Serde
+
+Adding the `serde` feature flag will enable transparent serialization of Vecs and 
+boxed values.
+
+```toml
+[dependencies]
+bumpalo = { version = "3.9", features = ["collections", "boxed", "serde"] }
+```
+
+```rust,ignore
+use bumpalo::{Bump, boxed::Box, collections::Vec};
+
+// Create a new bump arena.
+let bump = Bump::new();
+
+// Create a `Box`
+let box = Box::new_in("hello", &bump);
+
+// Serialize with serde_json
+assert_eq!(serde_json::to_string(&box).unwrap(), "\"hello\"");
+
+// Create a `Vec`
+let vec = Vec::new_in( &bump);
+vec.push(1);
+vec.push(2);
+
+// Serialize with serde_json
+assert_eq!(serde_json::to_string(&vec).unwrap(), "[1, 2]");
+```
+
 ### `#![no_std]` Support
 
 Bumpalo is a `no_std` crate by default. It depends only on the `alloc` and `core` crates.
