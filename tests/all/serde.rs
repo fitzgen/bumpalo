@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 macro_rules! compare_std_vec {
     (in $bump:ident; $($x:expr),+) => {{
-        let mut vec = vec![in &$bump; $($x),+];
+        let vec = vec![in &$bump; $($x),+];
         let std_vec = std::vec![$($x),+];
         (vec, std_vec)
     }}

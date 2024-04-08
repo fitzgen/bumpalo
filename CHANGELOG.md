@@ -28,6 +28,19 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.16.0
+
+Released 2024-04-08.
+
+### Added
+
+* Added an optional, off-by-default dependency on the `serde` crate. Enabling
+  this dependency allows you to serialize Bumpalo's collection and box
+  types. Deserialization is not implemented, due to constraints of the
+  deserialization trait.
+
+--------------------------------------------------------------------------------
+
 ## 3.15.4
 
 Released 2024-03-07.
