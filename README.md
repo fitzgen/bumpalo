@@ -255,7 +255,7 @@ the unstable nightly`Allocator` API on stable Rust. This means that
 
 ### Minimum Supported Rust Version (MSRV)
 
-This crate is guaranteed to compile on stable Rust **1.73** and up. It might
+This crate is guaranteed to compile on stable Rust **1.71.1** and up. It might
 compile with older versions but that may change in any new patch release.
 
 We reserve the right to increment the MSRV on minor releases, however we will
