@@ -1705,6 +1705,7 @@ impl Bump {
         // If the pointer is the last allocation we made, we can reuse the bytes,
         // otherwise they are simply leaked -- at least until somebody calls reset().
         if self.is_last_allocation(ptr) {
+            let ptr = self.current_chunk_footer.get().as_ref().ptr.get();
             let ptr = NonNull::new_unchecked(ptr.as_ptr().add(layout.size()));
             self.current_chunk_footer.get().as_ref().ptr.set(ptr);
         }
