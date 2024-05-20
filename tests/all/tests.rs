@@ -209,3 +209,14 @@ fn test_chunk_capacity() {
     b.alloc(true);
     assert!(b.chunk_capacity() < orig_capacity);
 }
+
+#[test]
+#[cfg(feature = "allocator_api")]
+fn miri_stacked_borrows_issue_247() {
+    let bump = bumpalo::Bump::new();
+
+    let a = Box::into_raw(Box::new_in(1u8, &bump));
+    drop(unsafe { Box::from_raw_in(a, &bump) });
+
+    let _b = Box::new_in(2u16, &bump);
+}
