@@ -36,7 +36,7 @@ harness = false
 # implement its `Allocator` trait.
 allocator-api2 = { version = "0.2.8", default-features = false, optional = true }
 
-# This dependency enables integration with the zerocopy trait, which allows
+# This dependency enables integration with the zerocopy crate, which allows
 # allocating values that implement FromZeroes directly in a Bump.
 zerocopy = { version = "0.7.34", default-features = false, optional = true }
 zerocopy-derive = { version = "0.7.34", default-features = false, optional = true }
