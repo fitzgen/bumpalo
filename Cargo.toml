@@ -36,6 +36,11 @@ harness = false
 # implement its `Allocator` trait.
 allocator-api2 = { version = "0.2.8", default-features = false, optional = true }
 
+# This dependency enables integration with the zerocopy trait, which allows
+# allocating values that implement FromZeroes directly in a Bump.
+zerocopy = { version = "0.7.34", default-features = false, optional = true }
+zerocopy-derive = { version = "0.7.34", default-features = false, optional = true }
+
 # This dependency is here to allow integration with Serde, if the `serde` feature is enabled
 serde = { version = "1.0.171", optional = true }
 
@@ -53,6 +58,7 @@ boxed = []
 allocator_api = []
 std = []
 serde = ["dep:serde"]
+zerocopy = ["dep:zerocopy", "dep:zerocopy-derive"]
 
 # [profile.bench]
 # debug = true
