@@ -158,7 +158,7 @@ impl<E: Display> Display for AllocOrInitError<E> {
 /// ### Fallible Allocation: The `try_alloc_` Method Prefix
 ///
 /// These allocation methods let you recover from out-of-memory (OOM)
-/// scenarioes, rather than raising a panic on OOM.
+/// scenarios, rather than raising a panic on OOM.
 ///
 /// ```
 /// use bumpalo::Bump;
