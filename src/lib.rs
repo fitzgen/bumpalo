@@ -1202,9 +1202,10 @@ impl Bump {
     {
         let layout = Layout::for_value(src);
         let dst = self.try_alloc_layout(layout)?.cast::<T>();
-        let result = unsafe { slice::from_raw_parts_mut(dst.as_ptr(), src.len()) };
-        debug_assert_eq!(result.len(), src.len());
-        result.copy_from_slice(src);
+        let result = unsafe {
+            core::ptr::copy_nonoverlapping(src.as_ptr(), dst.as_ptr(), src.len());
+            slice::from_raw_parts_mut(dst.as_ptr(), src.len())
+        };
         Ok(result)
     }
 
