@@ -1486,7 +1486,7 @@ impl Bump {
         })
     }
 
-    /// Allocates a new slice of size `len` slice into this `Bump` and return an
+    /// Allocates a new slice of size `iter.len()` slice into this `Bump` and return an
     /// exclusive reference to the copy. Does not panic on failure.
     ///
     /// The elements are initialized using the supplied iterator.
