@@ -1180,6 +1180,35 @@ impl Bump {
         }
     }
 
+    /// Like `alloc_slice_copy`, but does not panic in case of allocation failure.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.try_alloc_slice_copy(&[1, 2, 3]);
+    /// assert_eq!(x, Ok(&mut[1, 2, 3] as &mut [_]));
+    ///
+    ///
+    /// let bump = bumpalo::Bump::new();
+    /// bump.set_allocation_limit(Some(4));
+    /// let x = bump.try_alloc_slice_copy(&[1, 2, 3, 4, 5, 6]);
+    /// assert_eq!(x, Err(bumpalo::AllocErr)); // too big
+    /// ```
+    #[inline(always)]
+    pub fn try_alloc_slice_copy<T>(&self, src: &[T]) -> Result<&mut [T], AllocErr>
+    where
+        T: Copy,
+    {
+        let layout = Layout::for_value(src);
+        let dst = self.try_alloc_layout(layout)?.cast::<T>();
+        let result = unsafe {
+            core::ptr::copy_nonoverlapping(src.as_ptr(), dst.as_ptr(), src.len());
+            slice::from_raw_parts_mut(dst.as_ptr(), src.len())
+        };
+        Ok(result)
+    }
+
     /// `Clone` a slice into this `Bump` and return an exclusive reference to
     /// the clone. Prefer [`alloc_slice_copy`](#method.alloc_slice_copy) if `T` is `Copy`.
     ///
@@ -1222,6 +1251,24 @@ impl Bump {
         }
     }
 
+    /// Like `alloc_slice_clone` but does not panic on failure.
+    #[inline(always)]
+    pub fn try_alloc_slice_clone<T>(&self, src: &[T]) -> Result<&mut [T], AllocErr>
+    where
+        T: Clone,
+    {
+        let layout = Layout::for_value(src);
+        let dst = self.try_alloc_layout(layout)?.cast::<T>();
+
+        unsafe {
+            for (i, val) in src.iter().cloned().enumerate() {
+                ptr::write(dst.as_ptr().add(i), val);
+            }
+
+            Ok(slice::from_raw_parts_mut(dst.as_ptr(), src.len()))
+        }
+    }
+
     /// `Copy` a string slice into this `Bump` and return an exclusive reference to it.
     ///
     /// ## Panics
@@ -1241,6 +1288,30 @@ impl Bump {
         unsafe {
             // This is OK, because it already came in as str, so it is guaranteed to be utf8
             str::from_utf8_unchecked_mut(buffer)
+        }
+    }
+
+    /// Same as `alloc_str` but does not panic on failure.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let hello = bump.try_alloc_str("hello world").unwrap();
+    /// assert_eq!("hello world", hello);
+    ///
+    ///
+    /// let bump = bumpalo::Bump::new();
+    /// bump.set_allocation_limit(Some(5));
+    /// let hello = bump.try_alloc_str("hello world");
+    /// assert_eq!(Err(bumpalo::AllocErr), hello);
+    /// ```
+    #[inline(always)]
+    pub fn try_alloc_str(&self, src: &str) -> Result<&mut str, AllocErr> {
+        let buffer = self.try_alloc_slice_copy(src.as_bytes())?;
+        unsafe {
+            // This is OK, because it already came in as str, so it is guaranteed to be utf8
+            Ok(str::from_utf8_unchecked_mut(buffer))
         }
     }
 
@@ -1283,6 +1354,48 @@ impl Bump {
     /// Allocates a new slice of size `len` into this `Bump` and returns an
     /// exclusive reference to the copy.
     ///
+    /// The elements of the slice are initialized using the supplied closure.
+    /// The closure argument is the position in the slice.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.try_alloc_slice_fill_with(5, |i| 5 * (i + 1));
+    /// assert_eq!(x, Ok(&mut[5usize, 10, 15, 20, 25] as &mut [_]));
+    ///
+    ///
+    /// let bump = bumpalo::Bump::new();
+    /// bump.set_allocation_limit(Some(4));
+    /// let x = bump.try_alloc_slice_fill_with(10, |i| 5 * (i + 1));
+    /// assert_eq!(x, Err(bumpalo::AllocErr));
+    /// ```
+    #[inline(always)]
+    pub fn try_alloc_slice_fill_with<T, F>(
+        &self,
+        len: usize,
+        mut f: F,
+    ) -> Result<&mut [T], AllocErr>
+    where
+        F: FnMut(usize) -> T,
+    {
+        let layout = Layout::array::<T>(len).map_err(|_| AllocErr)?;
+        let dst = self.try_alloc_layout(layout)?.cast::<T>();
+
+        unsafe {
+            for i in 0..len {
+                ptr::write(dst.as_ptr().add(i), f(i));
+            }
+
+            let result = slice::from_raw_parts_mut(dst.as_ptr(), len);
+            debug_assert_eq!(Layout::for_value(result), layout);
+            Ok(result)
+        }
+    }
+
+    /// Allocates a new slice of size `len` into this `Bump` and returns an
+    /// exclusive reference to the copy.
+    ///
     /// All elements of the slice are initialized to `value`.
     ///
     /// ## Panics
@@ -1299,6 +1412,16 @@ impl Bump {
     #[inline(always)]
     pub fn alloc_slice_fill_copy<T: Copy>(&self, len: usize, value: T) -> &mut [T] {
         self.alloc_slice_fill_with(len, |_| value)
+    }
+
+    /// Same as `alloc_slice_fill_copy` but does not panic on failure.
+    #[inline(always)]
+    pub fn try_alloc_slice_fill_copy<T: Copy>(
+        &self,
+        len: usize,
+        value: T,
+    ) -> Result<&mut [T], AllocErr> {
+        self.try_alloc_slice_fill_with(len, |_| value)
     }
 
     /// Allocates a new slice of size `len` slice into this `Bump` and return an
@@ -1323,6 +1446,16 @@ impl Bump {
     #[inline(always)]
     pub fn alloc_slice_fill_clone<T: Clone>(&self, len: usize, value: &T) -> &mut [T] {
         self.alloc_slice_fill_with(len, |_| value.clone())
+    }
+
+    /// Like `alloc_slice_fill_clone` but does not panic on failure.
+    #[inline(always)]
+    pub fn try_alloc_slice_fill_clone<T: Clone>(
+        &self,
+        len: usize,
+        value: &T,
+    ) -> Result<&mut [T], AllocErr> {
+        self.try_alloc_slice_fill_with(len, |_| value.clone())
     }
 
     /// Allocates a new slice of size `len` slice into this `Bump` and return an
@@ -1354,6 +1487,31 @@ impl Bump {
         })
     }
 
+    /// Allocates a new slice of size `iter.len()` slice into this `Bump` and return an
+    /// exclusive reference to the copy. Does not panic on failure.
+    ///
+    /// The elements are initialized using the supplied iterator.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x: &[i32] = bump.try_alloc_slice_fill_iter([2, 3, 5]
+    ///     .iter().cloned().map(|i| i * i)).unwrap();
+    /// assert_eq!(x, [4, 9, 25]);
+    /// ```
+    #[inline(always)]
+    pub fn try_alloc_slice_fill_iter<T, I>(&self, iter: I) -> Result<&mut [T], AllocErr>
+    where
+        I: IntoIterator<Item = T>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        let mut iter = iter.into_iter();
+        self.try_alloc_slice_fill_with(iter.len(), |_| {
+            iter.next().expect("Iterator supplied too few elements")
+        })
+    }
+
     /// Allocates a new slice of size `len` slice into this `Bump` and return an
     /// exclusive reference to the copy.
     ///
@@ -1375,6 +1533,15 @@ impl Bump {
     #[inline(always)]
     pub fn alloc_slice_fill_default<T: Default>(&self, len: usize) -> &mut [T] {
         self.alloc_slice_fill_with(len, |_| T::default())
+    }
+
+    /// Like `alloc_slice_fill_default` but does not panic on failure.
+    #[inline(always)]
+    pub fn try_alloc_slice_fill_default<T: Default>(
+        &self,
+        len: usize,
+    ) -> Result<&mut [T], AllocErr> {
+        self.try_alloc_slice_fill_with(len, |_| T::default())
     }
 
     /// Allocate space for an object with the given `Layout`.
