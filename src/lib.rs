@@ -12,6 +12,9 @@ pub mod boxed;
 #[cfg(feature = "collections")]
 pub mod collections;
 
+#[cfg(feature = "zerocopy")]
+mod zerocopy_integration;
+
 mod alloc;
 
 use core::cell::Cell;
