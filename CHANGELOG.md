@@ -28,6 +28,32 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.17.0
+
+Released 2025-01-28.
+
+### Added
+
+* Added a bunch of `try_` allocation methods for slices and `str`:
+  * `try_alloc_slice_fill_default`
+  * `try_alloc_slice_fill_iter`
+  * `try_alloc_slice_fill_clone`
+  * `try_alloc_slice_fill_copy`
+  * `try_alloc_slice_fill_with`
+  * `try_alloc_str`
+  * `try_alloc_slice_clone`
+  * `try_alloc_slice_copy`
+
+### Changed
+
+* Minimum supported Rust version reduced to 1.71.1
+
+### Fixed
+
+* Fixed a stacked-borrows MIRI bug in `dealloc`
+
+--------------------------------------------------------------------------------
+
 ## 3.16.0
 
 Released 2024-04-08.
