@@ -4,6 +4,8 @@
 // We only run them when debug_assertions are not set, as we expect them to fail outside release
 // mode.
 
+use std::iter::repeat;
+
 use bumpalo::Bump;
 
 #[test]
@@ -114,5 +116,25 @@ fn alloc_try_with_large_enum_err() {
 
     assert!(b
         .alloc_try_with(|| Result::<LargeEnum, _>::Err(()))
+        .is_err());
+}
+
+#[test]
+#[cfg_attr(debug_assertions, ignore)]
+fn alloc_slice_try_fill_with_large_length() {
+    let b = Bump::new();
+
+    assert!(b
+        .alloc_slice_try_fill_with(10_000_000, |_| Err::<u8, _>(()))
+        .is_err());
+}
+
+#[test]
+#[cfg_attr(debug_assertions, ignore)]
+fn alloc_slice_try_fill_iter_large_length() {
+    let b = Bump::new();
+
+    assert!(b
+        .alloc_slice_try_fill_iter(repeat(Err::<u8, _>(())).take(10_000_000))
         .is_err());
 }
