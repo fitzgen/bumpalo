@@ -24,9 +24,10 @@ where
     fn reset(&mut self);
 }
 
-impl BumpAllocator for bumpalo::Bump {
+type Bumpalo = bumpalo::Bump<{ std::mem::align_of::<usize>() }>;
+impl BumpAllocator for Bumpalo {
     fn with_capacity(cap: usize) -> Self {
-        let b = bumpalo::Bump::with_capacity(cap);
+        let b = Bumpalo::with_min_align_and_capacity(cap);
         b.set_allocation_limit(Some(cap));
         b
     }
@@ -164,6 +165,17 @@ where
 {
     let mut group = c.benchmark_group(format!("allocator-api/{name}"));
 
+    group.bench_function(format!("allocate(u8) x {NUM_ALLOCS}"), |b| {
+        let mut alloc = A::with_capacity(mem::size_of::<u8>() * NUM_ALLOCS);
+        b.iter(|| {
+            for _ in 0..NUM_ALLOCS {
+                let ptr = (&alloc).allocate(Layout::new::<u8>()).unwrap();
+                black_box(ptr);
+            }
+            alloc.reset();
+        })
+    });
+
     group.bench_function(format!("allocate(u32) x {NUM_ALLOCS}"), |b| {
         let mut alloc = A::with_capacity(mem::size_of::<u32>() * NUM_ALLOCS);
         b.iter(|| {
@@ -175,87 +187,167 @@ where
         })
     });
 
-    group.bench_function(format!("grow same align x {NUM_ALLOCS}"), |b| {
-        let mut alloc = A::with_capacity(mem::size_of::<[u32; 2]>() * NUM_ALLOCS);
-        b.iter(|| {
-            for _ in 0..NUM_ALLOCS {
-                unsafe {
-                    let ptr = black_box(&alloc).allocate(Layout::new::<u32>()).unwrap();
-                    let ptr = black_box(&alloc)
-                        .grow(ptr.cast(), Layout::new::<u32>(), Layout::new::<[u32; 2]>())
-                        .unwrap();
-                    black_box(ptr);
-                }
-            }
-            alloc.reset();
-        })
-    });
-
-    group.bench_function(format!("grow smaller align x {NUM_ALLOCS}"), |b| {
-        let mut alloc = A::with_capacity(mem::size_of::<[u16; 4]>() * NUM_ALLOCS);
-        b.iter(|| {
-            for _ in 0..NUM_ALLOCS {
-                unsafe {
-                    let ptr = black_box(&alloc).allocate(Layout::new::<u32>()).unwrap();
-                    let ptr = black_box(&alloc)
-                        .grow(ptr.cast(), Layout::new::<u32>(), Layout::new::<[u16; 4]>())
-                        .unwrap();
-                    black_box(ptr);
-                }
-            }
-            alloc.reset();
-        })
-    });
-
-    group.bench_function(format!("grow larger align x {NUM_ALLOCS}"), |b| {
+    group.bench_function(format!("allocate(u64) x {NUM_ALLOCS}"), |b| {
         let mut alloc = A::with_capacity(mem::size_of::<u64>() * NUM_ALLOCS);
         b.iter(|| {
             for _ in 0..NUM_ALLOCS {
-                unsafe {
-                    let ptr = black_box(&alloc).allocate(Layout::new::<u32>()).unwrap();
-                    let ptr = black_box(&alloc)
-                        .grow(ptr.cast(), Layout::new::<u32>(), Layout::new::<u64>())
-                        .unwrap();
-                    black_box(ptr);
-                }
+                let ptr = (&alloc).allocate(Layout::new::<u64>()).unwrap();
+                black_box(ptr);
             }
             alloc.reset();
         })
     });
 
-    group.bench_function(format!("shrink same align x {NUM_ALLOCS}"), |b| {
-        let mut alloc = A::with_capacity(mem::size_of::<u32>() * NUM_ALLOCS);
+    group.bench_function(format!("allocate(u128) x {NUM_ALLOCS}"), |b| {
+        let mut alloc = A::with_capacity(mem::size_of::<u128>() * NUM_ALLOCS);
         b.iter(|| {
             for _ in 0..NUM_ALLOCS {
-                unsafe {
-                    let ptr = black_box(&alloc)
-                        .allocate(Layout::new::<[u32; 2]>())
-                        .unwrap();
-                    let ptr = black_box(&alloc)
-                        .shrink(ptr.cast(), Layout::new::<[u32; 2]>(), Layout::new::<u32>())
-                        .unwrap();
-                    black_box(ptr);
-                }
+                let ptr = (&alloc).allocate(Layout::new::<u128>()).unwrap();
+                black_box(ptr);
             }
             alloc.reset();
         })
     });
 
-    group.bench_function(format!("shrink smaller align x {NUM_ALLOCS}"), |b| {
-        let mut alloc = A::with_capacity(mem::size_of::<u32>() * NUM_ALLOCS);
-        b.iter(|| {
-            for _ in 0..NUM_ALLOCS {
-                unsafe {
-                    let ptr = black_box(&alloc).allocate(Layout::new::<u32>()).unwrap();
-                    let ptr = black_box(&alloc)
-                        .shrink(ptr.cast(), Layout::new::<u32>(), Layout::new::<u16>())
-                        .unwrap();
+    // Choose some small, medium, and "large" lengths, as well as some prime
+    // numbers to see how the allocators deal with "unaligned" sizes.
+    for len in [0, 1, 7, 8, 31, 32] {
+        group.bench_function(format!("allocate([u8; {len}]) x {NUM_ALLOCS}"), |b| {
+            let mut alloc = A::with_capacity(mem::size_of::<u8>() * len * NUM_ALLOCS);
+            b.iter(|| {
+                for _ in 0..NUM_ALLOCS {
+                    // NB: black box the length but not the whole layout, since
+                    // that more accurately reflects things like `Vec` where the
+                    // element size (and therefore its alignment) is statically
+                    // known but the collection length is dynamic.
+                    let len = black_box(len);
+                    let layout = Layout::array::<u8>(len).unwrap();
+
+                    let ptr = (&alloc).allocate(layout).unwrap();
                     black_box(ptr);
                 }
-            }
-            alloc.reset();
-        })
-    });
+                alloc.reset();
+            })
+        });
+    }
+
+    group.bench_function(
+        format!("grow same align (u32 -> [u32; 2]) x {NUM_ALLOCS}"),
+        |b| {
+            let mut alloc = A::with_capacity(mem::size_of::<[u32; 2]>() * NUM_ALLOCS);
+            b.iter(|| {
+                for _ in 0..NUM_ALLOCS {
+                    unsafe {
+                        let ptr = black_box(&alloc).allocate(Layout::new::<u32>()).unwrap();
+                        let ptr = black_box(&alloc)
+                            .grow(ptr.cast(), Layout::new::<u32>(), Layout::new::<[u32; 2]>())
+                            .unwrap();
+                        black_box(ptr);
+                    }
+                }
+                alloc.reset();
+            })
+        },
+    );
+
+    group.bench_function(
+        format!("grow smaller align (u32 -> [u16; 4]) x {NUM_ALLOCS}"),
+        |b| {
+            let mut alloc = A::with_capacity(mem::size_of::<[u16; 4]>() * NUM_ALLOCS);
+            b.iter(|| {
+                for _ in 0..NUM_ALLOCS {
+                    unsafe {
+                        let ptr = black_box(&alloc).allocate(Layout::new::<u32>()).unwrap();
+                        let ptr = black_box(&alloc)
+                            .grow(ptr.cast(), Layout::new::<u32>(), Layout::new::<[u16; 4]>())
+                            .unwrap();
+                        black_box(ptr);
+                    }
+                }
+                alloc.reset();
+            })
+        },
+    );
+
+    group.bench_function(
+        format!("grow larger align (u32 -> u64) x {NUM_ALLOCS}"),
+        |b| {
+            let mut alloc = A::with_capacity(mem::size_of::<u64>() * NUM_ALLOCS);
+            b.iter(|| {
+                for _ in 0..NUM_ALLOCS {
+                    unsafe {
+                        let ptr = black_box(&alloc).allocate(Layout::new::<u32>()).unwrap();
+                        let ptr = black_box(&alloc)
+                            .grow(ptr.cast(), Layout::new::<u32>(), Layout::new::<u64>())
+                            .unwrap();
+                        black_box(ptr);
+                    }
+                }
+                alloc.reset();
+            })
+        },
+    );
+
+    group.bench_function(
+        format!("shrink same align ([u32; 2] -> u32) x {NUM_ALLOCS}"),
+        |b| {
+            let mut alloc = A::with_capacity(mem::size_of::<u32>() * NUM_ALLOCS);
+            b.iter(|| {
+                for _ in 0..NUM_ALLOCS {
+                    unsafe {
+                        let ptr = black_box(&alloc)
+                            .allocate(Layout::new::<[u32; 2]>())
+                            .unwrap();
+                        let ptr = black_box(&alloc)
+                            .shrink(ptr.cast(), Layout::new::<[u32; 2]>(), Layout::new::<u32>())
+                            .unwrap();
+                        black_box(ptr);
+                    }
+                }
+                alloc.reset();
+            })
+        },
+    );
+
+    group.bench_function(
+        format!("shrink smaller align (u32 -> u16) x {NUM_ALLOCS}"),
+        |b| {
+            let mut alloc = A::with_capacity(mem::size_of::<u32>() * NUM_ALLOCS);
+            b.iter(|| {
+                for _ in 0..NUM_ALLOCS {
+                    unsafe {
+                        let ptr = black_box(&alloc).allocate(Layout::new::<u32>()).unwrap();
+                        let ptr = black_box(&alloc)
+                            .shrink(ptr.cast(), Layout::new::<u32>(), Layout::new::<u16>())
+                            .unwrap();
+                        black_box(ptr);
+                    }
+                }
+                alloc.reset();
+            })
+        },
+    );
+
+    group.bench_function(
+        format!("shrink larger align ([u16; 4] -> u32) x {NUM_ALLOCS}"),
+        |b| {
+            let mut alloc = A::with_capacity(mem::size_of::<[u16; 4]>() * NUM_ALLOCS);
+            b.iter(|| {
+                for _ in 0..NUM_ALLOCS {
+                    unsafe {
+                        let ptr = black_box(&alloc)
+                            .allocate(Layout::new::<[u16; 4]>())
+                            .unwrap();
+                        let ptr = black_box(&alloc)
+                            .shrink(ptr.cast(), Layout::new::<[u16; 4]>(), Layout::new::<u32>())
+                            .unwrap();
+                        black_box(ptr);
+                    }
+                }
+                alloc.reset();
+            })
+        },
+    );
 
     group.finish();
 }
@@ -324,7 +416,7 @@ where
     // multiple times.
     const RESIZE_FACTOR: usize = 10;
 
-    group.bench_function(format!("push x {NUM_ALLOCS}"), |b| {
+    group.bench_function(format!("push(usize) x {NUM_ALLOCS}"), |b| {
         let mut alloc = A::with_capacity(mem::size_of::<usize>() * NUM_ALLOCS * RESIZE_FACTOR);
         b.iter(|| {
             let mut vec = Vec::new_in(&alloc);
@@ -352,19 +444,19 @@ where
 }
 
 pub fn criterion_benchmark(c: &mut Criterion) {
-    bench_allocator_api::<bumpalo::Bump>("bumpalo::Bump", c);
+    bench_allocator_api::<Bumpalo>("bumpalo::Bump", c);
     bench_allocator_api::<blink_alloc::BlinkAlloc>("blink_alloc::BlinkAlloc", c);
     bench_allocator_api::<SystemAlloc>("std::alloc::System", c);
 
-    bench_warm_up::<bumpalo::Bump>("bumpalo::Bump", c);
+    bench_warm_up::<Bumpalo>("bumpalo::Bump", c);
     bench_warm_up::<blink_alloc::BlinkAlloc>("blink_alloc::BlinkAlloc", c);
     bench_warm_up::<SystemAlloc>("std::alloc::System", c);
 
-    bench_reset::<bumpalo::Bump>("bumpalo::Bump", c);
+    bench_reset::<Bumpalo>("bumpalo::Bump", c);
     bench_reset::<blink_alloc::BlinkAlloc>("blink_alloc::BlinkAlloc", c);
     bench_reset::<SystemAlloc>("std::alloc::System", c);
 
-    bench_vec::<bumpalo::Bump>("bumpalo::Bump", c);
+    bench_vec::<Bumpalo>("bumpalo::Bump", c);
     bench_vec::<blink_alloc::BlinkAlloc>("blink_alloc::BlinkAlloc", c);
     bench_vec::<SystemAlloc>("std::alloc::System", c);
 }

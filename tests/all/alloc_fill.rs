@@ -7,9 +7,9 @@ use std::mem;
 #[test]
 fn alloc_slice_fill_zero() {
     let b = Bump::new();
-    let layout = Layout::new::<u8>();
+    let u8_layout = Layout::new::<u8>();
 
-    let ptr1 = b.alloc_layout(layout);
+    let ptr1 = b.alloc_layout(u8_layout);
 
     struct MyZeroSizedType;
 
@@ -26,8 +26,13 @@ fn alloc_slice_fill_zero() {
         ptr2 as *mut _ as usize
     );
 
-    let ptr3 = b.alloc_layout(layout);
-    assert_eq!(ptr2 as *mut _ as usize, ptr3.as_ptr() as usize + 1);
+    let ptr3 = b.alloc_layout(u8_layout);
+    dbg!(ptr2 as *mut _);
+    dbg!(ptr3);
+    assert_eq!(
+        ptr2 as *mut _ as usize,
+        (ptr3.as_ptr() as usize) + b.min_align().max(u8_layout.align()),
+    );
 }
 
 #[test]
