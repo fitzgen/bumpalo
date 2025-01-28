@@ -188,7 +188,7 @@ quickcheck! {
     fn test_alignment_chunks(sizes: Vec<usize>) -> () {
         const SUPPORTED_ALIGNMENTS: &[usize] = &[1, 2, 4, 8, 16];
         for &alignment in SUPPORTED_ALIGNMENTS {
-            let mut b = Bump::with_capacity(513);
+            let mut b = Bump::<1>::with_min_align_and_capacity(513);
             let mut sizes = sizes.iter().map(|&size| (size % 10) * alignment).collect::<Vec<_>>();
 
             for &size in &sizes {

@@ -61,5 +61,5 @@ allocator_api = []
 std = []
 serde = ["dep:serde"]
 
-# [profile.bench]
-# debug = true
+[profile.bench]
+debug = true

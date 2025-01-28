@@ -1,5 +1,6 @@
 use bumpalo::Bump;
 use std::alloc::Layout;
+use std::fmt::Debug;
 use std::mem;
 use std::usize;
 
@@ -136,23 +137,30 @@ fn small_size_and_large_align() {
 
 fn with_capacity_helper<I, T>(iter: I)
 where
-    T: Copy + Eq,
+    T: Copy + Debug + Eq,
     I: Clone + Iterator<Item = T> + DoubleEndedIterator,
 {
     for &initial_size in &[0, 1, 8, 11, 0x1000, 0x12345] {
-        let mut b = Bump::with_capacity(initial_size);
+        let mut b = Bump::<1>::with_min_align_and_capacity(initial_size);
 
         for v in iter.clone() {
             b.alloc(v);
         }
 
-        let pushed_values = b.iter_allocated_chunks().flat_map(|c| {
+        let mut pushed_values = b.iter_allocated_chunks().flat_map(|c| {
             let (before, mid, after) = unsafe { c.align_to::<T>() };
             assert!(before.is_empty());
             assert!(after.is_empty());
             mid.iter().copied()
         });
-        assert!(pushed_values.eq(iter.clone().rev()));
+
+        let mut iter = iter.clone().rev();
+        for (expected, actual) in iter.by_ref().zip(pushed_values.by_ref()) {
+            assert_eq!(expected, actual);
+        }
+
+        assert!(iter.next().is_none());
+        assert!(pushed_values.next().is_none());
     }
 }
 
