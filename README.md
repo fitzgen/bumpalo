@@ -155,8 +155,8 @@ in its space itself.
 
 #### Serde
 
-Adding the `serde` feature flag will enable transparent serialization of Vecs and 
-boxed values.
+Adding the `serde` feature flag will enable transparent serialization of `Vec`s, `String`s
+and boxed values.
 
 ```toml
 [dependencies]
