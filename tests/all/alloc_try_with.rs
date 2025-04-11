@@ -134,7 +134,8 @@ fn alloc_slice_try_fill_with_large_length() {
 fn alloc_slice_try_fill_iter_large_length() {
     let b = Bump::new();
 
-    assert!(b
-        .alloc_slice_try_fill_iter(repeat(Err::<u8, _>(())).take(10_000_000))
-        .is_err());
+    let elems = repeat(Err::<u8, _>(()))
+        .take(10_000_000)
+        .collect::<Vec<_>>();
+    assert!(b.alloc_slice_try_fill_iter(elems).is_err());
 }

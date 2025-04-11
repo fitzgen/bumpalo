@@ -7,9 +7,9 @@ use std::mem;
 #[test]
 fn alloc_slice_fill_zero() {
     let b = Bump::new();
-    let layout = Layout::new::<u8>();
+    let u8_layout = Layout::new::<u8>();
 
-    let ptr1 = b.alloc_layout(layout);
+    let ptr1 = b.alloc_layout(u8_layout);
 
     struct MyZeroSizedType;
 
@@ -26,8 +26,13 @@ fn alloc_slice_fill_zero() {
         ptr2 as *mut _ as usize
     );
 
-    let ptr3 = b.alloc_layout(layout);
-    assert_eq!(ptr2 as *mut _ as usize, ptr3.as_ptr() as usize + 1);
+    let ptr3 = b.alloc_layout(u8_layout);
+    dbg!(ptr2 as *mut _);
+    dbg!(ptr3);
+    assert_eq!(
+        ptr2 as *mut _ as usize,
+        (ptr3.as_ptr() as usize) + b.min_align().max(u8_layout.align()),
+    );
 }
 
 #[test]
@@ -48,14 +53,16 @@ fn alloc_slice_try_fill_with_fails() {
 #[test]
 fn alloc_slice_try_fill_iter_succeeds() {
     let b = Bump::new();
-    let res: Result<&mut [u16], ()> = b.alloc_slice_try_fill_iter(repeat(42).take(10).map(Ok));
+    let elems = repeat(42).take(10).collect::<Vec<_>>();
+    let res: Result<&mut [u16], ()> = b.alloc_slice_try_fill_iter(elems.into_iter().map(Ok));
     assert_eq!(res.map(|arr| arr[5]), Ok(42));
 }
 
 #[test]
 fn alloc_slice_try_fill_iter_fails() {
     let b = Bump::new();
-    let res: Result<&mut [u16], ()> = b.alloc_slice_try_fill_iter(repeat(()).take(10).map(Err));
+    let elems = repeat(()).take(10).collect::<Vec<_>>();
+    let res: Result<&mut [u16], ()> = b.alloc_slice_try_fill_iter(elems.into_iter().map(Err));
     assert_eq!(res, Err(()));
 }
 

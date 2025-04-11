@@ -25,6 +25,12 @@ path = "benches/benches.rs"
 harness = false
 required-features = ["collections"]
 
+[[bench]]
+name = "allocator_api"
+path = "benches/allocator_api.rs"
+harness = false
+required-features = ["bench_allocator_api"]
+
 [[test]]
 name = "try_alloc"
 path = "tests/try_alloc.rs"
@@ -45,6 +51,7 @@ criterion = "0.3.6"
 rand = "0.8.5"
 serde = { version = "1.0.197", features = ["derive"] }
 serde_json = "1.0.115"
+blink-alloc = { version = "=0.3.1" }
 
 [features]
 default = []
@@ -53,6 +60,9 @@ boxed = []
 allocator_api = []
 std = []
 serde = ["dep:serde"]
+
+# Feature for bumpalo's internal development only. Do not use!
+bench_allocator_api = ["allocator_api", "blink-alloc/nightly"]
 
 # [profile.bench]
 # debug = true
