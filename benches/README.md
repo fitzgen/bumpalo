@@ -74,7 +74,7 @@ To update the tables below, use `cargo-criterion` and [`criterion-table`]:
 
 ```
 $ cd bumpalo/benches/
-$ cargo +nightly bench --features allocator_api \
+$ cargo +nightly bench --features bench_allocator_api \
     --bench allocator_api \
     --message-format=json \
     > results.json
