@@ -7,7 +7,6 @@
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
-
 //! A contiguous growable array type with heap-allocated contents, written
 //! [`Vec<'bump, T>`].
 //!
@@ -1404,6 +1403,33 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
         self.truncate(len);
     }
 
+    // Proven specification with verus, converted to comments.
+    /// # Preconditions
+    ///
+    /// - old(self).len() < old(self).capacity(),
+    ///
+    /// # Postconditions
+    ///
+    /// - self.get_unchecked(old(self).len()) == value,
+    /// - self.len()      == old(self).len() + 1,
+    /// - self.capacity() == old(self).capacity(),
+    /// - forall|i: usize| implies(
+    ///       i < old(self).len(),
+    ///       self.get_unchecked(i) == old(self).get_unchecked(i)
+    ///   )
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
+    unsafe fn push_unchecked(&mut self, value: T) {
+        debug_assert!(self.len() < self.capacity());
+
+        // Divergence from verified impl:
+        //   Verified implementation has special handling for ZSTs
+        //   as ZSTs do not play nicely with separation logic.
+        ptr::write(self.buf.ptr().add(self.len), value);
+
+        self.len = self.len + 1;
+    }
+
     /// Appends an element to the back of a vector.
     ///
     /// # Panics
@@ -1429,9 +1455,7 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
             self.reserve(1);
         }
         unsafe {
-            let end = self.buf.ptr().add(self.len);
-            ptr::write(end, value);
-            self.len += 1;
+            self.push_unchecked(value);
         }
     }
 
@@ -1749,6 +1773,108 @@ impl<'bump, T: 'bump + Clone> Vec<'bump, T> {
         }
     }
 
+    // Proven specification with verus, converted to comments.
+    /// # Preconditions
+    ///
+    /// - old(self).len() + slice.len() <= old(self).capacity(),
+    ///
+    /// # Postconditions
+    ///
+    /// - forall|i: usize| implies(
+    ///       i < old(self).len(),
+    ///       self.get_unchecked(i) == old(self).get_unchecked(i)
+    ///   ),
+    /// - forall|i: usize| implies(
+    ///       i < slice.len(),
+    ///       self.get_unchecked((old(self).len() + i) as usize)
+    ///           == clone(slice.get_unchecked(i))
+    ///   ),
+    /// - self.len()      == old(self).len() + slice.len(),
+    /// - self.capacity() == old(self).capacity(),
+    #[inline]
+    unsafe fn extend_from_slice_unchecked(&mut self, slice: &[T]) {
+        // Guaranteed never to overflow for non ZSTs
+        //   size_of::<T>() <= isize::MAX - (isize::MAX % align_of::<T>()))
+        //   isize::MAX + isize::MAX < usize::MAX
+        debug_assert!(
+            core::mem::size_of::<T>() == 0 || self.capacity() >= self.len() + slice.len()
+        );
+        debug_assert!(
+            // is_zst::<T>() ==> capacity >= slen + slice.len()
+            core::mem::size_of::<T>() != 0
+            // Capacity is usize::MAX for ZSTs
+            || self.len() <= usize::MAX - slice.len()
+        );
+
+        let mut pos = 0usize;
+
+        loop
+        /*
+        invariants
+            pos <= slice.len(),
+            self.len() + (slice.len() - pos) <= old(self).capacity(),
+            old(self).capacity() == self.capacity(),
+
+            self.len() == old(self).len() + pos,
+
+            forall|i: usize| implies(
+                i < old(self).len(),
+                self.get_unchecked(i) == old(self).get_unchecked(i)
+            ),
+            forall|i: usize| implies(
+                i < pos,
+                self.get_unchecked((old(self).len() + i) as usize)
+                    == clone(slice.get_unchecked(i))
+            )
+        */
+        {
+            if pos == slice.len() {
+                /*
+                pos = slice.len(),
+                self.len() = old(self).len() + slice.len(),
+
+                forall|i: usize| i < slice.len() implies {
+                    self.get_unchecked((old(self).len() + i) as usize)
+                        == clone(slice.get_unchecked(i))
+                }
+                by {
+                    i < pos
+                }
+                */
+                return;
+            }
+
+            /*
+            pos < slice.len(),
+            self.len() < self.capacity()
+            */
+
+            let elem = slice.get_unchecked(pos);
+            self.push_unchecked(elem.clone());
+
+            /*
+            ghost prev_pos = pos
+            */
+
+            pos = pos + 1;
+
+            /*
+            forall|i: usize| i < pos implies {
+                self.get_unchecked((old(self).len() + i) as usize)
+                    == clone(slice.get_unchecked(i))
+            }
+            by {
+                if i < pos - 1 {
+                    // By invariant
+                }
+                else {
+                    i == prev_pos
+                }
+            }
+            */
+        }
+    }
+
     /// Clones and appends all elements in a slice to the `Vec`.
     ///
     /// Iterates over the slice `other`, clones each element, and then appends
@@ -1773,7 +1899,42 @@ impl<'bump, T: 'bump + Clone> Vec<'bump, T> {
     ///
     /// [`extend`]: #method.extend
     pub fn extend_from_slice(&mut self, other: &[T]) {
-        self.extend(other.iter().cloned())
+        let capacity = self.capacity();
+
+        /*
+        Cannot underflow via invariant of the Vec (capacity >= length).
+
+        This also holds for ZSTs, as capacity is usize::MAX
+        */
+        let remaining_cap = capacity - self.len;
+
+        /*
+            self.len() + other.len() <= self.capacity(),
+                <==>
+            other.len() <= self.capacity() - self.len()
+        */
+
+        if other.len() > remaining_cap {
+            /*
+            Divergence from verified impl:
+              Verified implementation's reserve is not the same
+              as bumpalo's. Verified implementation reserves with
+              respect to capacity, not length. Thus this is equivalent
+              to the verified implementation's:
+
+                self.buf.reserve(other.len() - remaining_cap)
+
+            */
+            self.reserve(other.len());
+        }
+
+        /*
+        self.capacity() >= self.len() + other.len()
+        */
+
+        unsafe {
+            self.extend_from_slice_unchecked(other);
+        }
     }
 }
 
@@ -1804,7 +1965,6 @@ impl<'bump, T: 'bump + Copy> Vec<'bump, T> {
             self.set_len(old_len + other.len());
         }
     }
-
 
     /// Copies all elements in the slice `other` and appends them to the `Vec`.
     ///
@@ -2782,5 +2942,4 @@ mod serialize {
             seq.end()
         }
     }
-
 }

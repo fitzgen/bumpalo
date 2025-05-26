@@ -196,9 +196,9 @@ fn bench_extend_from_slices_copy(c: &mut Criterion) {
     for is_preallocated in is_preallocated_settings {
         for num_slices in slice_counts.iter().copied() {
             // Create an appropriately named benchmark group
-            let mut group = c.benchmark_group(
-                format!("extend_from_slices num_slices={num_slices}, is_preallocated={is_preallocated}")
-            );
+            let mut group = c.benchmark_group(format!(
+                "extend_from_slices num_slices={num_slices}, is_preallocated={is_preallocated}"
+            ));
 
             // Cycle over `data` to construct a slice of slices to append
             let slices = data
@@ -223,7 +223,8 @@ fn bench_extend_from_slices_copy(c: &mut Criterion) {
             group.bench_function("loop over extend_from_slice_copy", |b| {
                 b.iter(|| {
                     bump.reset();
-                    let mut vec = bumpalo::collections::Vec::<u8>::with_capacity_in(size_to_allocate, &bump);
+                    let mut vec =
+                        bumpalo::collections::Vec::<u8>::with_capacity_in(size_to_allocate, &bump);
                     for slice in black_box(&slices) {
                         vec.extend_from_slice_copy(slice);
                     }
@@ -237,7 +238,8 @@ fn bench_extend_from_slices_copy(c: &mut Criterion) {
             group.bench_function("extend_from_slices_copy", |b| {
                 b.iter(|| {
                     bump.reset();
-                    let mut vec = bumpalo::collections::Vec::<u8>::with_capacity_in(size_to_allocate, &bump);
+                    let mut vec =
+                        bumpalo::collections::Vec::<u8>::with_capacity_in(size_to_allocate, &bump);
                     vec.extend_from_slices_copy(black_box(slices.as_slice()));
                     black_box(vec.as_slice());
                 });
