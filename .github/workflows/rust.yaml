@@ -15,6 +15,8 @@ jobs:
     steps:
     - name: Install rustup
       run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile=minimal
+    - name: Install rustfmt
+      run: rustup component add rustfmt
     - name: Check formatting
       run: cargo fmt --check
 
