@@ -18,6 +18,7 @@ jobs:
       run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile=minimal
     - name: Install rustfmt
       run: rustup component add rustfmt
+    - uses: actions/checkout@v4
     - name: Check formatting
       run: cargo fmt --check
 
