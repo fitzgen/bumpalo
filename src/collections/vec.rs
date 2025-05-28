@@ -1805,7 +1805,6 @@ impl<'bump, T: 'bump + Copy> Vec<'bump, T> {
         }
     }
 
-
     /// Copies all elements in the slice `other` and appends them to the `Vec`.
     ///
     /// Note that this function is same as [`extend_from_slice`] except that it is optimized for
@@ -2782,5 +2781,4 @@ mod serialize {
             seq.end()
         }
     }
-
 }
