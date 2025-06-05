@@ -10,7 +10,7 @@ name = "bumpalo"
 readme = "README.md"
 repository = "https://github.com/fitzgen/bumpalo"
 rust-version = "1.71.1"
-version = "3.18.0"
+version = "3.18.1"
 
 [package.metadata.docs.rs]
 all-features = true
@@ -40,7 +40,7 @@ harness = false
 # This dependency provides a version of the unstable nightly Rust `Allocator`
 # trait on stable Rust. Enabling this feature means that `bumpalo` will
 # implement its `Allocator` trait.
-allocator-api2 = { version = "0.3.0", default-features = false, optional = true }
+allocator-api2 = { version = "0.2.8", default-features = false, optional = true }
 
 # This dependency is here to allow integration with Serde, if the `serde` feature is enabled
 serde = { version = "1.0.171", optional = true }
