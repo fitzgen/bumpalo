@@ -990,7 +990,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
             cur_chunk.as_ref().ptr.set(cur_chunk.cast());
 
             // Reset the allocated size of the chunk.
-            cur_chunk.as_mut().allocated_bytes = cur_chunk.as_ref().layout.size();
+            cur_chunk.as_mut().allocated_bytes = cur_chunk.as_ref().layout.size() - FOOTER_SIZE;
 
             debug_assert!(
                 self.current_chunk_footer
@@ -2546,6 +2546,26 @@ mod tests {
     #[test]
     fn chunk_footer_is_five_words() {
         assert_eq!(mem::size_of::<ChunkFooter>(), mem::size_of::<usize>() * 6);
+    }
+
+    // Uses private `DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER` and `FOOTER_SIZE`.
+    #[test]
+    fn allocated_bytes() {
+        let mut b = Bump::with_capacity(1);
+
+        assert_eq!(b.allocated_bytes(), DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER);
+        assert_eq!(
+            b.allocated_bytes_including_metadata(),
+            DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER + FOOTER_SIZE
+        );
+
+        b.reset();
+
+        assert_eq!(b.allocated_bytes(), DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER);
+        assert_eq!(
+            b.allocated_bytes_including_metadata(),
+            DEFAULT_CHUNK_SIZE_WITHOUT_FOOTER + FOOTER_SIZE
+        );
     }
 
     // Uses private `alloc` module.
