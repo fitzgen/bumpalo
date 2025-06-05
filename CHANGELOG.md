@@ -28,7 +28,18 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
-## 3.18.0
+## 3.18.1
+
+Released 2025-06-05.
+
+### Removed
+
+* Removed the `allocator-api2` version bump from 3.18.0, as it was not actually
+  semver compatible.
+
+--------------------------------------------------------------------------------
+
+## 3.18.0 (yanked)
 
 Released 2025-06-05.
 
@@ -44,8 +55,7 @@ Released 2025-06-05.
 
 * Replaced `extend_from_slice` implementation with a formally-verified version
   that is also faster and more-optimizable for LLVM.
-* Updated `allocator-api2` support to version `0.3.*`, which is semver
-  compatible with the previous `0.2.*` version.
+* Updated `allocator-api2` support to version `0.3.*`.
 
 ### Fixed
 
