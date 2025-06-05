@@ -28,6 +28,33 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.18.0
+
+Released 2025-06-05.
+
+### Added
+
+* Added support for enforcing a minimum alignment on all allocations inside a
+  `Bump` arena, which can provide speed ups when allocating objects whose
+  alignment is less than or equal to that minimum.
+* Added `serde` serialization support for `bumpalo::collections::String`.
+* Added some missing fallible slice allocation function variants.
+
+### Changed
+
+* Replaced `extend_from_slice` implementation with a formally-verified version
+  that is also faster and more-optimizable for LLVM.
+* Updated `allocator-api2` support to version `0.3.*`, which is semver
+  compatible with the previous `0.2.*` version.
+
+### Fixed
+
+* Fixed a bug where the `allocated_bytes` metrics helper was accidentally
+  including the size of `bumpalo`'s footer, rather than just reporting the
+  user-allocated bytes.
+
+--------------------------------------------------------------------------------
+
 ## 3.17.0
 
 Released 2025-01-28.
