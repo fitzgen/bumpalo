@@ -159,7 +159,7 @@ and boxed values.
 
 ```toml
 [dependencies]
-bumpalo = { version = "3.9", features = ["collections", "boxed", "serde"] }
+bumpalo = { version = "3.18", features = ["collections", "boxed", "serde"] }
 ```
 
 ```rust,ignore

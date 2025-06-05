@@ -1517,7 +1517,7 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
     /// Appends elements to `Self` from other buffer.
     #[inline]
     unsafe fn append_elements(&mut self, other: *const [T]) {
-        let count = (*other).len();
+        let count = (&(*other)).len();
         self.reserve(count);
         let len = self.len();
         ptr::copy_nonoverlapping(other as *const T, self.as_mut_ptr().add(len), count);
