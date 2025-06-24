@@ -1295,12 +1295,36 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
     /// let b = Bump::new();
     ///
     /// let mut vec = bumpalo::vec![in &b; 1, 2, 3, 4];
-    /// vec.retain(|&x| x % 2 == 0);
+    /// vec.retain(|x: &i32| *x % 2 == 0);
     /// assert_eq!(vec, [2, 4]);
     /// ```
     pub fn retain<F>(&mut self, mut f: F)
     where
         F: FnMut(&T) -> bool,
+    {
+        self.drain_filter(|x| !f(x));
+    }
+
+    /// Retains only the elements specified by the predicate.
+    ///
+    /// In other words, remove all elements `e` such that `f(&mut e)` returns `false`.
+    /// This method operates in place and preserves the order of the retained
+    /// elements.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bumpalo::{Bump, collections::Vec};
+    ///
+    /// let b = Bump::new();
+    ///
+    /// let mut vec = bumpalo::vec![in &b; 1, 2, 3, 4];
+    /// vec.retain_mut(|x: &mut i32| *x % 2 == 0);
+    /// assert_eq!(vec, [2, 4]);
+    /// ```
+    pub fn retain_mut<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&mut T) -> bool,
     {
         self.drain_filter(|x| !f(x));
     }
