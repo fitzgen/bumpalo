@@ -25,12 +25,6 @@ use core::slice;
 use core::str;
 use core_alloc::alloc::{alloc, dealloc, Layout};
 
-#[cfg(feature = "allocator_api")]
-use core_alloc::alloc::{AllocError, Allocator};
-
-#[cfg(all(feature = "allocator-api2", not(feature = "allocator_api")))]
-use allocator_api2::alloc::{AllocError, Allocator};
-
 pub use alloc::AllocErr;
 
 /// An error returned from [`Bump::try_alloc_try_with`].
@@ -2478,62 +2472,88 @@ unsafe impl<'a, const MIN_ALIGN: usize> alloc::Alloc for &'a Bump<MIN_ALIGN> {
     }
 }
 
-#[cfg(any(feature = "allocator_api", feature = "allocator-api2"))]
-unsafe impl<'a, const MIN_ALIGN: usize> Allocator for &'a Bump<MIN_ALIGN> {
-    #[inline]
-    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-        self.try_alloc_layout(layout)
-            .map(|p| unsafe {
-                NonNull::new_unchecked(ptr::slice_from_raw_parts_mut(p.as_ptr(), layout.size()))
-            })
-            .map_err(|_| AllocError)
-    }
+#[allow(unused_macros)]
+macro_rules! impl_allocator {
+    ($allocator_path:path) => {
+        const _: () = {
+            use core::ptr::{self, NonNull};
+            use core_alloc::alloc::{alloc, dealloc, Layout};
+            use $allocator_path::{AllocError, Allocator};
+            use $crate::Bump;
 
-    #[inline]
-    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        Bump::<MIN_ALIGN>::dealloc(self, ptr, layout)
-    }
+            unsafe impl<'a, const MIN_ALIGN: usize> Allocator for &'a Bump<MIN_ALIGN> {
+                #[inline]
+                fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+                    self.try_alloc_layout(layout)
+                        .map(|p| unsafe {
+                            NonNull::new_unchecked(ptr::slice_from_raw_parts_mut(
+                                p.as_ptr(),
+                                layout.size(),
+                            ))
+                        })
+                        .map_err(|_| AllocError)
+                }
 
-    #[inline]
-    unsafe fn shrink(
-        &self,
-        ptr: NonNull<u8>,
-        old_layout: Layout,
-        new_layout: Layout,
-    ) -> Result<NonNull<[u8]>, AllocError> {
-        Bump::<MIN_ALIGN>::shrink(self, ptr, old_layout, new_layout)
-            .map(|p| unsafe {
-                NonNull::new_unchecked(ptr::slice_from_raw_parts_mut(p.as_ptr(), new_layout.size()))
-            })
-            .map_err(|_| AllocError)
-    }
+                #[inline]
+                unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+                    Bump::<MIN_ALIGN>::dealloc(self, ptr, layout)
+                }
 
-    #[inline]
-    unsafe fn grow(
-        &self,
-        ptr: NonNull<u8>,
-        old_layout: Layout,
-        new_layout: Layout,
-    ) -> Result<NonNull<[u8]>, AllocError> {
-        Bump::<MIN_ALIGN>::grow(self, ptr, old_layout, new_layout)
-            .map(|p| unsafe {
-                NonNull::new_unchecked(ptr::slice_from_raw_parts_mut(p.as_ptr(), new_layout.size()))
-            })
-            .map_err(|_| AllocError)
-    }
+                #[inline]
+                unsafe fn shrink(
+                    &self,
+                    ptr: NonNull<u8>,
+                    old_layout: Layout,
+                    new_layout: Layout,
+                ) -> Result<NonNull<[u8]>, AllocError> {
+                    Bump::<MIN_ALIGN>::shrink(self, ptr, old_layout, new_layout)
+                        .map(|p| unsafe {
+                            NonNull::new_unchecked(ptr::slice_from_raw_parts_mut(
+                                p.as_ptr(),
+                                new_layout.size(),
+                            ))
+                        })
+                        .map_err(|_| AllocError)
+                }
 
-    #[inline]
-    unsafe fn grow_zeroed(
-        &self,
-        ptr: NonNull<u8>,
-        old_layout: Layout,
-        new_layout: Layout,
-    ) -> Result<NonNull<[u8]>, AllocError> {
-        let mut ptr = self.grow(ptr, old_layout, new_layout)?;
-        ptr.as_mut()[old_layout.size()..].fill(0);
-        Ok(ptr)
-    }
+                #[inline]
+                unsafe fn grow(
+                    &self,
+                    ptr: NonNull<u8>,
+                    old_layout: Layout,
+                    new_layout: Layout,
+                ) -> Result<NonNull<[u8]>, AllocError> {
+                    Bump::<MIN_ALIGN>::grow(self, ptr, old_layout, new_layout)
+                        .map(|p| unsafe {
+                            NonNull::new_unchecked(ptr::slice_from_raw_parts_mut(
+                                p.as_ptr(),
+                                new_layout.size(),
+                            ))
+                        })
+                        .map_err(|_| AllocError)
+                }
+
+                #[inline]
+                unsafe fn grow_zeroed(
+                    &self,
+                    ptr: NonNull<u8>,
+                    old_layout: Layout,
+                    new_layout: Layout,
+                ) -> Result<NonNull<[u8]>, AllocError> {
+                    let mut ptr = self.grow(ptr, old_layout, new_layout)?;
+                    ptr.as_mut()[old_layout.size()..].fill(0);
+                    Ok(ptr)
+                }
+            }
+        };
+    };
 }
+
+#[cfg(feature = "allocator_api")]
+impl_allocator!(core_alloc::alloc);
+
+#[cfg(feature = "allocator-api2")]
+impl_allocator!(allocator_api2::alloc);
 
 // NB: Only tests which require private types, fields, or methods should be in
 // here. Anything that can just be tested via public API surface should be in
