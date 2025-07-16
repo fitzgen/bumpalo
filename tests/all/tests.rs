@@ -223,7 +223,7 @@ fn test_chunk_capacity() {
 fn miri_stacked_borrows_issue_247() {
     let bump = bumpalo::Bump::new();
 
-    let a = Box::into_raw(Box::new_in(1u8, &bump));
+    let (a, _) = Box::into_raw_with_allocator(Box::new_in(1u8, &bump));
     drop(unsafe { Box::from_raw_in(a, &bump) });
 
     let _b = Box::new_in(2u16, &bump);
