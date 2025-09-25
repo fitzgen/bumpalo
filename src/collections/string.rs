@@ -679,6 +679,7 @@ impl<'bump> String<'bump> {
     /// let s = String::from_str_in("hello", &b);
     /// assert_eq!(s, "hello");
     /// ```
+    #[inline]
     pub fn from_str_in(s: &str, bump: &'bump Bump) -> String<'bump> {
         let len = s.len();
         let mut t = String::with_capacity_in(len, bump);
