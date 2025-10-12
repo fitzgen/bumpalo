@@ -295,6 +295,23 @@ pub struct Bump<const MIN_ALIGN: usize = 1> {
     allocation_limit: Cell<Option<usize>>,
 }
 
+/// A checkpoint representing a previous state for a Bump.
+///
+/// If the Bump has not allocated a new chunk, this can be used to perform a partial reset of the Bump to state represented by this checkpoint.
+#[derive(Debug)]
+pub struct CheckPoint {
+    alloc: NonNull<u8>,
+    size: usize,
+    ptr: NonNull<u8>,
+}
+
+impl CheckPoint {
+    /// Check to see if this checkpoint matches the provided Chunk
+    fn matches(&self, chunk: &ChunkFooter) -> bool {
+        self.alloc == chunk.data && self.size == chunk.layout.size()
+    }
+}
+
 #[repr(C)]
 #[derive(Debug)]
 struct ChunkFooter {
@@ -1007,6 +1024,54 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
                 self.current_chunk_footer.get().cast(),
                 "Our chunk's bump finger should be reset to the start of its allocation"
             );
+        }
+    }
+
+    /// Create a checkpoint from the current allocation position. This can be used to perfom a partial reset of the allocator.
+    pub fn checkpoint(&self) -> CheckPoint {
+        let cur_chunk = unsafe { self.current_chunk_footer.get().as_ref() };
+        CheckPoint {
+            // Get the pointer, size, and position for the current chunk.
+            // Pointer + size will be used to validate that the current chunk has not been changed.
+            // Position is the pointer that will be used to reset the bump finger to.
+            alloc: cur_chunk.data,
+            size: cur_chunk.layout.size(),
+            ptr: cur_chunk.ptr.get(),
+        }
+    }
+
+    /// Perform a partial reset of the allocator to a previously created checkpoint.
+    pub fn reset_checkpoint(&mut self, checkpoint: &CheckPoint) {
+        // Takes `&mut self` so `self` must be unique and there can't be any
+        // borrows active that would get invalidated by resetting.
+        unsafe {
+            if self.current_chunk_footer.get().as_ref().is_empty() {
+                return;
+            }
+
+            let cur_chunk = self.current_chunk_footer.get();
+
+            debug_assert!(
+                is_pointer_aligned_to(cur_chunk.as_ptr(), MIN_ALIGN),
+                "bump pointer {cur_chunk:#p} should be aligned to the minimum alignment of {MIN_ALIGN:#x}"
+            );
+
+            // If the current chunk has been changed, then fully reset the current chunk.
+            if !checkpoint.matches(cur_chunk.as_ref()) {
+                cur_chunk.as_ref().ptr.set(cur_chunk.cast());
+                debug_assert_eq!(
+                    self.current_chunk_footer.get().as_ref().ptr.get(),
+                    self.current_chunk_footer.get().cast(),
+                    "Our chunk's bump finger should be reset to the start of its allocation"
+                );
+            // Otherwise restore the position in the checkpoint.
+            } else {
+                debug_assert!(
+                    is_pointer_aligned_to(checkpoint.ptr.as_ptr(), MIN_ALIGN),
+                    "checkpoint pointer {checkpoint:#p} should be aligned to the minimum alignment of {MIN_ALIGN:#x}"
+                );
+                cur_chunk.as_ref().ptr.set(checkpoint.ptr);
+            }
         }
     }
 
