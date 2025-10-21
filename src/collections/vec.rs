@@ -1581,7 +1581,7 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
     /// v.drain(..);
     /// assert_eq!(v, &[]);
     /// ```
-    pub fn drain<R>(&mut self, range: R) -> Drain<T>
+    pub fn drain<'a, R>(&'a mut self, range: R) -> Drain<'a, 'bump, T>
     where
         R: RangeBounds<usize>,
     {
@@ -2383,7 +2383,11 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
     /// assert_eq!(u, &[1, 2]);
     /// ```
     #[inline]
-    pub fn splice<R, I>(&mut self, range: R, replace_with: I) -> Splice<I::IntoIter>
+    pub fn splice<'a, R, I>(
+        &'a mut self,
+        range: R,
+        replace_with: I,
+    ) -> Splice<'a, 'bump, I::IntoIter>
     where
         R: RangeBounds<usize>,
         I: IntoIterator<Item = T>,
@@ -2761,7 +2765,11 @@ impl<'a, 'bump, T> FusedIterator for Drain<'a, 'bump, T> {}
 /// This struct is created by the [`Vec::splice`] method. See its
 /// documentation for more information.
 #[derive(Debug)]
-pub struct Splice<'a, 'bump, I: Iterator + 'a + 'bump> {
+pub struct Splice<'a, 'bump, I>
+where
+    I: Iterator,
+    I::Item: 'a + 'bump,
+{
     drain: Drain<'a, 'bump, I::Item>,
     replace_with: I,
 }

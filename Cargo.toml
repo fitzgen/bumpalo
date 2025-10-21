@@ -53,6 +53,10 @@ serde = { version = "1.0.197", features = ["derive"] }
 serde_json = "1.0.115"
 blink-alloc = { version = "=0.3.1" }
 
+# Make sure that criterion pulls in a rayon that supports our MSRV.
+rayon = { version = "=1.10.0" }
+rayon-core = { version = "=1.12.1" }
+
 [features]
 default = []
 collections = []
