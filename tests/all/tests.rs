@@ -221,10 +221,10 @@ fn test_chunk_capacity() {
 #[test]
 #[cfg(feature = "allocator_api")]
 fn miri_stacked_borrows_issue_247() {
-    let bump = bumpalo::Bump::new();
+    let bump = Bump::new();
 
-    let a = Box::into_raw(Box::new_in(1u8, &bump));
-    drop(unsafe { Box::from_raw_in(a, &bump) });
+    let (p, _) = Box::into_raw_with_allocator(Box::new_in(1u8, &bump));
+    drop(unsafe { Box::from_raw_in(p, &bump) });
 
-    let _b = Box::new_in(2u16, &bump);
+    let _q = Box::new_in(2u16, &bump);
 }
