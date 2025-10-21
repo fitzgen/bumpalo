@@ -2761,7 +2761,11 @@ impl<'a, 'bump, T> FusedIterator for Drain<'a, 'bump, T> {}
 /// This struct is created by the [`Vec::splice`] method. See its
 /// documentation for more information.
 #[derive(Debug)]
-pub struct Splice<'a, 'bump, I: Iterator + 'a + 'bump> {
+pub struct Splice<'a, 'bump, I>
+where
+    I: Iterator,
+    I::Item: 'a + 'bump,
+{
     drain: Drain<'a, 'bump, I::Item>,
     replace_with: I,
 }
