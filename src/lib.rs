@@ -1027,67 +1027,39 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
         }
     }
 
-    /// Create a checkpoint from the current allocation position. This can be used to perfom a partial reset of the allocator.
-    fn checkpoint(&self) -> CheckPoint {
-        let cur_chunk = unsafe { self.current_chunk_footer.get().as_ref() };
-        CheckPoint {
-            // Get the pointer, size, and position for the current chunk.
-            // Pointer + size will be used to validate that the current chunk has not been changed.
-            // Position is the pointer that will be used to reset the bump finger to.
-            alloc: cur_chunk.data,
-            size: cur_chunk.layout.size(),
-            ptr: cur_chunk.ptr.get(),
-        }
-    }
-
-    /// Perform a partial reset of the allocator to a previously created checkpoint.
-    fn reset_checkpoint(&mut self, checkpoint: &CheckPoint) {
-        // Takes `&mut self` so `self` must be unique and there can't be any
-        // borrows active that would get invalidated by resetting.
-        unsafe {
-            if self.current_chunk_footer.get().as_ref().is_empty() {
-                return;
-            }
-
-            let cur_chunk = self.current_chunk_footer.get();
-
-            debug_assert!(
-                is_pointer_aligned_to(cur_chunk.as_ptr(), MIN_ALIGN),
-                "bump pointer {cur_chunk:#p} should be aligned to the minimum alignment of {MIN_ALIGN:#x}"
-            );
-
-            // If the current chunk has been changed, then fully reset the current chunk.
-            if !checkpoint.matches(cur_chunk.as_ref()) {
-                cur_chunk.as_ref().ptr.set(cur_chunk.cast());
-                debug_assert_eq!(
-                    self.current_chunk_footer.get().as_ref().ptr.get(),
-                    self.current_chunk_footer.get().cast(),
-                    "Our chunk's bump finger should be reset to the start of its allocation"
-                );
-            // Otherwise restore the position in the checkpoint.
-            } else {
-                debug_assert!(
-                    is_pointer_aligned_to(checkpoint.ptr.as_ptr(), MIN_ALIGN),
-                    "checkpoint pointer {checkpoint:#p} should be aligned to the minimum alignment of {MIN_ALIGN:#x}"
-                );
-                cur_chunk.as_ref().ptr.set(checkpoint.ptr);
-            }
-        }
-    }
-
-    /// Run a scoped function that conditionally returns some allocated data
+    /// Run a scoped function after saving the current position of the Bump
+    /// - If the function returns `Some` then the allocator advances as normal
+    /// - If the function returns `None` then the allocator is returned to the position it was before the function was called.
     ///
-    /// If the function returns `None` then any allocations made during the scoped execution will be reset, allowing for partial resets of the allocator.
-    pub fn run_scoped<'bump, 'm, F, T>(&'m mut self, f: F) -> Option<T>
+    /// This can be used to perform work where the result may be discarded if it fails without leaving large amounts of memory unused in the Bump
+    pub fn run_scoped<'bump, 'm, F, T>(&'m self, f: F) -> Option<T>
     where
         F: FnOnce(&Self) -> Option<T> + 'bump,
         'bump: 'm,
     {
-        let checkpoint = self.checkpoint();
+        let checkpoint = {
+            let cur_chunk = unsafe { self.current_chunk_footer.get().as_ref() };
+            CheckPoint {
+                alloc: cur_chunk.data,
+                size: cur_chunk.layout.size(),
+                ptr: cur_chunk.ptr.get(),
+            }
+        };
+
         match f(self) {
-            Some(t) => Some(t),
+            Some(output) => Some(output),
             None => {
-                self.reset_checkpoint(&checkpoint);
+                let cur_chunk = unsafe { self.current_chunk_footer.get().as_ref() };
+
+                if !cur_chunk.is_empty() {
+                    // If the current chunk has been changed, then fully reset the current chunk but don't touch any other chunks.
+                    if !checkpoint.matches(cur_chunk) {
+                        cur_chunk.ptr.set(self.current_chunk_footer.get().cast());
+                    // Otherwise restore the position in the checkpoint.
+                    } else {
+                        cur_chunk.ptr.set(checkpoint.ptr);
+                    }
+                }
                 None
             }
         }
