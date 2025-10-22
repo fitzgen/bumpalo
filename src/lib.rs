@@ -299,7 +299,7 @@ pub struct Bump<const MIN_ALIGN: usize = 1> {
 ///
 /// If the Bump has not allocated a new chunk, this can be used to perform a partial reset of the Bump to state represented by this checkpoint.
 #[derive(Debug)]
-pub struct CheckPoint {
+struct CheckPoint {
     alloc: NonNull<u8>,
     size: usize,
     ptr: NonNull<u8>,
@@ -1028,7 +1028,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     }
 
     /// Create a checkpoint from the current allocation position. This can be used to perfom a partial reset of the allocator.
-    pub fn checkpoint(&self) -> CheckPoint {
+    fn checkpoint(&self) -> CheckPoint {
         let cur_chunk = unsafe { self.current_chunk_footer.get().as_ref() };
         CheckPoint {
             // Get the pointer, size, and position for the current chunk.
@@ -1041,7 +1041,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     }
 
     /// Perform a partial reset of the allocator to a previously created checkpoint.
-    pub fn reset_checkpoint(&mut self, checkpoint: &CheckPoint) {
+    fn reset_checkpoint(&mut self, checkpoint: &CheckPoint) {
         // Takes `&mut self` so `self` must be unique and there can't be any
         // borrows active that would get invalidated by resetting.
         unsafe {
@@ -1071,6 +1071,24 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
                     "checkpoint pointer {checkpoint:#p} should be aligned to the minimum alignment of {MIN_ALIGN:#x}"
                 );
                 cur_chunk.as_ref().ptr.set(checkpoint.ptr);
+            }
+        }
+    }
+
+    /// Run a scoped function that conditionally returns some allocated data
+    ///
+    /// If the function returns `None` then any allocations made during the scoped execution will be reset, allowing for partial resets of the allocator.
+    pub fn run_scoped<'bump, 'm, F, T>(&'m mut self, f: F) -> Option<T>
+    where
+        F: FnOnce(&Self) -> Option<T> + 'bump,
+        'bump: 'm,
+    {
+        let checkpoint = self.checkpoint();
+        match f(self) {
+            Some(t) => Some(t),
+            None => {
+                self.reset_checkpoint(&checkpoint);
+                None
             }
         }
     }
