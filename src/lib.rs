@@ -1031,11 +1031,10 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     /// - If the function returns `Some` then the allocator advances as normal
     /// - If the function returns `None` then the allocator is returned to the position it was before the function was called.
     ///
-    /// This can be used to perform work where the result may be discarded if it fails without leaving large amounts of memory unused in the Bump
-    pub fn run_scoped<'bump, 'm, F, T>(&'m self, f: F) -> Option<T>
+    /// This can be used to perform work where the result may be discarded while minimizing leaked memory in the Bump
+    pub fn run_scoped<'bump, F, T>(&'bump self, f: F) -> Option<T>
     where
-        F: FnOnce(&Self) -> Option<T> + 'bump,
-        'bump: 'm,
+        F: FnOnce(&'bump Self) -> Option<T> + 'bump,
     {
         let checkpoint = {
             let cur_chunk = unsafe { self.current_chunk_footer.get().as_ref() };
@@ -2690,5 +2689,40 @@ mod tests {
             let l3 = Layout::from_size_align(24000, 4).unwrap();
             b.realloc(p1, l3, 48000).unwrap();
         }
+    }
+
+    #[test]
+    fn scope() {
+        let bump = Bump::with_capacity(100);
+        let foo = bump.alloc_str("foo");
+
+        let allocated = bump.allocated_bytes();
+        let remaining_capacity = bump.chunk_capacity();
+
+        for _ in 0..10000 {
+            // Since the scoped function returns `None` the allocator should partially reset after each run
+            bump.run_scoped(|alloc| {
+                let bar = alloc.alloc_str("bar");
+                assert_eq!(bar, "bar");
+                Option::<()>::None
+            });
+        }
+
+        // Items allocated outside of scope are still valid as the Bump has not been reset
+        assert_eq!(foo, "foo");
+
+        // Ensure that no additional memory was allocated
+        assert_eq!(allocated, bump.allocated_bytes());
+        assert_eq!(remaining_capacity, bump.chunk_capacity());
+
+        // Ensure that a reference allocated within the scope can escape
+        let baz = bump
+            .run_scoped(|a| {
+                let t = a.alloc_str("baz");
+                Some(t)
+            })
+            .unwrap();
+
+        assert_eq!(baz, "baz");
     }
 }
