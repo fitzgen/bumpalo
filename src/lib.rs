@@ -1028,11 +1028,13 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     }
 
     /// Run a scoped function after saving the current position of the Bump
-    /// - If the function returns `Some` then the allocator advances as normal
-    /// - If the function returns `None` then the allocator is returned to the position it was before the function was called.
+    /// - If the scoped function returns `Some` then the allocator advances as normal
+    /// - If the scoped function returns `None` then the allocator is returned to the position it was before the function was called, discarding all allocations made while running the scoped function.
     ///
-    /// This can be used to perform work where the result may be discarded while minimizing leaked memory in the Bump
-    pub fn run_scoped<'bump, F, T>(&'bump self, f: F) -> Option<T>
+    /// If the Bump needs to allocate a new chunk and the scoped function returns `None`, then the newly allocated chunk will be reset to the start but all previously allocated chunks will not be touched.
+    ///
+    /// This can be useful for minimizing leaked memory when performing operations where the output may be discarded.
+    pub fn run_scoped<'bump, F, T>(&'bump self, func: F) -> Option<T>
     where
         F: FnOnce(&'bump Self) -> Option<T> + 'bump,
     {
@@ -1045,23 +1047,20 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
             }
         };
 
-        match f(self) {
-            Some(output) => Some(output),
-            None => {
-                let cur_chunk = unsafe { self.current_chunk_footer.get().as_ref() };
+        func(self).or_else(|| {
+            let cur_chunk = unsafe { self.current_chunk_footer.get().as_ref() };
 
-                if !cur_chunk.is_empty() {
-                    // If the current chunk has been changed, then fully reset the current chunk but don't touch any other chunks.
-                    if !checkpoint.matches(cur_chunk) {
-                        cur_chunk.ptr.set(self.current_chunk_footer.get().cast());
-                    // Otherwise restore the position in the checkpoint.
-                    } else {
-                        cur_chunk.ptr.set(checkpoint.ptr);
-                    }
+            if !cur_chunk.is_empty() {
+                // If the current chunk has been changed, then fully reset the current chunk but don't touch any other chunks.
+                if !checkpoint.matches(cur_chunk) {
+                    cur_chunk.ptr.set(self.current_chunk_footer.get().cast());
+                // Otherwise restore the position in the checkpoint.
+                } else {
+                    cur_chunk.ptr.set(checkpoint.ptr);
                 }
-                None
             }
-        }
+            None
+        })
     }
 
     /// Allocate an object in this `Bump` and return an exclusive reference to
