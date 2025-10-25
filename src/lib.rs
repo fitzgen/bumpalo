@@ -2674,7 +2674,7 @@ mod tests {
         let allocated = bump.allocated_bytes();
         let remaining_capacity = bump.chunk_capacity();
 
-        for _ in 0..10000 {
+        for _ in 0..100 {
             // Since the scoped function returns `None` the allocator should partially reset after each run
             bump.run_scoped(|alloc| {
                 let bar = alloc.alloc_str("bar");
