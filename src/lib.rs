@@ -1010,6 +1010,35 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
         }
     }
 
+    /// Run a scoped function after saving the current position of the Bump
+    /// - If the scoped function returns `Some` then the allocator advances as normal
+    /// - If the scoped function returns `None` then the allocator is returned to the position it was before the function was called, discarding all allocations made while running the scoped function.
+    ///
+    /// If the Bump needs to allocate a new chunk and the scoped function returns `None`, then the newly allocated chunk will be reset to the start but all previously allocated chunks will not be touched.
+    ///
+    /// This can be useful for minimizing leaked memory when performing operations where the output may be discarded.
+    pub fn run_scoped<'bump, F, T>(&'bump self, func: F) -> Option<T>
+    where
+        F: FnOnce(&'bump Self) -> Option<T> + 'bump,
+    {
+        let (alloc, size, ptr) = {
+            let chunk = unsafe { self.current_chunk_footer.get().as_ref() };
+            (chunk.data, chunk.layout.size(), chunk.ptr.get())
+        };
+
+        func(self).or_else(|| {
+            let chunk = unsafe { self.current_chunk_footer.get().as_ref() };
+            if alloc == chunk.data && size == chunk.layout.size() {
+                // If the current chunk hasn't changed, then reset the pointer to the previous position
+                chunk.ptr.set(ptr);
+            } else {
+                // If this is a new chunk, then reset it to the start
+                chunk.ptr.set(self.current_chunk_footer.get().cast());
+            }
+            None
+        })
+    }
+
     /// Allocate an object in this `Bump` and return an exclusive reference to
     /// it.
     ///
@@ -2635,5 +2664,40 @@ mod tests {
             let l3 = Layout::from_size_align(24000, 4).unwrap();
             b.realloc(p1, l3, 48000).unwrap();
         }
+    }
+
+    #[test]
+    fn scope() {
+        let bump = Bump::with_capacity(100);
+        let foo = bump.alloc_str("foo");
+
+        let allocated = bump.allocated_bytes();
+        let remaining_capacity = bump.chunk_capacity();
+
+        for _ in 0..100 {
+            // Since the scoped function returns `None` the allocator should partially reset after each run
+            bump.run_scoped(|alloc| {
+                let bar = alloc.alloc_str("bar");
+                assert_eq!(bar, "bar");
+                Option::<()>::None
+            });
+        }
+
+        // Items allocated outside of scope are still valid as the Bump has not been reset
+        assert_eq!(foo, "foo");
+
+        // Ensure that no additional memory was allocated
+        assert_eq!(allocated, bump.allocated_bytes());
+        assert_eq!(remaining_capacity, bump.chunk_capacity());
+
+        // Ensure that a reference allocated within the scope can escape
+        let baz = bump
+            .run_scoped(|a| {
+                let t = a.alloc_str("baz");
+                Some(t)
+            })
+            .unwrap();
+
+        assert_eq!(baz, "baz");
     }
 }
