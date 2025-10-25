@@ -295,23 +295,6 @@ pub struct Bump<const MIN_ALIGN: usize = 1> {
     allocation_limit: Cell<Option<usize>>,
 }
 
-/// A checkpoint representing a previous state for a Bump.
-///
-/// If the Bump has not allocated a new chunk, this can be used to perform a partial reset of the Bump to state represented by this checkpoint.
-#[derive(Debug)]
-struct CheckPoint {
-    alloc: NonNull<u8>,
-    size: usize,
-    ptr: NonNull<u8>,
-}
-
-impl CheckPoint {
-    /// Check to see if this checkpoint matches the provided Chunk
-    fn matches(&self, chunk: &ChunkFooter) -> bool {
-        self.alloc == chunk.data && self.size == chunk.layout.size()
-    }
-}
-
 #[repr(C)]
 #[derive(Debug)]
 struct ChunkFooter {
@@ -1038,26 +1021,19 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     where
         F: FnOnce(&'bump Self) -> Option<T> + 'bump,
     {
-        let checkpoint = {
-            let cur_chunk = unsafe { self.current_chunk_footer.get().as_ref() };
-            CheckPoint {
-                alloc: cur_chunk.data,
-                size: cur_chunk.layout.size(),
-                ptr: cur_chunk.ptr.get(),
-            }
+        let (alloc, size, ptr) = {
+            let chunk = unsafe { self.current_chunk_footer.get().as_ref() };
+            (chunk.data, chunk.layout.size(), chunk.ptr.get())
         };
 
         func(self).or_else(|| {
-            let cur_chunk = unsafe { self.current_chunk_footer.get().as_ref() };
-
-            if !cur_chunk.is_empty() {
-                // If the current chunk has been changed, then fully reset the current chunk but don't touch any other chunks.
-                if !checkpoint.matches(cur_chunk) {
-                    cur_chunk.ptr.set(self.current_chunk_footer.get().cast());
-                // Otherwise restore the position in the checkpoint.
-                } else {
-                    cur_chunk.ptr.set(checkpoint.ptr);
-                }
+            let chunk = unsafe { self.current_chunk_footer.get().as_ref() };
+            if alloc == chunk.data && size == chunk.layout.size() {
+                // If the current chunk hasn't changed, then reset the pointer to the previous position
+                chunk.ptr.set(ptr);
+            } else {
+                // If this is a new chunk, then reset it to the start
+                chunk.ptr.set(self.current_chunk_footer.get().cast());
             }
             None
         })
