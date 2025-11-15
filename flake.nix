@@ -39,8 +39,8 @@
             packages = rec {
               # Placeholder for the actual package name
               # This will be replaced by the specific submodule's package name
-              submodulePackage = rustPkgs.workspace.submodulePackage {};
-              default = submodulePackage;
+              bumpalo = rustPkgs.workspace.bumpalo {};
+              default = bumpalo;
             };
         }
       );
