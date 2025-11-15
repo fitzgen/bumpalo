@@ -71,3 +71,4 @@ bench_allocator_api = ["allocator_api", "blink-alloc/nightly"]
 
 # [profile.bench]
 # debug = true
+[workspace]

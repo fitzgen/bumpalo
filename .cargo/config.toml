@@ -1,0 +1,16 @@
+
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/meta-introspector/allocator-api2?branch=feature/CRQ-016-nixify"]
+git = "https://github.com/meta-introspector/allocator-api2"
+branch = "feature/CRQ-016-nixify"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/meta-introspector/hashbrown?branch=feature/CRQ-016-nixify"]
+git = "https://github.com/meta-introspector/hashbrown"
+branch = "feature/CRQ-016-nixify"
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "vendor"
