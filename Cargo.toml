@@ -9,7 +9,7 @@ license = "MIT OR Apache-2.0"
 name = "bumpalo"
 readme = "README.md"
 repository = "https://github.com/fitzgen/bumpalo"
-rust-version = "1.71.1"
+# rust-version = "1.71.1"
 version = "3.19.0"
 
 [package.metadata.docs.rs]
@@ -41,22 +41,22 @@ harness = false
 # trait on stable Rust. Enabling this feature means that `bumpalo` will
 # implement its `Allocator` trait.
 #allocator-api2 = { version = "0.2.8", default-features = false, optional = true }
-allocator-api2 = { git = "https://github.com/meta-introspector/allocator-api2", branch = "feature/CRQ-016-nixify", version = "0.3.1", optional = true, default-features = false}
+allocator-api2.workspace = true # = { git = "https://github.com/meta-introspector/allocator-api2", branch = "feature/CRQ-016-nixify", version = "0.3.1", optional = true, default-features = false}
 
 # This dependency is here to allow integration with Serde, if the `serde` feature is enabled
-serde = { version = "1.0.171", optional = true }
+serde.workspace = true # = { version = "1.0.171", optional = true }
 
 [dev-dependencies]
-quickcheck = "1.0.3"
-criterion = "0.3.6"
-rand = "0.8.5"
-serde = { version = "1.0.197", features = ["derive"] }
-serde_json = "1.0.115"
-blink-alloc = { version = "=0.3.1" }
+quickcheck.workspace = true # = "1.0.3"
+criterion.workspace = true # = "0.3.6"
+rand.workspace = true # = "0.8.5"
+serde.workspace = true # = { version = "1.0.197", features = ["derive"] }
+serde_json.workspace = true # = "1.0.115"
+blink-alloc.workspace = true # = { version = "=0.3.1" }
 
 # Make sure that criterion pulls in a rayon that supports our MSRV.
-rayon = { version = "=1.10.0" }
-rayon-core = { version = "=1.12.1" }
+rayon.workspace = true # = { version = "=1.10.0" }
+rayon-core.workspace = true # = { version = "=1.12.1" }
 
 [features]
 default = []
@@ -64,11 +64,13 @@ collections = []
 boxed = []
 allocator_api = []
 std = []
-serde = ["dep:serde"]
+serde = [
+#"dep:serde"
+]
 
 # Feature for bumpalo's internal development only. Do not use!
 bench_allocator_api = ["allocator_api", "blink-alloc/nightly"]
 
 # [profile.bench]
 # debug = true
-[workspace]
+#[workspace]

@@ -1,17 +1,368 @@
+#   Unchanged cargo v0.86.0 (available: v0.94.0)
+#   Unchanged cargo-platform v0.2.0 (available: v0.3.1)
+#   Unchanged curl v0.4.48 (available: v0.4.49)
+#   Unchanged generic-array v0.14.7 (available: v0.14.9)
+#   Unchanged git2 v0.19.0 (available: v0.21.0)
+#   Unchanged lru v0.12.5 (available: v0.16.2)
+#   Unchanged md5 v0.7.0 (available: v0.8.0)
+#   Unchanged nix v0.30.0 (available: v0.30.1)
+[patch."https://github.com/meta-introspector/allocator-api2"]
+allocator-api2 = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/allocator-api2" }
+[patch."https://github.com/meta-introspector/rust-base64"]
+base64 = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rust-base64" }
 
-[source.crates-io]
-replace-with = "vendored-sources"
-
-[source."git+https://github.com/meta-introspector/allocator-api2?branch=feature/CRQ-016-nixify"]
-git = "https://github.com/meta-introspector/allocator-api2"
-branch = "feature/CRQ-016-nixify"
-
-replace-with = "vendored-sources"
-
-[source."git+https://github.com/meta-introspector/hashbrown?branch=feature/CRQ-016-nixify"]
-git = "https://github.com/meta-introspector/hashbrown"
-branch = "feature/CRQ-016-nixify"
-replace-with = "vendored-sources"
-
-[source.vendored-sources]
-directory = "vendor"
+[patch."https://github.com/meta-introspector/config-rs"]
+config = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/config-rs" }
+[patch."https://github.com/meta-introspector/dashmap"]
+dashmap = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/dashmap" }
+[patch."https://github.com/meta-introspector/dlv-list-rs"]
+dlv-list = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/dlv-list-rs" }
+[patch."https://github.com/meta-introspector/faster-hex"]
+faster-hex = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/faster-hex" }
+[patch."https://github.com/meta-introspector/hashbrown"]
+hashbrown = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/hashbrown" }
+[patch."https://github.com/meta-introspector/heapless"]
+heapless = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/heapless" }
+[patch."https://github.com/meta-introspector/ordered-multimap-rs"]
+ordered-multimap = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/ordered-multimap-rs" }
+[patch."https://github.com/meta-introspector/ron-rs"]
+ron = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/ron-rs" }
+[patch."https://github.com/meta-introspector/rust-ini"]
+rust-ini = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rust-ini" }
+[patch."https://github.com/meta-introspector/time-rs"]
+time = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/time-rs/time" }
+[patch.crates-io]
+backtrace = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/backtrace-rs" }
+addr2line = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/addr2line" }
+adler2 = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/adler2" }
+aho-corasick = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/aho-corasick" }
+#allocator-api2 = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/allocator-api2" }
+android_system_properties = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/android_system_properties" }
+anyhow = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/anyhow" }
+arc-swap = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/arc-swap" }
+arraydeque = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/arraydeque" }
+arrayref = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/arrayref" }
+arrayvec = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/arrayvec" }
+#assert_matches = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/assert_matches" }
+#async-attributes = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/async-attributes" }
+#async-channel = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/async-channel" }
+#async-executor = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/async-executor" }
+#async-global-executor = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/async-global-executor" }
+#async-io = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/async-io" }
+#async-lock = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/async-lock" }
+#async-net = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/async-net" }
+#async-std = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/async-std" }
+#async-task = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/async-task" }
+async-trait = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/async-trait" }
+#atomic-waker = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/atomic-waker" }
+#atty = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/atty" }
+autocfg = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/autocfg" }
+#bit-set = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/bit-set" }
+#bit-vec = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/bit-vec" }
+bitflags = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/bitflags" }
+#bitmaps = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/bitmaps" }
+#blink-alloc = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/blink-alloc" }
+#blocking = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/blocking" }
+bstr = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/bstr" }
+bumpalo = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/bumpalo" }
+byteorder = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/byteorder" }
+bytes = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/bytes" }
+#bytesize = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/bytesize" }
+#camino = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/camino" }
+#cap = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/cap" }
+#cargo = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/cargo" }
+#cargo_metadata = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/cargo_metadata" }
+cassowary = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/cassowary-rs" }
+#cast = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/cast" }
+#castaway = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/castaway" }
+cc = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/cc-rs" }
+#cesu8 = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/cesu8-rs" }
+cexpr = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rust-cexpr" }
+cfg-if = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/cfg-if" }
+cfg_aliases = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/cfg_aliases" }
+#chrono = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/chrono" }
+#clang-sys = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/clang-sys" }
+clap = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/clap" }
+clippy = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rust-clippy" }
+clru = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/clru-rs" }
+#cmake = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/cmake-rs" }
+colorify = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/colorify" }
+#combine = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/combine" }
+#concurrent-queue = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/concurrent-queue" }
+#conpty = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/conpty" }
+#console = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/console" }
+#constant_time_eq = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/constant_time_eq" }
+#content_inspector = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/content_inspector" }
+#coverage-helper = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/coverage-helper" }
+crc = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/crc-rs" }
+#crc-catalog = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/crc-catalog" }
+crc32fast = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rust-crc32fast" }
+#criterion = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/criterion" }
+#critical-section = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/critical-section" }
+#crossbeam = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/crossbeam" }
+#crossterm = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/crossterm" }
+crunchy = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/crunchy" }
+#crypto-bigint = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/crypto-bigint" }
+csv = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rust-csv" }
+ct-codecs = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rust-ct-codecs" }
+curl = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/curl-rust" }
+#darling = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/darling" }
+#defer = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/defer" }
+#diff = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/diff" }
+displaydoc = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/displaydoc" }
+#document-features = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/document-features" }
+#dyn-clone = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/dyn-clone" }
+ed25519-compact = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rust-ed25519-compact" }
+either = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/either" }
+#encode_unicode = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/encode_unicode" }
+encoding_rs = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/encoding_rs" }
+#env_logger = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/env_logger" }
+equivalent = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/equivalent" }
+erased-serde = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/erased-serde" }
+errno = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rust-errno" }
+#escargot = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/escargot" }
+#event-listener = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/event-listener" }
+#event-listener-strategy = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/event-listener-strategy" }
+#expectrl = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/expectrl" }
+fallible-iterator = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rust-fallible-iterator" }
+fallible-streaming-iterator = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/fallible-streaming-iterator" }
+fastrand = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/fastrand" }
+ff = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/ff" }
+filetime = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/filetime" }
+flate2 = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/flate2-rs" }
+#float-cmp = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/float-cmp" }
+fnv = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rust-fnv" }
+foldhash = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/foldhash" }
+#fs-err = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/fs-err" }
+#fs_extra = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/fs_extra" }
+#fsevent = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/fsevent-rust" }
+#futures-lite = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/futures-lite" }
+#futures-timer = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/futures-timer" }
+#generic-array = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/generic-array" }
+getrandom = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/getrandom" }
+gimli = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/gimli" }
+git2 = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/git2-rs" }
+#gitoxide = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/gitoxide" }
+glob = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/glob" }
+globwalk = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/globwalk" }
+#gloo = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/gloo" }
+group = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/group" }
+#h2 = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/h2" }
+half = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/half-rs" }
+#handlebars = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/handlebars-rust" }
+#hash32 = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/hash32" }
+#hashlink = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/hashlink" }
+headers = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/headers" }
+heck = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/heck" }
+hex = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rust-hex" }
+#html-escape = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/html-escape" }
+http = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/http" }
+http-auth = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/http-auth" }
+#httparse = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/httparse" }
+#httpdate = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/httpdate" }
+hyper = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/hyper" }
+#hyper-rustls = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/hyper-rustls" }
+#hyper-tls = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/hyper-tls" }
+#hyper-util = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/hyper-util" }
+#iana-time-zone = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/iana-time-zone" }
+#ident_case = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/ident_case" }
+idna_adapter = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/idna_adapter" }
+#im = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/im-rs" }
+#imara-diff = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/imara-diff" }
+indexmap = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/indexmap" }
+#inotify = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/inotify" }
+#inotify-sys = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/inotify-sys" }
+#instant = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/instant" }
+#inventory = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/inventory" }
+#io-uring = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/io-uring" }
+#ipnet = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/ipnet" }
+#iri-string = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/iri-string" }
+#is-docker = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/is-docker" }
+#is-terminal = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/is-terminal" }
+#is-wsl = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/is-wsl" }
+#is_ci = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/is_ci" }
+is_executable = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/is_executable" }
+is_terminal_polyfill = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/is_terminal_polyfill" }
+#itertools = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/itertools" }
+itoa = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/itoa" }
+jiff = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/jiff" }
+#jni = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/jni-rs" }
+#jni-sys = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/jni-sys" }
+jobserver = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/jobserver-rs" }
+json5 = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/json5-rs" }
+#jwalk = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/jwalk" }
+kstring = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/kstring" }
+#kv-log-macro = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/kv-log-macro" }
+lazycell = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/lazycell" }
+#leb128 = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/leb128" }
+#libc = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/libc" }
+#libloading = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rust_libloading" }
+libz-sys = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/libz-sys" }
+#linux-raw-sys = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/linux-raw-sys" }
+#litrs = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/litrs" }
+log = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/log" }
+#lru = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/lru-rs" }
+#lru-slab = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/lru-slab" }
+#maplit = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/maplit" }
+matchers = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/matchers" }
+maybe-async = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/maybe-async-rs" }
+memchr = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/memchr" }
+memmap2 = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/memmap2-rs" }
+#memoffset = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/memoffset" }
+#mime = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/mime" }
+#mime_guess = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/mime_guess" }
+minimal-lexical = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/minimal-lexical" }
+#mio = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/mio" }
+miow = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/miow" }
+#miri = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/miri" }
+#native-tls = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rust-native-tls" }
+#nix = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/nix" }
+#nom = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/nom" }
+#normalize-line-endings = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/normalize-line-endings" }
+normpath = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/normpath" }
+#ntapi = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/ntapi" }
+nu-ansi-term = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/nu-ansi-term" }
+#num-conv = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/num-conv" }
+#num-modular = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/num-modular" }
+#num-order = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/num-order" }
+num-traits = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/num-traits" }
+num_threads = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/num_threads" }
+object = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/object" }
+once_cell = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/once_cell" }
+once_cell_polyfill = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/once_cell_polyfill" }
+#open = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/open-rs" }
+openssl-probe = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/openssl-probe" }
+#openssl-src = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/openssl-src-rs" }
+#option_set = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/option_set" }
+#ordered-float = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rust-ordered-float" }
+orion = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/orion" }
+#os_str_bytes = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/os_str_bytes" }
+#parking = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/parking" }
+parking_lot = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/parking_lot" }
+pasetors = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/pasetors" }
+#paste = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/paste" }
+pathdiff = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/pathdiff" }
+#permutohedron = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/permutohedron" }
+#pin-project = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/pin-project" }
+pin-project-lite = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/pin-project-lite" }
+#pin-utils = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/pin-utils" }
+#piper = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/piper" }
+pkg-config = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/pkg-config-rs" }
+#plist = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rust-plist" }
+#polling = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/polling" }
+portable-atomic = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/portable-atomic" }
+#prettyplease = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/prettyplease" }
+proc-macro2 = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/proc-macro2" }
+#prodash = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/prodash" }
+#ptyprocess = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/ptyprocess" }
+#quick-error = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/quick-error" }
+#quick-xml = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/quick-xml" }
+quickcheck = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/quickcheck" }
+quote = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/quote" }
+r-efi = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/r-efi" }
+#rand = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rand" }
+#rayon = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rayon" }
+#ref-cast = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/ref-cast" }
+regex = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/regex" }
+#reqwest = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/reqwest" }
+#ring = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/ring" }
+#ripgrep = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/ripgrep" }
+#rusqlite = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rusqlite" }
+rustc-demangle = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rustc-demangle" }
+rustc-hash = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rustc-hash" }
+#rustc-hex = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rustc-hex" }
+rustc-stable-hash = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rustc-stable-hash" }
+rustix = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rustix" }
+#rustls-native-certs = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rustls-native-certs" }
+rustversion = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rustversion" }
+#rusty-fork = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rusty-fork" }
+ryu = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/ryu" }
+same-file = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/same-file" }
+schannel = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/schannel-rs" }
+#scoped-tls = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/scoped-tls" }
+scopeguard = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/scopeguard" }
+semver = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/semver" }
+serde-untagged = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/serde-untagged" }
+serde-value = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/serde-value" }
+#serde_urlencoded = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/serde_urlencoded" }
+sharded-slab = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/sharded-slab" }
+shell-escape = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/shell-escape" }
+shell-words = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/shell-words" }
+shlex = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rust-shlex" }
+#signal-hook = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/signal-hook" }
+simd-adler32 = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/simd-adler32" }
+#similar = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/similar" }
+#sized-chunks = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/sized-chunks" }
+#slab = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/slab" }
+#smallvec = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/rust-smallvec" }
+#socket2 = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/socket2" }
+ssh2 = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/ssh2-rs" }
+#stability = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/stability" }
+stable_deref_trait = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/stable_deref_trait" }
+strsim = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/strsim-rs" }
+subtle = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/subtle" }
+supports-hyperlinks = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/supports-hyperlinks" }
+supports-unicode = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/supports-unicode" }
+syn = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/syn" }
+#sync_wrapper = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/sync_wrapper" }
+synstructure = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/synstructure" }
+#sysinfo = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/sysinfo" }
+tar = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/tar-rs" }
+#target-triple = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/target-triple" }
+#temp-env = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/temp-env" }
+tempfile = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/tempfile" }
+tera = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/tera" }
+#termcolor = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/termcolor" }
+#termtree = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/termtree" }
+#text-size = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/text-size" }
+#textwrap = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/textwrap" }
+thiserror = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/thiserror" }
+thread_local = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/thread_local-rs" }
+tiny-keccak = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/tiny-keccak" }
+tinyvec = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/tinyvec" }
+tinyvec_macros = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/tinyvec_macros" }
+#tokio-rustls = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/tokio-rustls" }
+#tracing-chrome = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/tracing-chrome" }
+#try-lock = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/try-lock" }
+#trybuild = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/trybuild" }
+typeid = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/typeid" }
+typenum = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/typenum" }
+#typesize = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/typesize" }
+#typetag = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/typetag" }
+#ucd-generate = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/ucd-generate" }
+#ufmt = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/ufmt" }
+#uluru = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/uluru" }
+#unarray = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/unarray" }
+#ungrammar = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/ungrammar" }
+unicase = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/unicase" }
+unicode-ident = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/unicode-ident" }
+unicode-normalization = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/unicode-normalization" }
+unicode-segmentation = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/unicode-segmentation" }
+#unicode-truncate = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/unicode-truncate" }
+#unicode-width = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/unicode-width" }
+unicode-xid = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/unicode-xid" }
+#untrusted = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/untrusted" }
+#utf16_iter = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/utf16_iter" }
+#utf8-width = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/utf8-width" }
+utf8_iter = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/utf8_iter" }
+#value-bag = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/value-bag" }
+vcpkg = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/vcpkg-rs" }
+#vec_mut_scan = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/vec_mut_scan" }
+version_check = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/version_check" }
+#vte = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/vte" }
+walkdir = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/walkdir" }
+#want = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/want" }
+#warp = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/warp" }
+#wasi = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/wasi" }
+wasm-bindgen = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/wasm-bindgen" }
+#web-time = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/web-time" }
+#winapi = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/winapi-rs" }
+winapi-util = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/winapi-util" }
+winnow = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/winnow" }
+#winreg = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/winreg-rs" }
+#write16 = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/write16" }
+#xattr = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/xattr" }
+#xz2 = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/xz2-rs" }
+yaml-rust2 = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/yaml-rust2" }
+#yansi = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/yansi" }
+zerocopy = { path = "/data/data/com.termux.nix/files/home/pick-up-nix2/vendor/rust/cargo2nix/submodules/zerocopy" }
