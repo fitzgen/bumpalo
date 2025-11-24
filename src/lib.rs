@@ -377,6 +377,23 @@ impl ChunkFooter {
     }
 }
 
+/// A raw checkpoint created by `Bump::raw_checkpoint`.
+///
+/// This can be used to perform a partial reset of a `Bump`
+#[derive(Debug, Clone, Copy)]
+pub struct RawCheckpoint {
+    chunk_data: NonNull<u8>,
+    size: usize,
+    ptr: NonNull<u8>,
+}
+
+impl RawCheckpoint {
+    #[inline(always)]
+    fn matches(&self, chunk: &ChunkFooter) -> bool {
+        (self.chunk_data == chunk.data) & (self.size == chunk.layout.size())
+    }
+}
+
 impl<const MIN_ALIGN: usize> Default for Bump<MIN_ALIGN> {
     fn default() -> Self {
         Self::with_min_align()
@@ -1010,33 +1027,41 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
         }
     }
 
-    /// Run a scoped function after saving the current position of the Bump
-    /// - If the scoped function returns `Some` then the allocator advances as normal
-    /// - If the scoped function returns `None` then the allocator is returned to the position it was before the function was called, discarding all allocations made while running the scoped function.
-    ///
-    /// If the Bump needs to allocate a new chunk and the scoped function returns `None`, then the newly allocated chunk will be reset to the start but all previously allocated chunks will not be touched.
-    ///
-    /// This can be useful for minimizing leaked memory when performing operations where the output may be discarded.
-    pub fn run_scoped<'bump, F, T>(&'bump self, func: F) -> Option<T>
-    where
-        F: FnOnce(&'bump Self) -> Option<T> + 'bump,
-    {
-        let (alloc, size, ptr) = {
-            let chunk = unsafe { self.current_chunk_footer.get().as_ref() };
-            (chunk.data, chunk.layout.size(), chunk.ptr.get())
-        };
+    /// Get a raw checkpoint representing the state of the current chunk used by the allocator
+    pub fn raw_checkpoint(&self) -> RawCheckpoint {
+        let cur_chunk = unsafe { self.current_chunk_footer.get().as_ref() };
+        RawCheckpoint {
+            chunk_data: cur_chunk.data,
+            size: cur_chunk.layout.size(),
+            ptr: cur_chunk.ptr.get(),
+        }
+    }
 
-        func(self).or_else(|| {
-            let chunk = unsafe { self.current_chunk_footer.get().as_ref() };
-            if alloc == chunk.data && size == chunk.layout.size() {
-                // If the current chunk hasn't changed, then reset the pointer to the previous position
-                chunk.ptr.set(ptr);
-            } else {
-                // If this is a new chunk, then reset it to the start
-                chunk.ptr.set(self.current_chunk_footer.get().cast());
-            }
-            None
-        })
+    /// Reset this allocator based on the state of a `RawCheckpoint`
+    ///
+    /// There are two possible actions that this function will perform:
+    ///  - If the current chunk in this allocator is the same as when the checkpoint was created,
+    ///    then the chunk position will be reset to where it was when the checkpoint was created.
+    ///  - If the current chunk has changed due to the allocator growing, then the current chunk
+    ///    will be reset to the start and previous chunks will be ignored.
+    ///
+    /// This will never free chunks, it will only change the pointer position of the current chunk.
+    ///
+    /// # Safety
+    /// **This will invalidate references in a way that cannot be validated by the borrow checker!**
+    ///
+    /// Any allocation made between checkpoint creation and this function being called may be overwritten
+    /// by future allocations to this `Bump`. It is your responsibility to ensure that these allocations
+    /// are never reused.
+    pub unsafe fn reset_to_raw_checkpoint(&self, checkpoint: RawCheckpoint) {
+        let cur_chunk = self.current_chunk_footer.get();
+        let chunk_ref = unsafe { cur_chunk.as_ref() };
+
+        if checkpoint.matches(chunk_ref) {
+            chunk_ref.ptr.set(checkpoint.ptr);
+        } else {
+            chunk_ref.ptr.set(cur_chunk.cast());
+        }
     }
 
     /// Allocate an object in this `Bump` and return an exclusive reference to
@@ -2667,37 +2692,31 @@ mod tests {
     }
 
     #[test]
-    fn scope() {
+    fn raw_checkpoint() {
         let bump = Bump::with_capacity(100);
         let foo = bump.alloc_str("foo");
 
         let allocated = bump.allocated_bytes();
         let remaining_capacity = bump.chunk_capacity();
 
+        let checkpoint = bump.raw_checkpoint();
         for _ in 0..100 {
-            // Since the scoped function returns `None` the allocator should partially reset after each run
-            bump.run_scoped(|alloc| {
-                let bar = alloc.alloc_str("bar");
-                assert_eq!(bar, "bar");
-                Option::<()>::None
-            });
+            let bar = bump.alloc_str("bar");
+            assert_eq!(bar, "bar");
+
+            // Reset to the checkpoint
+            unsafe {
+                bump.reset_to_raw_checkpoint(checkpoint);
+            }
+
+            // bar is still in scope here but the borrow checker cannot prevent new allocations from overwriting it
         }
 
-        // Items allocated outside of scope are still valid as the Bump has not been reset
+        // Items allocated outside of scope are still valid as the Bump has not been fully reset
         assert_eq!(foo, "foo");
 
         // Ensure that no additional memory was allocated
         assert_eq!(allocated, bump.allocated_bytes());
         assert_eq!(remaining_capacity, bump.chunk_capacity());
-
-        // Ensure that a reference allocated within the scope can escape
-        let baz = bump
-            .run_scoped(|a| {
-                let t = a.alloc_str("baz");
-                Some(t)
-            })
-            .unwrap();
-
-        assert_eq!(baz, "baz");
     }
 }
