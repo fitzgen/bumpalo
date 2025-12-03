@@ -382,15 +382,14 @@ impl ChunkFooter {
 /// This can be used to perform a partial reset of a `Bump`
 #[derive(Debug, Clone, Copy)]
 pub struct RawCheckpoint {
-    chunk_data: NonNull<u8>,
-    size: usize,
+    chunk: NonNull<ChunkFooter>,
     ptr: NonNull<u8>,
 }
 
 impl RawCheckpoint {
     #[inline(always)]
-    fn matches(&self, chunk: &ChunkFooter) -> bool {
-        (self.chunk_data == chunk.data) & (self.size == chunk.layout.size())
+    fn matches(&self, chunk: NonNull<ChunkFooter>) -> bool {
+        self.chunk == chunk
     }
 }
 
@@ -1029,11 +1028,12 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
 
     /// Get a raw checkpoint representing the state of the current chunk used by the allocator
     pub fn raw_checkpoint(&self) -> RawCheckpoint {
-        let cur_chunk = unsafe { self.current_chunk_footer.get().as_ref() };
+        let chunk = self.current_chunk_footer.get();
+        let chunk_ref = unsafe { chunk.as_ref() };
+
         RawCheckpoint {
-            chunk_data: cur_chunk.data,
-            size: cur_chunk.layout.size(),
-            ptr: cur_chunk.ptr.get(),
+            chunk,
+            ptr: chunk_ref.ptr.get(),
         }
     }
 
@@ -1057,7 +1057,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
         let cur_chunk = self.current_chunk_footer.get();
         let chunk_ref = unsafe { cur_chunk.as_ref() };
 
-        if checkpoint.matches(chunk_ref) {
+        if checkpoint.matches(cur_chunk) {
             chunk_ref.ptr.set(checkpoint.ptr);
         } else {
             chunk_ref.ptr.set(cur_chunk.cast());
