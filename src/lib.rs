@@ -15,7 +15,7 @@ pub mod collections;
 mod alloc;
 
 use core::cell::Cell;
-use core::cmp::Ordering;
+use core::cmp::{max, Ordering};
 use core::fmt::Display;
 use core::iter;
 use core::marker::PhantomData;
@@ -408,10 +408,19 @@ impl<const MIN_ALIGN: usize> Drop for Bump<MIN_ALIGN> {
 }
 
 #[inline]
-unsafe fn dealloc_chunk_list(mut footer: NonNull<ChunkFooter>) {
-    while !footer.as_ref().is_empty() {
-        let f = footer;
-        footer = f.as_ref().prev.get();
+unsafe fn dealloc_chunk_list(chunk: NonNull<ChunkFooter>) {
+    dealloc_chunks_until_stop(chunk, EMPTY_CHUNK.get());
+}
+
+#[inline]
+unsafe fn dealloc_chunks_until_stop(
+    mut current_chunk: NonNull<ChunkFooter>,
+    stop_chunk: NonNull<ChunkFooter>,
+) {
+    while current_chunk != stop_chunk {
+        debug_assert!(!current_chunk.as_ref().is_empty(), "Hit the empty chunk! this means the provided stop chunk wasn't a real chunk in the list!");
+        let f = current_chunk;
+        current_chunk = f.as_ref().prev.get();
         dealloc(f.as_ref().data.as_ptr(), f.as_ref().layout);
     }
 }
@@ -1043,24 +1052,73 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     ///  - If the current chunk in this allocator is the same as when the checkpoint was created,
     ///    then the chunk position will be reset to where it was when the checkpoint was created.
     ///  - If the current chunk has changed due to the allocator growing, then the current chunk
-    ///    will be reset to the start and previous chunks will be ignored.
-    ///
-    /// This will never free chunks, it will only change the pointer position of the current chunk.
+    ///    will be reset to the start. Any chunks allocated between the checkpoint chunk and the
+    ///    current chunk will be dropped. The checkpoint chunk will not be dropped.
     ///
     /// # Safety
     /// **This will invalidate references in a way that cannot be validated by the borrow checker!**
     ///
-    /// Any allocation made between checkpoint creation and this function being called may be overwritten
-    /// by future allocations to this `Bump`. It is your responsibility to ensure that these allocations
-    /// are never reused.
+    /// Any allocation made between checkpoint creation and this function being called must not be
+    /// used again as they may be overwritten by future allocations.
+    ///
+    /// You may create multiple checkpoints, however they must be reset in LIFO order. It is ok
+    /// to drop a checkpoint without resetting to it, but you must not reset to a checkpoint
+    /// that was created between the creation and reset of a previous checkpoint.
+    ///
+    /// This method should never be used if `Bump::reset` was called after the checkpoint was created.
     pub unsafe fn reset_to_raw_checkpoint(&self, checkpoint: RawCheckpoint) {
-        let cur_chunk = self.current_chunk_footer.get();
-        let chunk_ref = unsafe { cur_chunk.as_ref() };
+        let mut cur_chunk = self.current_chunk_footer.get();
 
         if checkpoint.matches(cur_chunk) {
-            chunk_ref.ptr.set(checkpoint.ptr);
+            // Check alignment
+            debug_assert!(
+                is_pointer_aligned_to(checkpoint.ptr.as_ptr(), MIN_ALIGN),
+                "checkpoint ptr is not aligned to bump's alignment"
+            );
+
+            // Checkpoint pointer must be aligned and within the current chunk bounds
+            debug_assert!(
+                checkpoint.ptr.as_ptr() >= cur_chunk.as_ref().data.as_ptr(),
+                "checkpoint pointer {:#p} should be greater than or equal to chunk pointer {:#p}",
+                checkpoint.ptr.as_ptr(),
+                cur_chunk.as_ref().data.as_ptr()
+            );
+            debug_assert!(
+                checkpoint.ptr.as_ptr() <= cur_chunk.cast::<u8>().as_ptr(),
+                "checkpoint pointer {:#p} should be less than or equal to footer pointer {:#p}",
+                checkpoint.ptr.as_ptr(),
+                self.current_chunk_footer.get().cast::<u8>().as_ptr()
+            );
+            debug_assert!(
+                is_pointer_aligned_to(checkpoint.ptr.as_ptr(), MIN_ALIGN),
+                "checkpoint pointer {:#p} should be aligned to the minimum alignment of {MIN_ALIGN:#x}",
+                checkpoint.ptr.as_ptr()
+            );
+
+            // Re-alloc edge case means that the current pointer may be greater than that of the checkpoint, so reset to whichever one is greater
+            cur_chunk
+                .as_ref()
+                .ptr
+                .set(max(checkpoint.ptr, cur_chunk.as_ref().ptr.get()));
         } else {
-            chunk_ref.ptr.set(cur_chunk.cast());
+            // Replace the previous chunk pointer with the one in the checkpoint
+            let prev_chunk = cur_chunk.as_ref().prev.replace(checkpoint.chunk);
+
+            // Drop any chunks that were in between the checkpoint and current chunk
+            dealloc_chunks_until_stop(prev_chunk, checkpoint.chunk);
+
+            // Reset the current chunk to the start
+            cur_chunk.as_ref().ptr.set(cur_chunk.cast());
+
+            // Recalculate allocated bytes for the current chunk in case there were chunks freed
+            cur_chunk.as_mut().allocated_bytes = cur_chunk.as_ref().layout.size() - FOOTER_SIZE
+                + cur_chunk.as_mut().prev.get().as_ref().allocated_bytes;
+
+            debug_assert_eq!(
+                self.current_chunk_footer.get().as_ref().ptr.get(),
+                self.current_chunk_footer.get().cast(),
+                "current chunk should be reset to the start of it's allocation"
+            );
         }
     }
 
