@@ -1055,6 +1055,64 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     ///    will be reset to the start. Any chunks allocated between the checkpoint chunk and the
     ///    current chunk will be dropped. The checkpoint chunk will not be dropped.
     ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    ///
+    /// let before_a = bump.raw_checkpoint();
+    /// let a = bump.alloc('a');
+    ///
+    /// assert_eq!(*a, 'a'); // okay
+    ///
+    /// {
+    ///     let before_b = bump.raw_checkpoint();
+    ///     let b = bump.alloc('b');
+    ///
+    ///     assert_eq!(*a, 'a'); // okay
+    ///     assert_eq!(*b, 'b'); // okay
+    ///
+    ///     {
+    ///         let before_c = bump.raw_checkpoint();
+    ///         let c = bump.alloc('c');
+    ///
+    ///         assert_eq!(*a, 'a'); // okay
+    ///         assert_eq!(*b, 'b'); // okay
+    ///         assert_eq!(*c, 'c'); // okay
+    ///
+    ///         unsafe {
+    ///             bump.reset_to_raw_checkpoint(before_c);
+    ///         }
+    ///
+    ///         assert_eq!(*a, 'a'); // still okay
+    ///         assert_eq!(*b, 'b'); // still okay
+    ///
+    ///         // Not okay! This would be a use-after-free bug!
+    ///         //
+    ///         //     assert_eq!(*c, 'c');
+    ///     }
+    ///
+    ///     unsafe {
+    ///         bump.reset_to_raw_checkpoint(before_b);
+    ///     }
+    ///
+    ///     assert_eq!(*a, 'a'); // still okay
+    ///
+    ///     // Not okay! This would be a use-after-free bug!
+    ///     //
+    ///     //     assert_eq!(*b, 'b');
+    /// }
+    ///
+    /// unsafe {
+    ///     bump.reset_to_raw_checkpoint(before_a);
+    /// }
+    ///
+    /// // Not okay! This would be a use-after-free bug!
+    /// //
+    /// //     assert_eq!(*a, 'a');
+    /// ```
+    ///
+    ///
     /// # Safety
     /// **This will invalidate references in a way that cannot be validated by the borrow checker!**
     ///
