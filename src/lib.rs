@@ -2471,9 +2471,9 @@ unsafe impl<'a, const MIN_ALIGN: usize> alloc::Alloc for &'a Bump<MIN_ALIGN> {
 
         let new_layout = layout_from_size_align(new_size, layout.align())?;
         if new_size <= old_size {
-            self.shrink(ptr, layout, new_layout)
+            Bump::shrink(self, ptr, layout, new_layout)
         } else {
-            self.grow(ptr, layout, new_layout)
+            Bump::grow(self, ptr, layout, new_layout)
         }
     }
 }
