@@ -28,6 +28,21 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.19.1
+
+Released 2025-12-16.
+
+### Changed
+
+* Annotated `bumpalo::collections::String::from_str_in` as `#[inline]`.
+
+### Fixed
+
+* Fixed compilation failures with the latest nightly Rust when enabling the
+  unstable `allocator_api` feature.
+
+--------------------------------------------------------------------------------
+
 ## 3.19.0
 
 Released 2025-06-24.
