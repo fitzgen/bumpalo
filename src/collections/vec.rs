@@ -1531,7 +1531,11 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
     #[inline]
     pub fn pop_if(&mut self, predicate: impl FnOnce(&mut T) -> bool) -> Option<T> {
         let last = self.last_mut()?;
-        if predicate(last) { self.pop() } else { None }
+        if predicate(last) {
+            self.pop()
+        } else {
+            None
+        }
     }
 
     /// Moves all the elements of `other` into `Self`, leaving `other` empty.
