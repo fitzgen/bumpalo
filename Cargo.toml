@@ -41,6 +41,7 @@ harness = false
 # trait on stable Rust. Enabling this feature means that `bumpalo` will
 # implement its `Allocator` trait.
 allocator-api2 = { version = "0.2.8", default-features = false, optional = true }
+memoffset = { version = "0.9.0", optional = true }
 
 # This dependency is here to allow integration with Serde, if the `serde` feature is enabled
 serde = { version = "1.0.171", optional = true }
@@ -61,6 +62,7 @@ rayon-core = { version = "=1.12.1" }
 default = []
 collections = []
 boxed = []
+pin = ["dep:memoffset"]
 allocator_api = []
 std = []
 serde = ["dep:serde"]
