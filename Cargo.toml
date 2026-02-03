@@ -3,6 +3,7 @@ authors = ["Nick Fitzgerald <fitzgen@gmail.com>"]
 categories = ["memory-management", "rust-patterns", "no-std"]
 description = "A fast bump allocation arena for Rust."
 documentation = "https://docs.rs/bumpalo"
+keywords = ["arena"]
 edition = "2021"
 exclude = ["/.github/*", "/benches", "/tests", "valgrind.supp", "bumpalo.png"]
 license = "MIT OR Apache-2.0"
