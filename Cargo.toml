@@ -46,7 +46,7 @@ allocator-api2 = { version = "0.2.8", default-features = false, optional = true 
 serde = { version = "1.0.171", optional = true }
 
 [dev-dependencies]
-quickcheck = "1.0.3"
+quickcheck = "=1.0.3"
 criterion = "0.3.6"
 rand = "0.8.5"
 serde = { version = "1.0.197", features = ["derive"] }
