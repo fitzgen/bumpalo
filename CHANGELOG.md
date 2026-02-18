@@ -28,6 +28,17 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.20.1
+
+Released 2026-02-18.
+
+### Fixed
+
+* Restored `Send` and `Sync` implementations for `Box<T>` when `T: Send` and `T:
+  Sync` respectively.
+
+--------------------------------------------------------------------------------
+
 ## 3.20.0
 
 Released 2026-02-18.
