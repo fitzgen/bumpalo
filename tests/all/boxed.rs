@@ -32,3 +32,13 @@ fn _box_is_covariant<'sup, 'sub: 'sup>(
     f(a);
     f(b);
 }
+
+#[test]
+fn box_is_send_sync() {
+    fn assert_send(_: impl Send) {}
+    fn assert_sync(_: impl Sync) {}
+
+    let bump = Bump::new();
+    assert_send(Box::new_in(42, &bump));
+    assert_sync(Box::new_in(42, &bump));
+}
