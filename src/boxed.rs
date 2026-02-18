@@ -121,22 +121,22 @@
 
 use {
     crate::Bump,
-    {
-        core::{
-            any::Any,
-            borrow,
-            cmp::Ordering,
-            convert::TryFrom,
-            future::Future,
-            hash::{Hash, Hasher},
-            iter::FusedIterator,
-            mem::ManuallyDrop,
-            ops::{Deref, DerefMut},
-            pin::Pin,
-            task::{Context, Poll},
-        },
-        core_alloc::fmt,
+    core::{
+        any::Any,
+        borrow,
+        cmp::Ordering,
+        convert::TryFrom,
+        future::Future,
+        hash::{Hash, Hasher},
+        iter::FusedIterator,
+        marker::PhantomData,
+        mem::ManuallyDrop,
+        ops::{Deref, DerefMut},
+        pin::Pin,
+        ptr::NonNull,
+        task::{Context, Poll},
     },
+    core_alloc::fmt,
 };
 
 /// An owned pointer to a bump-allocated `T` value, that runs `Drop`
@@ -144,7 +144,7 @@ use {
 ///
 /// See the [module-level documentation][crate::boxed] for more details.
 #[repr(transparent)]
-pub struct Box<'a, T: ?Sized>(&'a mut T);
+pub struct Box<'a, T: ?Sized>(NonNull<T>, PhantomData<&'a T>);
 
 impl<'a, T> Box<'a, T> {
     /// Allocates memory on the heap and then places `x` into it.
@@ -162,14 +162,14 @@ impl<'a, T> Box<'a, T> {
     /// ```
     #[inline(always)]
     pub fn new_in(x: T, a: &'a Bump) -> Box<'a, T> {
-        Box(a.alloc(x))
+        Box(a.alloc(x).into(), PhantomData)
     }
 
     /// Constructs a new `Pin<Box<T>>`. If `T` does not implement `Unpin`, then
     /// `x` will be pinned in memory and unable to be moved.
     #[inline(always)]
     pub fn pin_in(x: T, a: &'a Bump) -> Pin<Box<'a, T>> {
-        Box(a.alloc(x)).into()
+        Box(a.alloc(x).into(), PhantomData).into()
     }
 
     /// Consumes the `Box`, returning the wrapped value.
@@ -234,7 +234,8 @@ impl<'a, T: ?Sized> Box<'a, T> {
     /// ```
     #[inline]
     pub unsafe fn from_raw(raw: *mut T) -> Self {
-        Box(&mut *raw)
+        // Safety - The preconditions of the unsafe from_raw function ensure raw is valid
+        Box(unsafe { NonNull::new_unchecked(raw) }, PhantomData)
     }
 
     /// Consumes the `Box`, returning a wrapped raw pointer.
@@ -280,8 +281,8 @@ impl<'a, T: ?Sized> Box<'a, T> {
     /// ```
     #[inline]
     pub fn into_raw(b: Box<'a, T>) -> *mut T {
-        let mut b = ManuallyDrop::new(b);
-        b.deref_mut().0 as *mut T
+        let b = ManuallyDrop::new(b);
+        b.0.as_ptr()
     }
 
     /// Consumes and leaks the `Box`, returning a mutable reference,
@@ -338,7 +339,7 @@ impl<'a, T: ?Sized> Drop for Box<'a, T> {
     fn drop(&mut self) {
         unsafe {
             // `Box` owns value of `T`, but not memory behind it.
-            core::ptr::drop_in_place(self.0);
+            core::ptr::drop_in_place(self.0.as_ptr());
         }
     }
 }
@@ -346,7 +347,10 @@ impl<'a, T: ?Sized> Drop for Box<'a, T> {
 impl<'a, T> Default for Box<'a, [T]> {
     fn default() -> Box<'a, [T]> {
         // It should be OK to `drop_in_place` empty slice of anything.
-        Box(&mut [])
+        Box(
+            NonNull::new(&mut []).expect("Reference to empty list is NonNull"),
+            PhantomData,
+        )
     }
 }
 
@@ -547,17 +551,33 @@ impl<'a, T: ?Sized> fmt::Pointer for Box<'a, T> {
     }
 }
 
+//This function tests that box isn't contravariant.
+/// ```compile_fail
+/// fn _box_is_not_contravariant<'sub, 'sup :'sub>(
+///   a: Box<&'sup u32>,
+///  b: Box<&'sub u32>,
+///   f: impl Fn(Box<&'sup u32>),
+/// ) {
+///   f(a);
+///   f(b);
+/// }
+/// ```
+#[cfg(doctest)]
+fn _doctest_only() {}
+
 impl<'a, T: ?Sized> Deref for Box<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        &*self.0
+        // Safety - The box points to a valid instance of T allocated with a Bumpalo arena.
+        unsafe { self.0.as_ref() }
     }
 }
 
 impl<'a, T: ?Sized> DerefMut for Box<'a, T> {
     fn deref_mut(&mut self) -> &mut T {
-        self.0
+        // Safety - The box points to a valid instance of T allocated with a Bumpalo arena.
+        unsafe { self.0.as_mut() }
     }
 }
 
