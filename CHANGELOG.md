@@ -28,6 +28,23 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.20.0
+
+Released 2026-02-18.
+
+### Added
+
+* Added the `bumpalo::collections::Vec::pop_if` method.
+
+### Fixed
+
+* Fixed a bug in the `bumpalo::collections::String::retain` method in the face
+  of panics.
+* Made `bumpalo::collections::Box<T>` covariant with `T` (just like
+  `std::boxed::Box<T>`).
+
+--------------------------------------------------------------------------------
+
 ## 3.19.1
 
 Released 2025-12-16.

@@ -234,7 +234,8 @@ impl<'a, T: ?Sized> Box<'a, T> {
     /// ```
     #[inline]
     pub unsafe fn from_raw(raw: *mut T) -> Self {
-        // Safety - The preconditions of the unsafe from_raw function ensure raw is valid
+        // Safety: part of this function's unsafe contract is that the raw
+        // pointer be non-null.
         Box(unsafe { NonNull::new_unchecked(raw) }, PhantomData)
     }
 
@@ -551,15 +552,16 @@ impl<'a, T: ?Sized> fmt::Pointer for Box<'a, T> {
     }
 }
 
-//This function tests that box isn't contravariant.
+///This function tests that box isn't contravariant.
+///
 /// ```compile_fail
 /// fn _box_is_not_contravariant<'sub, 'sup :'sub>(
-///   a: Box<&'sup u32>,
-///  b: Box<&'sub u32>,
-///   f: impl Fn(Box<&'sup u32>),
+///     a: Box<&'sup u32>,
+///     b: Box<&'sub u32>,
+///     f: impl Fn(Box<&'sup u32>),
 /// ) {
-///   f(a);
-///   f(b);
+///     f(a);
+///     f(b);
 /// }
 /// ```
 #[cfg(doctest)]
@@ -569,14 +571,18 @@ impl<'a, T: ?Sized> Deref for Box<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        // Safety - The box points to a valid instance of T allocated with a Bumpalo arena.
+        // Safety: Our pointer always points to a valid instance of `T`
+        // allocated within a `Bump` and the `&self` borrow ensures that there
+        // are no active exclusive borrows.
         unsafe { self.0.as_ref() }
     }
 }
 
 impl<'a, T: ?Sized> DerefMut for Box<'a, T> {
     fn deref_mut(&mut self) -> &mut T {
-        // Safety - The box points to a valid instance of T allocated with a Bumpalo arena.
+        // Safety: Our pointer always points to a valid instance of `T`
+        // allocated within a `Bump` and the `&mut self` borrow ensures that
+        // there are no other active borrows.
         unsafe { self.0.as_mut() }
     }
 }
