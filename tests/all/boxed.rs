@@ -1,7 +1,7 @@
 #![cfg(feature = "boxed")]
 
-use bumpalo::boxed::Box;
 use bumpalo::Bump;
+use bumpalo::boxed::Box;
 
 #[test]
 fn into_raw_aliasing() {
@@ -23,8 +23,7 @@ fn test_box_basic() {
     assert_eq!("world", &*value);
 }
 
-// This function tests that Box is covariant.
-// If you change the PhantomData<&'a T> in Box to PhantomData<&'a mut T> the test fails the borrow checker.
+// This function tests that `Box` is covariant.
 fn _box_is_covariant<'sup, 'sub: 'sup>(
     a: Box<&'sup u32>,
     b: Box<&'sub u32>,
