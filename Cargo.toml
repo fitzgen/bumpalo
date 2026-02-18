@@ -10,7 +10,7 @@ name = "bumpalo"
 readme = "README.md"
 repository = "https://github.com/fitzgen/bumpalo"
 rust-version = "1.71.1"
-version = "3.19.1"
+version = "3.20.0"
 
 [package.metadata.docs.rs]
 all-features = true
