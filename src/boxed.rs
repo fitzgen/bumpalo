@@ -552,7 +552,7 @@ impl<'a, T: ?Sized> fmt::Pointer for Box<'a, T> {
     }
 }
 
-///This function tests that box isn't contravariant.
+/// This function tests that box isn't contravariant.
 ///
 /// ```compile_fail
 /// fn _box_is_not_contravariant<'sub, 'sup :'sub>(
@@ -562,6 +562,22 @@ impl<'a, T: ?Sized> fmt::Pointer for Box<'a, T> {
 /// ) {
 ///     f(a);
 ///     f(b);
+/// }
+/// ```
+///
+/// This function tests that `Box` isn't Send when the inner type isn't Send.
+/// ```compile_fail
+/// fn _requires_send<T: Send>(_value: T) {}
+/// fn _box_inherets_send_not_send(a: Box<NonNull<()>>) {
+///    _requires_send(a);
+/// }
+/// ```
+///
+/// This function tests that `Box` isn't Sync when the inner type isn't Sync.
+/// ```compile_fail
+/// fn _requires_sync<T: Sync>(_value: T) {}
+/// fn _box_inherets_sync_not_sync(a: Box<NonNull<()>>) {
+///    _requires_sync(a);
 /// }
 /// ```
 #[cfg(doctest)]
@@ -678,10 +694,10 @@ impl<'a, T: ?Sized> AsMut<T> for Box<'a, T> {
 impl<'a, T: ?Sized> Unpin for Box<'a, T> {}
 
 // Safety: If T is Send the box is too because Box has exclusive access to its wrapped T.
-unsafe impl<'a, T: Send> Send for Box<'a, T> {}
+unsafe impl<'a, T: ?Sized + Send> Send for Box<'a, T> {}
 
 // Safety: If T is Sync the box is too because Box has exclusive access to its wrapped T.
-unsafe impl<'a, T: Sync> Sync for Box<'a, T> {}
+unsafe impl<'a, T: ?Sized + Sync> Sync for Box<'a, T> {}
 
 impl<'a, F: ?Sized + Future + Unpin> Future for Box<'a, F> {
     type Output = F::Output;
