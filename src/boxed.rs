@@ -677,6 +677,12 @@ impl<'a, T: ?Sized> AsMut<T> for Box<'a, T> {
 
 impl<'a, T: ?Sized> Unpin for Box<'a, T> {}
 
+// Safety: If T is Send the box is too because Box has exclusive access to its wrapped T.
+unsafe impl<'a, T: Send> Send for Box<'a, T> {}
+
+// Safety: If T is Sync the box is too because Box has exclusive access to its wrapped T.
+unsafe impl<'a, T: Sync> Sync for Box<'a, T> {}
+
 impl<'a, F: ?Sized + Future + Unpin> Future for Box<'a, F> {
     type Output = F::Output;
 
