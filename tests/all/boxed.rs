@@ -1,5 +1,4 @@
 #![cfg(feature = "boxed")]
-
 use bumpalo::boxed::Box;
 use bumpalo::Bump;
 
@@ -41,4 +40,10 @@ fn box_is_send_sync() {
     let bump = Bump::new();
     assert_send(Box::new_in(42, &bump));
     assert_sync(Box::new_in(42, &bump));
+
+    // Check `?Sized` types as well.
+    let boxed_str: Box<'static, str> = Default::default();
+    assert_send(boxed_str);
+    let boxed_str: Box<'static, str> = Default::default();
+    assert_sync(boxed_str);
 }

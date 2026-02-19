@@ -228,3 +228,9 @@ fn miri_stacked_borrows_issue_247() {
 
     let _q = Box::new_in(2u16, &bump);
 }
+
+#[test]
+fn bump_is_send() {
+    fn assert_send(_: impl Send) {}
+    assert_send(Bump::new());
+}
