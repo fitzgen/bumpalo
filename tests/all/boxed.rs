@@ -41,6 +41,7 @@ fn box_is_send_sync() {
     assert_send(Box::new_in(42, &bump));
     assert_sync(Box::new_in(42, &bump));
 
+    // Check `?Sized` types as well.
     let boxed_str: Box<'static, str> = Default::default();
     assert_send(boxed_str);
     let boxed_str: Box<'static, str> = Default::default();
