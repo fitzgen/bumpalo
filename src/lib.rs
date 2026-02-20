@@ -15,7 +15,7 @@ pub mod collections;
 mod alloc;
 
 use core::cell::Cell;
-use core::cmp::Ordering;
+use core::cmp::{max, Ordering};
 use core::fmt::Display;
 use core::iter;
 use core::marker::PhantomData;
@@ -377,6 +377,22 @@ impl ChunkFooter {
     }
 }
 
+/// A raw checkpoint created by `Bump::raw_checkpoint`.
+///
+/// This can be used to perform a partial reset of a `Bump`
+#[derive(Debug, Clone, Copy)]
+pub struct RawCheckpoint {
+    chunk: NonNull<ChunkFooter>,
+    ptr: NonNull<u8>,
+}
+
+impl RawCheckpoint {
+    #[inline(always)]
+    fn matches(&self, chunk: NonNull<ChunkFooter>) -> bool {
+        self.chunk == chunk
+    }
+}
+
 impl<const MIN_ALIGN: usize> Default for Bump<MIN_ALIGN> {
     fn default() -> Self {
         Self::with_min_align()
@@ -392,10 +408,19 @@ impl<const MIN_ALIGN: usize> Drop for Bump<MIN_ALIGN> {
 }
 
 #[inline]
-unsafe fn dealloc_chunk_list(mut footer: NonNull<ChunkFooter>) {
-    while !footer.as_ref().is_empty() {
-        let f = footer;
-        footer = f.as_ref().prev.get();
+unsafe fn dealloc_chunk_list(chunk: NonNull<ChunkFooter>) {
+    dealloc_chunks_until_stop(chunk, EMPTY_CHUNK.get());
+}
+
+#[inline]
+unsafe fn dealloc_chunks_until_stop(
+    mut current_chunk: NonNull<ChunkFooter>,
+    stop_chunk: NonNull<ChunkFooter>,
+) {
+    while current_chunk != stop_chunk {
+        debug_assert!(!current_chunk.as_ref().is_empty(), "Hit the empty chunk! this means the provided stop chunk wasn't a real chunk in the list!");
+        let f = current_chunk;
+        current_chunk = f.as_ref().prev.get();
         dealloc(f.as_ref().data.as_ptr(), f.as_ref().layout);
     }
 }
@@ -1006,6 +1031,151 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
                 self.current_chunk_footer.get().as_ref().ptr.get(),
                 self.current_chunk_footer.get().cast(),
                 "Our chunk's bump finger should be reset to the start of its allocation"
+            );
+        }
+    }
+
+    /// Get a raw checkpoint representing the state of the current chunk used by the allocator
+    pub fn raw_checkpoint(&self) -> RawCheckpoint {
+        let chunk = self.current_chunk_footer.get();
+        let chunk_ref = unsafe { chunk.as_ref() };
+
+        RawCheckpoint {
+            chunk,
+            ptr: chunk_ref.ptr.get(),
+        }
+    }
+
+    /// Reset this allocator based on the state of a `RawCheckpoint`
+    ///
+    /// There are two possible actions that this function will perform:
+    ///  - If the current chunk in this allocator is the same as when the checkpoint was created,
+    ///    then the chunk position will be reset to where it was when the checkpoint was created.
+    ///  - If the current chunk has changed due to the allocator growing, then the current chunk
+    ///    will be reset to the start. Any chunks allocated between the checkpoint chunk and the
+    ///    current chunk will be dropped. The checkpoint chunk will not be dropped.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    ///
+    /// let before_a = bump.raw_checkpoint();
+    /// let a = bump.alloc('a');
+    ///
+    /// assert_eq!(*a, 'a'); // okay
+    ///
+    /// {
+    ///     let before_b = bump.raw_checkpoint();
+    ///     let b = bump.alloc('b');
+    ///
+    ///     assert_eq!(*a, 'a'); // okay
+    ///     assert_eq!(*b, 'b'); // okay
+    ///
+    ///     {
+    ///         let before_c = bump.raw_checkpoint();
+    ///         let c = bump.alloc('c');
+    ///
+    ///         assert_eq!(*a, 'a'); // okay
+    ///         assert_eq!(*b, 'b'); // okay
+    ///         assert_eq!(*c, 'c'); // okay
+    ///
+    ///         unsafe {
+    ///             bump.reset_to_raw_checkpoint(before_c);
+    ///         }
+    ///
+    ///         assert_eq!(*a, 'a'); // still okay
+    ///         assert_eq!(*b, 'b'); // still okay
+    ///
+    ///         // Not okay! This would be a use-after-free bug!
+    ///         //
+    ///         //     assert_eq!(*c, 'c');
+    ///     }
+    ///
+    ///     unsafe {
+    ///         bump.reset_to_raw_checkpoint(before_b);
+    ///     }
+    ///
+    ///     assert_eq!(*a, 'a'); // still okay
+    ///
+    ///     // Not okay! This would be a use-after-free bug!
+    ///     //
+    ///     //     assert_eq!(*b, 'b');
+    /// }
+    ///
+    /// unsafe {
+    ///     bump.reset_to_raw_checkpoint(before_a);
+    /// }
+    ///
+    /// // Not okay! This would be a use-after-free bug!
+    /// //
+    /// //     assert_eq!(*a, 'a');
+    /// ```
+    ///
+    ///
+    /// # Safety
+    /// **This will invalidate references in a way that cannot be validated by the borrow checker!**
+    ///
+    /// Any allocation made between checkpoint creation and this function being called must not be
+    /// used again as they may be overwritten by future allocations.
+    ///
+    /// You may create multiple checkpoints, however they must be reset in LIFO order. It is ok
+    /// to drop a checkpoint without resetting to it, but you must not reset to a checkpoint
+    /// that was created between the creation and reset of a previous checkpoint.
+    ///
+    /// This method should never be used if `Bump::reset` was called after the checkpoint was created.
+    pub unsafe fn reset_to_raw_checkpoint(&self, checkpoint: RawCheckpoint) {
+        let mut cur_chunk = self.current_chunk_footer.get();
+
+        if checkpoint.matches(cur_chunk) {
+            // Check alignment
+            debug_assert!(
+                is_pointer_aligned_to(checkpoint.ptr.as_ptr(), MIN_ALIGN),
+                "checkpoint ptr is not aligned to bump's alignment"
+            );
+
+            // Checkpoint pointer must be aligned and within the current chunk bounds
+            debug_assert!(
+                checkpoint.ptr.as_ptr() >= cur_chunk.as_ref().data.as_ptr(),
+                "checkpoint pointer {:#p} should be greater than or equal to chunk pointer {:#p}",
+                checkpoint.ptr.as_ptr(),
+                cur_chunk.as_ref().data.as_ptr()
+            );
+            debug_assert!(
+                checkpoint.ptr.as_ptr() <= cur_chunk.cast::<u8>().as_ptr(),
+                "checkpoint pointer {:#p} should be less than or equal to footer pointer {:#p}",
+                checkpoint.ptr.as_ptr(),
+                self.current_chunk_footer.get().cast::<u8>().as_ptr()
+            );
+            debug_assert!(
+                is_pointer_aligned_to(checkpoint.ptr.as_ptr(), MIN_ALIGN),
+                "checkpoint pointer {:#p} should be aligned to the minimum alignment of {MIN_ALIGN:#x}",
+                checkpoint.ptr.as_ptr()
+            );
+
+            // Re-alloc edge case means that the current pointer may be greater than that of the checkpoint, so reset to whichever one is greater
+            cur_chunk
+                .as_ref()
+                .ptr
+                .set(max(checkpoint.ptr, cur_chunk.as_ref().ptr.get()));
+        } else {
+            // Replace the previous chunk pointer with the one in the checkpoint
+            let prev_chunk = cur_chunk.as_ref().prev.replace(checkpoint.chunk);
+
+            // Drop any chunks that were in between the checkpoint and current chunk
+            dealloc_chunks_until_stop(prev_chunk, checkpoint.chunk);
+
+            // Reset the current chunk to the start
+            cur_chunk.as_ref().ptr.set(cur_chunk.cast());
+
+            // Recalculate allocated bytes for the current chunk in case there were chunks freed
+            cur_chunk.as_mut().allocated_bytes = cur_chunk.as_ref().layout.size() - FOOTER_SIZE
+                + cur_chunk.as_mut().prev.get().as_ref().allocated_bytes;
+
+            debug_assert_eq!(
+                self.current_chunk_footer.get().as_ref().ptr.get(),
+                self.current_chunk_footer.get().cast(),
+                "current chunk should be reset to the start of it's allocation"
             );
         }
     }
@@ -2646,5 +2816,34 @@ mod tests {
             let l3 = Layout::from_size_align(24000, 4).unwrap();
             b.realloc(p1, l3, 48000).unwrap();
         }
+    }
+
+    #[test]
+    fn raw_checkpoint() {
+        let bump = Bump::with_capacity(100);
+        let foo = bump.alloc_str("foo");
+
+        let allocated = bump.allocated_bytes();
+        let remaining_capacity = bump.chunk_capacity();
+
+        let checkpoint = bump.raw_checkpoint();
+        for _ in 0..100 {
+            let bar = bump.alloc_str("bar");
+            assert_eq!(bar, "bar");
+
+            // Reset to the checkpoint
+            unsafe {
+                bump.reset_to_raw_checkpoint(checkpoint);
+            }
+
+            // bar is still in scope here but the borrow checker cannot prevent new allocations from overwriting it
+        }
+
+        // Items allocated outside of scope are still valid as the Bump has not been fully reset
+        assert_eq!(foo, "foo");
+
+        // Ensure that no additional memory was allocated
+        assert_eq!(allocated, bump.allocated_bytes());
+        assert_eq!(remaining_capacity, bump.chunk_capacity());
     }
 }
