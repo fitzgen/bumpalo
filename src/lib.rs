@@ -908,7 +908,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
         let ptr = round_mut_ptr_down_to(footer_ptr.cast::<u8>(), MIN_ALIGN);
         debug_assert_eq!(ptr as usize % MIN_ALIGN, 0);
         debug_assert!(
-            data.as_ptr() < ptr,
+            data.as_ptr() <= ptr,
             "bump pointer {ptr:#p} should still be greater than or equal to the \
              start of the bump chunk {data:#p}"
         );
