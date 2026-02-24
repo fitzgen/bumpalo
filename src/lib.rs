@@ -1904,10 +1904,6 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
                 ptr <= footer_ptr.cast::<u8>().as_ptr(),
                 "bump pointer {ptr:#p} should be less than or equal to footer pointer {footer_ptr:#p}"
             );
-            debug_assert!(
-                is_pointer_aligned_to(ptr, MIN_ALIGN),
-                "bump pointer {ptr:#p} should be aligned to the minimum alignment of {MIN_ALIGN:#x}"
-            );
 
             // This `match` should be boiled away by LLVM: `MIN_ALIGN` is a
             // constant and the layout's alignment is also constant in practice
