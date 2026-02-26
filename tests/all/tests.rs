@@ -234,3 +234,16 @@ fn bump_is_send() {
     fn assert_send(_: impl Send) {}
     assert_send(Bump::new());
 }
+
+#[test]
+fn test_debug_assert_data_le_bump_ptr_pr_313() {
+    let bump = Bump::new();
+    bump.set_allocation_limit(Some(1));
+    bump.alloc_layout(Layout::from_size_align(0, 16).unwrap());
+}
+
+#[test]
+fn test_debug_assert_ptr_align_pr_313() {
+    let bump = Bump::<16>::with_min_align();
+    bump.alloc(0u8);
+}
