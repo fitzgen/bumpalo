@@ -247,3 +247,31 @@ fn test_debug_assert_ptr_align_pr_313() {
     let bump = Bump::<16>::with_min_align();
     bump.alloc(0u8);
 }
+
+#[test]
+fn test_try_with_allocation_issue_314() {
+    let bump = Bump::new();
+    bump.alloc_layout(Layout::from_size_align(139040, 128).unwrap());
+    bump.alloc_layout(Layout::from_size_align(139040, 128).unwrap());
+    bump.alloc_layout(Layout::from_size_align(139040, 128).unwrap());
+
+    for _ in 0..36 {
+        bump.alloc_try_with(|| Err::<[u8; 128], _>(())).unwrap_err();
+    }
+
+    // only ONE new chunk should have been allocated
+    assert_eq!(bump.allocated_bytes(), 974656);
+
+    let bump = Bump::new();
+    bump.alloc_layout(Layout::from_size_align(139040, 128).unwrap());
+    bump.alloc_layout(Layout::from_size_align(139040, 128).unwrap());
+    bump.alloc_layout(Layout::from_size_align(139040, 128).unwrap());
+
+    for _ in 0..36 {
+        bump.try_alloc_try_with(|| Err::<[u8; 128], _>(()))
+            .unwrap_err();
+    }
+
+    // only ONE new chunk should have been allocated
+    assert_eq!(bump.allocated_bytes(), 974656);
+}
