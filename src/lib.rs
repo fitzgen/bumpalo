@@ -296,6 +296,7 @@ pub struct Bump<const MIN_ALIGN: usize = 1> {
 }
 
 #[repr(C)]
+#[repr(align(16))]
 #[derive(Debug)]
 struct ChunkFooter {
     // Pointer to the start of this chunk allocation. This footer is always at
@@ -475,10 +476,10 @@ const SUPPORTED_ITER_ALIGNMENT: usize = 16;
 const CHUNK_ALIGN: usize = SUPPORTED_ITER_ALIGNMENT;
 const FOOTER_SIZE: usize = mem::size_of::<ChunkFooter>();
 
-// Assert that `ChunkFooter` is at most the supported alignment. This will give a
+// Assert that `ChunkFooter` is at the supported alignment. This will give a
 // compile time error if it is not the case
 const _FOOTER_ALIGN_ASSERTION: () = {
-    assert!(mem::align_of::<ChunkFooter>() <= CHUNK_ALIGN);
+    assert!(mem::align_of::<ChunkFooter>() == CHUNK_ALIGN);
 };
 
 // Maximum typical overhead per allocation imposed by allocators.
@@ -1904,7 +1905,10 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
                 ptr <= footer_ptr.cast::<u8>().as_ptr(),
                 "bump pointer {ptr:#p} should be less than or equal to footer pointer {footer_ptr:#p}"
             );
-
+            debug_assert!(
+                is_pointer_aligned_to(ptr, MIN_ALIGN),
+                "bump pointer {ptr:#p} should be aligned to the minimum alignment of {MIN_ALIGN:#x}"
+            );
             // This `match` should be boiled away by LLVM: `MIN_ALIGN` is a
             // constant and the layout's alignment is also constant in practice
             // after inlining.
