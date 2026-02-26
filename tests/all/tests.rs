@@ -250,28 +250,30 @@ fn test_debug_assert_ptr_align_pr_313() {
 
 #[test]
 fn test_try_with_allocation_issue_314() {
-    let bump = Bump::new();
-    bump.alloc_layout(Layout::from_size_align(139040, 128).unwrap());
-    bump.alloc_layout(Layout::from_size_align(139040, 128).unwrap());
-    bump.alloc_layout(Layout::from_size_align(139040, 128).unwrap());
+    type R = Result<[u8; 128], ()>;
+    assert_eq!(mem::size_of::<R>(), 129);
+
+    let mut bump = Bump::new();
+
+    bump.alloc_layout(Layout::from_size_align(129, 128).unwrap());
+    assert_eq!(bump.iter_allocated_chunks().count(), 1);
 
     for _ in 0..36 {
-        bump.alloc_try_with(|| Err::<[u8; 128], _>(())).unwrap_err();
+        bump.alloc_try_with(|| R::Err(())).unwrap_err();
     }
+    assert_eq!(bump.iter_allocated_chunks().count(), 2);
+    // empty last chunk
+    assert_eq!(bump.iter_allocated_chunks().nth(0).unwrap().len(), 0);
 
-    // only ONE new chunk should have been allocated
-    assert_eq!(bump.allocated_bytes(), 974656);
+    let mut bump = Bump::new();
 
-    let bump = Bump::new();
-    bump.alloc_layout(Layout::from_size_align(139040, 128).unwrap());
-    bump.alloc_layout(Layout::from_size_align(139040, 128).unwrap());
-    bump.alloc_layout(Layout::from_size_align(139040, 128).unwrap());
+    bump.alloc_layout(Layout::from_size_align(129, 128).unwrap());
+    assert_eq!(bump.iter_allocated_chunks().count(), 1);
 
     for _ in 0..36 {
-        bump.try_alloc_try_with(|| Err::<[u8; 128], _>(()))
-            .unwrap_err();
+        bump.try_alloc_try_with(|| R::Err(())).unwrap_err();
     }
-
-    // only ONE new chunk should have been allocated
-    assert_eq!(bump.allocated_bytes(), 974656);
+    assert_eq!(bump.iter_allocated_chunks().count(), 2);
+    // empty last chunk
+    assert_eq!(bump.iter_allocated_chunks().nth(0).unwrap().len(), 0);
 }
