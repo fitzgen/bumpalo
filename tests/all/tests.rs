@@ -247,3 +247,33 @@ fn test_debug_assert_ptr_align_pr_313() {
     let bump = Bump::<16>::with_min_align();
     bump.alloc(0u8);
 }
+
+#[test]
+fn test_try_with_allocation_issue_314() {
+    type R = Result<[u8; 128], ()>;
+    assert_eq!(mem::size_of::<R>(), 129);
+
+    let mut bump = Bump::new();
+
+    bump.alloc_layout(Layout::from_size_align(129, 128).unwrap());
+    assert_eq!(bump.iter_allocated_chunks().count(), 1);
+
+    for _ in 0..36 {
+        bump.alloc_try_with(|| R::Err(())).unwrap_err();
+    }
+    assert_eq!(bump.iter_allocated_chunks().count(), 2);
+    // empty last chunk
+    assert_eq!(bump.iter_allocated_chunks().nth(0).unwrap().len(), 0);
+
+    let mut bump = Bump::new();
+
+    bump.alloc_layout(Layout::from_size_align(129, 128).unwrap());
+    assert_eq!(bump.iter_allocated_chunks().count(), 1);
+
+    for _ in 0..36 {
+        bump.try_alloc_try_with(|| R::Err(())).unwrap_err();
+    }
+    assert_eq!(bump.iter_allocated_chunks().count(), 2);
+    // empty last chunk
+    assert_eq!(bump.iter_allocated_chunks().nth(0).unwrap().len(), 0);
+}

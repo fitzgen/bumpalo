@@ -1243,9 +1243,9 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
                         // only allocation in this chunk.
                         //
                         // Because this is the only allocation in this chunk,
-                        // we can reset the chunk's bump finger to the start of
-                        // the chunk.
-                        current_ptr.set(current_footer_p.as_ref().data);
+                        // we can reset the chunk's bump finger to the end of
+                        // the chunk, i.e. the start of the chunk footer.
+                        current_ptr.set(current_footer_p.cast());
                     }
                 }
                 //SAFETY:
@@ -1351,9 +1351,9 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
                         // only allocation in this chunk.
                         //
                         // Because this is the only allocation in this chunk,
-                        // we can reset the chunk's bump finger to the start of
-                        // the chunk.
-                        current_ptr.set(current_footer_p.as_ref().data);
+                        // we can reset the chunk's bump finger to the end of
+                        // the chunk, i.e. the start of the chunk footer.
+                        current_ptr.set(current_footer_p.cast());
                     }
                 }
                 //SAFETY:
