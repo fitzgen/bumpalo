@@ -28,6 +28,60 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.20.2
+
+Released 2026-02-19.
+
+### Fixed
+
+* Restored `Send` and `Sync` implementations for `Box<T>` for `T: ?Sized` types
+  as well.
+
+--------------------------------------------------------------------------------
+
+## 3.20.1
+
+Released 2026-02-18.
+
+### Fixed
+
+* Restored `Send` and `Sync` implementations for `Box<T>` when `T: Send` and `T:
+  Sync` respectively.
+
+--------------------------------------------------------------------------------
+
+## 3.20.0
+
+Released 2026-02-18.
+
+### Added
+
+* Added the `bumpalo::collections::Vec::pop_if` method.
+
+### Fixed
+
+* Fixed a bug in the `bumpalo::collections::String::retain` method in the face
+  of panics.
+* Made `bumpalo::collections::Box<T>` covariant with `T` (just like
+  `std::boxed::Box<T>`).
+
+--------------------------------------------------------------------------------
+
+## 3.19.1
+
+Released 2025-12-16.
+
+### Changed
+
+* Annotated `bumpalo::collections::String::from_str_in` as `#[inline]`.
+
+### Fixed
+
+* Fixed compilation failures with the latest nightly Rust when enabling the
+  unstable `allocator_api` feature.
+
+--------------------------------------------------------------------------------
+
 ## 3.19.0
 
 Released 2025-06-24.
