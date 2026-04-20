@@ -71,8 +71,13 @@ fn oom_instead_of_bump_pointer_overflow() {
     let x = bump.alloc(0_u8);
     let p = x as *mut u8 as usize;
 
+    // Prevent bump from allocating a new chunk.
+    bump.set_allocation_limit(Some(bump.allocated_bytes()));
+
     // A size guaranteed to overflow the bump pointer.
-    let size = (isize::MAX as usize) - p + 1;
+    // We assume that heap allocations are made in bottom half of address space, so `size < isize::MAX`.
+    // If that assumption is incorrect, `Layout::from_size_align` will return `Err` and the test will fail.
+    let size = p + 1;
     let align = 1;
     let layout = match Layout::from_size_align(size, align) {
         Err(e) => {
