@@ -326,8 +326,7 @@ fn try_alloc_try_with_new_chunk_leak() {
     let _x = bump.alloc(1u8);
     let bytes_before = bump.allocated_bytes_including_metadata();
 
-    let res: Result<&mut Big, bumpalo::AllocOrInitError<()>> =
-        bump.try_alloc_try_with(|| Err(()));
+    let res: Result<&mut Big, bumpalo::AllocOrInitError<()>> = bump.try_alloc_try_with(|| Err(()));
     assert!(res.is_err());
 
     let cap_after = bump.chunk_capacity();
