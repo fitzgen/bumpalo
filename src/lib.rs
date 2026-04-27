@@ -2540,9 +2540,23 @@ unsafe impl<'a, const MIN_ALIGN: usize> Allocator for &'a Bump<MIN_ALIGN> {
         old_layout: Layout,
         new_layout: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
-        let mut ptr = self.grow(ptr, old_layout, new_layout)?;
-        ptr.as_mut()[old_layout.size()..].fill(0);
-        Ok(ptr)
+        let new_ptr = self.grow(ptr, old_layout, new_layout)?;
+
+        // Zero the tail of the new allocation (the bytes past the copied old contents).
+        // Write through a raw pointer rather than constructing a `&mut [u8]` over the full range,
+        // because the tail is uninitialized and `&mut [u8]` spanning uninit bytes is UB.
+        // `old_layout.size() <= new_layout.size()` (invariant of `Allocator` trait), so this cannot underflow.
+        let tail_len = new_layout.size() - old_layout.size();
+
+        // SAFETY: `new_ptr` covers `new_layout.size()` bytes.
+        // `old_layout.size() <= new_layout.size()` (invariant of `Allocator` trait).
+        // So `tail_len` bytes starting at offset `old_layout.size()` are in bounds.
+        unsafe {
+            let dst_ptr = new_ptr.as_ptr().cast::<u8>().add(old_layout.size());
+            ptr::write_bytes(dst_ptr, 0, tail_len);
+        }
+
+        Ok(new_ptr)
     }
 }
 
