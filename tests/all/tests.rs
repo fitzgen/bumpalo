@@ -252,3 +252,97 @@ fn test_debug_assert_ptr_align_pr_313() {
     let bump = Bump::<16>::with_min_align();
     bump.alloc(0u8);
 }
+
+// Demonstrates a memory leak in `alloc_try_with` when the `Result` is allocated
+// in a freshly created chunk and the closure returns `Err`.
+//
+// The rewind path on the new-chunk branch sets the bump pointer to
+// `footer.data` (the LOWEST address of the chunk). Because the bump pointer
+// grows downward (from footer toward data), setting it to `data` makes
+// `chunk_capacity()` (= ptr - data) equal to zero — i.e. the chunk appears
+// completely full. The intent is the opposite: the chunk is empty and should
+// be fully reusable.
+//
+// Expected behavior: after the failing `alloc_try_with` call, the freshly
+// allocated chunk should be empty (full capacity available).
+// Actual behavior: the chunk reports zero capacity remaining; subsequent
+// allocations are forced to allocate yet another new chunk, leaking the
+// memory of the chunk allocated for the failed result.
+#[test]
+fn alloc_try_with_new_chunk_leak() {
+    // Type whose size exceeds the bump's initial chunk capacity to force
+    // `alloc_try_with` to allocate a new chunk for `Result<T, E>`.
+    type Big = [u8; 4096];
+
+    // Start with a small bump that does not have room for `Result<Big, ()>`.
+    let bump = Bump::with_capacity(64);
+
+    // Tiny allocation in the existing chunk so the rewind footer differs from
+    // the new chunk that `alloc_try_with` will allocate.
+    let _x = bump.alloc(1u8);
+
+    let bytes_before = bump.allocated_bytes_including_metadata();
+
+    // Trigger the failing path: closure returns Err.
+    let res: Result<&mut Big, ()> = bump.alloc_try_with(|| Err(()));
+    assert!(res.is_err());
+
+    // After the failed call, the most recent chunk (newly allocated for the
+    // result) should have its full capacity available, since the result was
+    // the only allocation in that chunk and we rewound. But due to the bug,
+    // `chunk_capacity()` is 0.
+    let cap_after = bump.chunk_capacity();
+    assert!(
+        cap_after >= core::mem::size_of::<Big>(),
+        "chunk_capacity() after failed alloc_try_with is {cap_after}, expected >= {}; the new chunk has been wrongly marked as full (memory leak)",
+        core::mem::size_of::<Big>()
+    );
+
+    // Verify that a subsequent allocation of the same size doesn't require
+    // yet another chunk to be allocated.
+    let _y: &mut Big = bump.alloc([0u8; 4096]);
+    let bytes_after = bump.allocated_bytes_including_metadata();
+
+    // The Big allocation already has a chunk reserved for it (the one
+    // allocated by alloc_try_with). If the rewind worked correctly, the
+    // delta should equal roughly `size_of::<Big>()` (plus possibly small
+    // alignment padding). With the bug, an additional chunk is allocated,
+    // which roughly doubles the delta.
+    let delta = bytes_after - bytes_before;
+    assert!(
+        delta < 2 * core::mem::size_of::<Big>(),
+        "after failed alloc_try_with and a follow-up Big allocation, allocated_bytes_including_metadata grew by {delta}, expected close to {} (single chunk reuse). The new chunk allocated for the failed `alloc_try_with` has been leaked.",
+        core::mem::size_of::<Big>()
+    );
+}
+
+// Same issue for `try_alloc_try_with`.
+#[test]
+fn try_alloc_try_with_new_chunk_leak() {
+    type Big = [u8; 4096];
+
+    let bump = Bump::with_capacity(64);
+
+    let _x = bump.alloc(1u8);
+    let bytes_before = bump.allocated_bytes_including_metadata();
+
+    let res: Result<&mut Big, bumpalo::AllocOrInitError<()>> = bump.try_alloc_try_with(|| Err(()));
+    assert!(res.is_err());
+
+    let cap_after = bump.chunk_capacity();
+    assert!(
+        cap_after >= core::mem::size_of::<Big>(),
+        "chunk_capacity() after failed try_alloc_try_with is {cap_after}, expected >= {}; the new chunk has been wrongly marked as full (memory leak)",
+        core::mem::size_of::<Big>()
+    );
+
+    let _y: &mut Big = bump.alloc([0u8; 4096]);
+    let bytes_after = bump.allocated_bytes_including_metadata();
+
+    let delta = bytes_after - bytes_before;
+    assert!(
+        delta < 2 * core::mem::size_of::<Big>(),
+        "after failed try_alloc_try_with and a follow-up Big allocation, allocated_bytes_including_metadata grew by {delta}, expected close to {} (single chunk reuse). The new chunk allocated for the failed `try_alloc_try_with` has been leaked.",
+        core::mem::size_of::<Big>()
+    );
+}
