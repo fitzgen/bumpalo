@@ -2460,20 +2460,20 @@ unsafe impl<'a, const MIN_ALIGN: usize> alloc::Alloc for &'a Bump<MIN_ALIGN> {
     unsafe fn realloc(
         &mut self,
         ptr: NonNull<u8>,
-        layout: Layout,
+        old_layout: Layout,
         new_size: usize,
     ) -> Result<NonNull<u8>, AllocErr> {
-        let old_size = layout.size();
+        let old_size = old_layout.size();
+        let new_layout = layout_from_size_align(new_size, old_layout.align())?;
 
         if old_size == 0 {
-            return self.try_alloc_layout(layout);
+            return self.try_alloc_layout(new_layout);
         }
 
-        let new_layout = layout_from_size_align(new_size, layout.align())?;
         if new_size <= old_size {
-            Bump::shrink(self, ptr, layout, new_layout)
+            Bump::shrink(self, ptr, old_layout, new_layout)
         } else {
-            Bump::grow(self, ptr, layout, new_layout)
+            Bump::grow(self, ptr, old_layout, new_layout)
         }
     }
 }
@@ -2639,6 +2639,31 @@ mod tests {
             let q = (&b).realloc(p, layout, 2).unwrap();
             assert!(q.as_ptr() as usize != p.as_ptr() as usize - 1);
             b.reset();
+        }
+    }
+
+    // Uses private `alloc` module.
+    #[test]
+    fn realloc_old_size_zero() {
+        use crate::alloc::Alloc;
+
+        let bump = Bump::new();
+
+        let old_layout = Layout::from_size_align(0, 1).unwrap();
+        let old_ptr = bump.alloc_layout(old_layout);
+        let new_size = 64;
+        let new_ptr = unsafe { (&bump).realloc(old_ptr, old_layout, new_size).unwrap() };
+        let new_ptr = new_ptr.as_ptr().cast::<u8>();
+
+        // Write to and read from the pointer. If it is invalid, then MIRI will
+        // complain.
+        unsafe {
+            for i in 0..new_size {
+                *new_ptr.add(i) = 0xAB;
+            }
+            for i in 0..new_size {
+                assert_eq!(*new_ptr.add(i), 0xAB);
+            }
         }
     }
 
