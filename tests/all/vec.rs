@@ -167,3 +167,142 @@ fn test_vec_write() {
 
     assert_eq!(v, &[1, 2, 3]);
 }
+
+#[cfg(feature = "std")]
+#[test]
+fn panic_in_drain_filter() {
+    use std::panic::AssertUnwindSafe;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static DROP_COUNT: AtomicUsize = AtomicUsize::new(0);
+    DROP_COUNT.store(0, Ordering::SeqCst);
+
+    #[derive(Debug)]
+    struct Tracked(i32);
+    impl Drop for Tracked {
+        fn drop(&mut self) {
+            DROP_COUNT.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    let bump = Bump::new();
+
+    let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+        let mut v: Vec<Tracked> = Vec::new_in(&bump);
+        // Will be drained.
+        v.push(Tracked(1));
+        // Predicate will panic here.
+        v.push(Tracked(2));
+        // Will be kept.
+        v.push(Tracked(3));
+
+        let mut df = v.drain_filter(|x| {
+            if x.0 == 1 {
+                true
+            } else if x.0 == 2 {
+                panic!()
+            } else {
+                false
+            }
+        });
+
+        // Drain `Tracked(1)`.
+        let drained = df.next();
+        assert!(drained.is_some());
+
+        // Panics on `Tracked(2)`.
+        let _ = df.next();
+    }));
+    assert!(result.is_err());
+
+    let count = DROP_COUNT.load(Ordering::SeqCst);
+    assert_eq!(count, 2);
+}
+
+#[cfg(feature = "std")]
+#[test]
+fn panic_in_retain() {
+    use std::panic::AssertUnwindSafe;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static DROP_COUNT: AtomicUsize = AtomicUsize::new(0);
+    DROP_COUNT.store(0, Ordering::SeqCst);
+
+    #[derive(Debug)]
+    struct Tracked(i32);
+    impl Drop for Tracked {
+        fn drop(&mut self) {
+            DROP_COUNT.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    let bump = Bump::new();
+
+    let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+        let mut v: Vec<Tracked> = Vec::new_in(&bump);
+        // Will be drained.
+        v.push(Tracked(1));
+        // Predicate will panic here.
+        v.push(Tracked(2));
+        // Will be kept.
+        v.push(Tracked(3));
+
+        v.retain(|x| {
+            if x.0 == 1 {
+                false
+            } else if x.0 == 2 {
+                panic!()
+            } else {
+                true
+            }
+        });
+    }));
+    assert!(result.is_err());
+
+    let count = DROP_COUNT.load(Ordering::SeqCst);
+    assert_eq!(count, 3);
+}
+
+#[cfg(feature = "std")]
+#[test]
+fn panic_in_retain_mut() {
+    use std::panic::AssertUnwindSafe;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static DROP_COUNT: AtomicUsize = AtomicUsize::new(0);
+    DROP_COUNT.store(0, Ordering::SeqCst);
+
+    #[derive(Debug)]
+    struct Tracked(i32);
+    impl Drop for Tracked {
+        fn drop(&mut self) {
+            DROP_COUNT.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    let bump = Bump::new();
+
+    let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+        let mut v: Vec<Tracked> = Vec::new_in(&bump);
+        // Will be drained.
+        v.push(Tracked(1));
+        // Predicate will panic here.
+        v.push(Tracked(2));
+        // Will be kept.
+        v.push(Tracked(3));
+
+        v.retain_mut(|x| {
+            if x.0 == 1 {
+                false
+            } else if x.0 == 2 {
+                panic!()
+            } else {
+                true
+            }
+        });
+    }));
+    assert!(result.is_err());
+
+    let count = DROP_COUNT.load(Ordering::SeqCst);
+    assert_eq!(count, 3);
+}

@@ -20,7 +20,8 @@ Released YYYY-MM-DD.
 
 ### Fixed
 
-* TODO (or remove section if none)
+* Fixed a drop bug in `bumpalo::collections::vec::DrainFilter` (used by `retain`
+  and `retain_mut`) when the predicate panics.
 
 ### Security
 
