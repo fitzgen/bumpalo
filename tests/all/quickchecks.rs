@@ -1,7 +1,13 @@
 use crate::quickcheck;
 use ::quickcheck::{Arbitrary, Gen};
 use bumpalo::Bump;
+use std::alloc::Layout;
 use std::mem;
+
+const MAX_ALLOCATOR_OPS: usize = 64;
+const MAX_ALLOCATOR_SLICE_LEN: usize = 96;
+const MAX_ALLOCATOR_LIMIT: usize = 4096;
+const MAX_LAYOUT_ALLOC_SIZE: usize = 256;
 
 #[derive(Clone, Debug, PartialEq)]
 struct BigValue {
@@ -116,6 +122,152 @@ fn range<T>(t: &T) -> (usize, usize) {
     let start = t as *const _ as usize;
     let end = start + mem::size_of::<T>();
     (start, end)
+}
+
+#[derive(Clone, Debug)]
+enum AllocatorOp {
+    Alloc { value: u8, len: u8 },
+    Reset,
+    SetLimit(Option<u16>),
+}
+
+impl Arbitrary for AllocatorOp {
+    fn arbitrary(g: &mut Gen) -> Self {
+        match u8::arbitrary(g) % 3 {
+            0 => AllocatorOp::Alloc {
+                value: u8::arbitrary(g),
+                len: u8::arbitrary(g),
+            },
+            1 => AllocatorOp::Reset,
+            _ => AllocatorOp::SetLimit(Option::<u16>::arbitrary(g)),
+        }
+    }
+
+    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
+        Box::new(std::iter::empty())
+    }
+}
+
+#[derive(Clone, Debug)]
+struct AllocatorProgram(Vec<AllocatorOp>);
+
+impl Arbitrary for AllocatorProgram {
+    fn arbitrary(g: &mut Gen) -> Self {
+        let mut ops = Vec::<AllocatorOp>::arbitrary(g);
+        ops.truncate(MAX_ALLOCATOR_OPS);
+        AllocatorProgram(ops)
+    }
+
+    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
+        Box::new(self.0.shrink().map(|mut ops| {
+            ops.truncate(MAX_ALLOCATOR_OPS);
+            AllocatorProgram(ops)
+        }))
+    }
+}
+
+#[derive(Clone, Debug)]
+enum LayoutAllocatorOp {
+    Alloc { size: u16, align_log2: u8 },
+    Reset,
+    SetLimit(Option<u16>),
+}
+
+impl Arbitrary for LayoutAllocatorOp {
+    fn arbitrary(g: &mut Gen) -> Self {
+        match u8::arbitrary(g) % 3 {
+            0 => LayoutAllocatorOp::Alloc {
+                size: u16::arbitrary(g),
+                align_log2: u8::arbitrary(g),
+            },
+            1 => LayoutAllocatorOp::Reset,
+            _ => LayoutAllocatorOp::SetLimit(Option::<u16>::arbitrary(g)),
+        }
+    }
+
+    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
+        Box::new(std::iter::empty())
+    }
+}
+
+#[derive(Clone, Debug)]
+struct LayoutAllocatorProgram(Vec<LayoutAllocatorOp>);
+
+impl Arbitrary for LayoutAllocatorProgram {
+    fn arbitrary(g: &mut Gen) -> Self {
+        let mut ops = Vec::<LayoutAllocatorOp>::arbitrary(g);
+        ops.truncate(MAX_ALLOCATOR_OPS);
+        LayoutAllocatorProgram(ops)
+    }
+
+    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
+        Box::new(self.0.shrink().map(|mut ops| {
+            ops.truncate(MAX_ALLOCATOR_OPS);
+            LayoutAllocatorProgram(ops)
+        }))
+    }
+}
+
+fn arbitrary_small_layout(size: u16, align_log2: u8) -> Layout {
+    let align = 1usize << (usize::from(align_log2) % 7);
+    let max_units = (MAX_LAYOUT_ALLOC_SIZE / align).max(1);
+    let units = (usize::from(size) % max_units) + 1;
+    Layout::from_size_align(units * align, align).unwrap()
+}
+
+fn live_bytes(allocs: &[Vec<u8>]) -> Vec<u8> {
+    allocs
+        .iter()
+        .rev()
+        .flat_map(|alloc| alloc.iter().copied())
+        .collect()
+}
+
+fn assert_chunk_views_match(bump: &mut Bump, live_allocs: &[Vec<u8>]) {
+    // Safety: We hold `&mut Bump`, so no allocations can occur while the raw
+    // iterator is alive and the iterator cannot be invalidated.
+    let raw_chunks: Vec<(_, _)> = unsafe { bump.iter_allocated_chunks_raw() }.collect();
+    let chunks: Vec<&[_]> = bump.iter_allocated_chunks().collect();
+    assert_eq!(raw_chunks.len(), chunks.len());
+    for ((ptr, size), chunk) in raw_chunks.into_iter().zip(chunks.iter().copied()) {
+        assert_eq!(ptr as *const _, chunk.as_ptr() as *const _);
+        assert_eq!(size, chunk.len());
+    }
+
+    let actual_bytes: Vec<u8> = bump
+        .iter_allocated_chunks()
+        .flat_map(|chunk| {
+            chunk.iter().map(|byte| {
+                // Safety: This helper is only used after allocating `u8` slices
+                // into the arena and after clearing the model on `reset`, so the
+                // iterated chunk bytes correspond to initialized live `u8` values.
+                unsafe { byte.assume_init() }
+            })
+        })
+        .collect();
+    assert_eq!(actual_bytes, live_bytes(live_allocs));
+}
+
+fn assert_layout_allocations_match(bump: &mut Bump, live_allocs: &[(usize, usize)]) {
+    // Safety: We hold `&mut Bump`, so no allocations can occur while the raw
+    // iterator is alive and the iterator cannot be invalidated.
+    let raw_chunks: Vec<(_, _)> = unsafe { bump.iter_allocated_chunks_raw() }.collect();
+    let chunks: Vec<&[_]> = bump.iter_allocated_chunks().collect();
+    assert_eq!(raw_chunks.len(), chunks.len());
+    for ((ptr, size), chunk) in raw_chunks.iter().copied().zip(chunks.iter().copied()) {
+        assert_eq!(ptr as *const _, chunk.as_ptr() as *const _);
+        assert_eq!(size, chunk.len());
+    }
+
+    for (i, alloc) in live_allocs.iter().enumerate() {
+        assert!(raw_chunks.iter().any(|&(ptr, size)| {
+            let chunk = (ptr as usize, ptr as usize + size);
+            contains(chunk, *alloc)
+        }));
+        for other in &live_allocs[i + 1..] {
+            assert!(!overlap(*alloc, *other));
+        }
+    }
 }
 
 quickcheck! {
@@ -304,6 +456,72 @@ quickcheck! {
                 assert!(allocated_bytes_including_metadata > allocated_bytes);
                 assert!(allocated_bytes_including_metadata < allocated_bytes + allocs_len * 100);
             }
+        }
+    }
+
+    fn allocator_operation_sequences_preserve_chunk_views(program: AllocatorProgram) -> () {
+        let mut bump = Bump::new();
+        let mut live_allocs = Vec::new();
+        let mut current_limit = None;
+
+        for op in &program.0 {
+            match op {
+                AllocatorOp::Alloc { value, len } => {
+                    let len = usize::from(*len) % MAX_ALLOCATOR_SLICE_LEN;
+                    if let Ok(slice) = bump.try_alloc_slice_fill_copy(len, *value) {
+                        assert_eq!(slice, vec![*value; len].as_slice());
+                        live_allocs.push(vec![*value; len]);
+                    }
+                }
+                AllocatorOp::Reset => {
+                    bump.reset();
+                    live_allocs.clear();
+                    assert_eq!(bump.allocation_limit(), current_limit);
+                }
+                AllocatorOp::SetLimit(limit) => {
+                    let limit = limit.map(|limit| usize::from(limit) % MAX_ALLOCATOR_LIMIT);
+                    bump.set_allocation_limit(limit);
+                    current_limit = limit;
+                    assert_eq!(bump.allocation_limit(), current_limit);
+                }
+            }
+
+            assert_chunk_views_match(&mut bump, &live_allocs);
+        }
+    }
+
+    fn layout_allocation_sequences_preserve_alignment_and_containment(program: LayoutAllocatorProgram) -> () {
+        let mut bump = Bump::new();
+        let mut live_allocs = Vec::new();
+        let mut current_limit = None;
+
+        for op in &program.0 {
+            match *op {
+                LayoutAllocatorOp::Alloc { size, align_log2 } => {
+                    let layout = arbitrary_small_layout(size, align_log2);
+                    if let Ok(ptr) = bump.try_alloc_layout(layout) {
+                        assert_eq!(ptr.as_ptr() as usize % layout.align(), 0);
+                        let range = (ptr.as_ptr() as usize, ptr.as_ptr() as usize + layout.size());
+                        for other in &live_allocs {
+                            assert!(!overlap(range, *other));
+                        }
+                        live_allocs.push(range);
+                    }
+                }
+                LayoutAllocatorOp::Reset => {
+                    bump.reset();
+                    live_allocs.clear();
+                    assert_eq!(bump.allocation_limit(), current_limit);
+                }
+                LayoutAllocatorOp::SetLimit(limit) => {
+                    let limit = limit.map(|limit| usize::from(limit) % MAX_ALLOCATOR_LIMIT);
+                    bump.set_allocation_limit(limit);
+                    current_limit = limit;
+                    assert_eq!(bump.allocation_limit(), current_limit);
+                }
+            }
+
+            assert_layout_allocations_match(&mut bump, &live_allocs);
         }
     }
 

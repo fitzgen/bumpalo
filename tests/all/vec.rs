@@ -1,9 +1,99 @@
 #![cfg(feature = "collections")]
 
 use crate::quickcheck;
+use ::quickcheck::{Arbitrary, Gen};
 use bumpalo::{collections::Vec, vec, Bump};
 use std::cell::{Cell, RefCell};
 use std::ops::Deref;
+
+const MAX_VEC_OPS: usize = 64;
+const MAX_VEC_SLICE_LEN: usize = 16;
+const MAX_VEC_LEN: usize = 48;
+
+#[derive(Clone, Debug)]
+enum VecOp {
+    Push(u8),
+    Pop,
+    Extend(std::vec::Vec<u8>),
+    Resize { len: u8, fill: u8 },
+    Truncate(u8),
+    ShrinkToFit,
+}
+
+impl Arbitrary for VecOp {
+    fn arbitrary(g: &mut Gen) -> Self {
+        match u8::arbitrary(g) % 6 {
+            0 => VecOp::Push(u8::arbitrary(g)),
+            1 => VecOp::Pop,
+            2 => {
+                let mut values = std::vec::Vec::<u8>::arbitrary(g);
+                values.truncate(MAX_VEC_SLICE_LEN);
+                VecOp::Extend(values)
+            }
+            3 => VecOp::Resize {
+                len: u8::arbitrary(g),
+                fill: u8::arbitrary(g),
+            },
+            4 => VecOp::Truncate(u8::arbitrary(g)),
+            _ => VecOp::ShrinkToFit,
+        }
+    }
+
+    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
+        Box::new(std::iter::empty())
+    }
+}
+
+#[derive(Clone, Debug)]
+struct VecProgram(std::vec::Vec<VecOp>);
+
+impl Arbitrary for VecProgram {
+    fn arbitrary(g: &mut Gen) -> Self {
+        let mut ops = std::vec::Vec::<VecOp>::arbitrary(g);
+        ops.truncate(MAX_VEC_OPS);
+        VecProgram(ops)
+    }
+
+    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
+        Box::new(self.0.shrink().map(|mut ops| {
+            ops.truncate(MAX_VEC_OPS);
+            VecProgram(ops)
+        }))
+    }
+}
+
+fn apply_vec_op(actual: &mut Vec<'_, u8>, expected: &mut std::vec::Vec<u8>, op: &VecOp) {
+    match op {
+        VecOp::Push(value) => {
+            actual.push(*value);
+            expected.push(*value);
+        }
+        VecOp::Pop => {
+            assert_eq!(actual.pop(), expected.pop());
+        }
+        VecOp::Extend(values) => {
+            actual.extend_from_slice_copy(values);
+            expected.extend_from_slice(values);
+        }
+        VecOp::Resize { len, fill } => {
+            let len = usize::from(*len) % MAX_VEC_LEN;
+            actual.resize(len, *fill);
+            expected.resize(len, *fill);
+        }
+        VecOp::Truncate(len) => {
+            let len = usize::from(*len) % MAX_VEC_LEN;
+            actual.truncate(len);
+            expected.truncate(len);
+        }
+        VecOp::ShrinkToFit => {
+            actual.shrink_to_fit();
+            expected.shrink_to_fit();
+        }
+    }
+
+    assert_eq!(actual.as_slice(), expected.as_slice());
+    assert!(actual.capacity() >= actual.len());
+}
 
 #[test]
 fn push_a_bunch_of_items() {
@@ -84,6 +174,18 @@ quickcheck! {
             v.resize(len, 0);
             v.shrink_to_fit();
         }
+    }
+
+    fn vec_operation_sequences_match_std(program: VecProgram) -> () {
+        let bump = Bump::new();
+        let mut actual = Vec::new_in(&bump);
+        let mut expected = std::vec::Vec::new();
+
+        for op in &program.0 {
+            apply_vec_op(&mut actual, &mut expected, op);
+        }
+
+        assert_eq!(actual.into_bump_slice(), expected.as_slice());
     }
 }
 
