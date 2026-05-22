@@ -23,7 +23,7 @@ use core::mem;
 use core::ptr::{self, NonNull};
 use core::slice;
 use core::str;
-use core_alloc::alloc::{Layout, alloc, dealloc};
+use core_alloc::alloc::{alloc, dealloc, Layout};
 
 #[cfg(feature = "allocator_api")]
 use core_alloc::alloc::{AllocError, Allocator};
