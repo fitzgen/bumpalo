@@ -1359,7 +1359,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
             }
             Err(e) => unsafe {
                 // Read the error out and then let the guard rewind.
-                Err(AllocOrInitError::Init(NonNull::from(e).read()))
+                Err(AllocOrInitError::Init(NonNull::from(e).as_ptr().read()))
             },
         }
     }
@@ -1556,7 +1556,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
             let mut dst = guard.ptr.cast::<T>();
             for i in 0..len {
                 ptr::write(dst.as_ptr(), f(i));
-                dst = dst.add(1);
+                dst = NonNull::new_unchecked(dst.as_ptr().add(1));
             }
 
             let ptr = guard.finish();
@@ -1606,7 +1606,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
                 match f(i) {
                     Ok(el) => {
                         ptr::write(dst.as_ptr(), el);
-                        dst = dst.add(1);
+                        dst = NonNull::new_unchecked(dst.as_ptr().add(1));
                     }
                     Err(e) => return Err(e),
                 }
@@ -1654,7 +1654,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
             let mut dst = guard.ptr.cast::<T>();
             for i in 0..len {
                 ptr::write(dst.as_ptr(), f(i));
-                dst = dst.add(1);
+                dst = NonNull::new_unchecked(dst.as_ptr().add(1));
             }
 
             let ptr = guard.finish();
