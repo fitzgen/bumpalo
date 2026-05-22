@@ -3,6 +3,7 @@ use std::alloc::Layout;
 use std::cmp;
 use std::iter::repeat;
 use std::mem;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 
 #[test]
 fn alloc_slice_fill_zero() {
@@ -64,6 +65,54 @@ fn alloc_slice_try_fill_iter_fails() {
     let elems = repeat(()).take(10).collect::<Vec<_>>();
     let res: Result<&mut [u16], ()> = b.alloc_slice_try_fill_iter(elems.into_iter().map(Err));
     assert_eq!(res, Err(()));
+}
+
+#[test]
+fn alloc_slice_fill_with_panic_rewinds_last_allocation() {
+    let b = Bump::new();
+    let _prefix = b.alloc([1u8; 17]);
+    let allocated_before = b.allocated_bytes();
+
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        b.alloc_slice_fill_with(8, |i| {
+            if i == 3 {
+                panic!("boom");
+            }
+            i
+        })
+    }));
+
+    assert!(result.is_err());
+    assert_eq!(b.allocated_bytes(), allocated_before);
+}
+
+#[test]
+fn try_alloc_slice_fill_with_panic_rewinds_last_allocation() {
+    let b = Bump::new();
+    let _prefix = b.alloc([2u8; 19]);
+    let allocated_before = b.allocated_bytes();
+
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        b.try_alloc_slice_fill_with(8, |i| {
+            if i == 4 {
+                panic!("boom");
+            }
+            i
+        })
+    }));
+
+    assert!(result.is_err());
+    assert_eq!(b.allocated_bytes(), allocated_before);
+}
+
+#[test]
+fn alloc_slice_try_fill_with_err_rewinds_last_allocation() {
+    let b = Bump::new();
+    let _prefix = b.alloc([3u8; 23]);
+    let allocated_before = b.allocated_bytes();
+    let result = b.alloc_slice_try_fill_with(8, |i| if i == 5 { Err(()) } else { Ok(i) });
+    assert!(result.is_err());
+    assert_eq!(b.allocated_bytes(), allocated_before);
 }
 
 #[test]
