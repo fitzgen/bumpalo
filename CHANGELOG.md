@@ -20,12 +20,25 @@ Released YYYY-MM-DD.
 
 ### Fixed
 
-* Fixed a drop bug in `bumpalo::collections::vec::DrainFilter` (used by `retain`
-  and `retain_mut`) when the predicate panics.
+* TODO (or remove section if none)
 
 ### Security
 
 * TODO (or remove section if none)
+
+--------------------------------------------------------------------------------
+
+## 3.20.3
+
+Released 2026-05-22.
+
+### Fixed
+
+* Fixed the `try_alloc_slice_fill_with`, `alloc_slice_try_fill_with`,
+  `alloc_slice_fill_with` methods to properly rewind the bump pointer on
+  allocation, initialization, and panic failure and avoid wasting bump capacity.
+* Fixed a drop bug in `bumpalo::collections::vec::DrainFilter` (used by `retain`
+  and `retain_mut`) when the predicate panics.
 
 --------------------------------------------------------------------------------
 
