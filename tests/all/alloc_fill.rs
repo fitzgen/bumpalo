@@ -3,7 +3,7 @@ use std::alloc::Layout;
 use std::cmp;
 use std::iter::repeat;
 use std::mem;
-use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 
 #[test]
 fn alloc_slice_fill_zero() {
