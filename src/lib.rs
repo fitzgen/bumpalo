@@ -13,6 +13,7 @@ pub mod boxed;
 pub mod collections;
 
 mod alloc;
+mod emplace;
 
 use core::cell::Cell;
 use core::cmp::Ordering;
@@ -32,6 +33,7 @@ use core_alloc::alloc::{AllocError, Allocator};
 use allocator_api2::alloc::{AllocError, Allocator};
 
 pub use alloc::AllocErr;
+pub use emplace::{Emplace, EmplaceSlice, EmplaceStr};
 
 /// An error returned from [`Bump::try_alloc_try_with`].
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -223,149 +225,141 @@ impl<const MIN_ALIGN: usize> Drop for RewindGuard<'_, MIN_ALIGN> {
 /// *s = "the bump allocator; and also is a buffalo";
 /// ```
 ///
-/// ## Allocation Methods Come in Many Flavors
+/// ## The `Emplace` API
 ///
-/// There are various allocation methods on `Bump`, the simplest being
-/// [`alloc`][Bump::alloc]. The others exist to satisfy some combination of
-/// fallible allocation and initialization. The allocation methods are
-/// summarized in the following table:
-///
-/// <table>
-///   <thead>
-///     <tr>
-///       <th></th>
-///       <th>Infallible Allocation</th>
-///       <th>Fallible Allocation</th>
-///     </tr>
-///   </thead>
-///     <tr>
-///       <th>By Value</th>
-///       <td><a href="#method.alloc"><code>alloc</code></a></td>
-///       <td><a href="#method.try_alloc"><code>try_alloc</code></a></td>
-///     </tr>
-///     <tr>
-///       <th>Infallible Initializer Function</th>
-///       <td><a href="#method.alloc_with"><code>alloc_with</code></a></td>
-///       <td><a href="#method.try_alloc_with"><code>try_alloc_with</code></a></td>
-///     </tr>
-///     <tr>
-///       <th>Fallible Initializer Function</th>
-///       <td><a href="#method.alloc_try_with"><code>alloc_try_with</code></a></td>
-///       <td><a href="#method.try_alloc_try_with"><code>try_alloc_try_with</code></a></td>
-///     </tr>
-///   <tbody>
-///   </tbody>
-/// </table>
-///
-/// ### Fallible Allocation: The `try_alloc_` Method Prefix
-///
-/// These allocation methods let you recover from out-of-memory (OOM)
-/// scenarios, rather than raising a panic on OOM.
+/// `Bump` has a number of "emplace" methods that separate allocation from
+/// initialization. This is useful in certain edge-cases related to compiler
+/// optimizations. For example, `bump.alloc(x)` is semantically creating `x` on
+/// the stack, and then allocating space within `bump` for it, and then moving
+/// it into that space. However, the sequence we want is for the space to be
+/// allocated in `bump` and then for `x` constructed directly in that allocated
+/// space. Sometimes the compiler can do that for us. But in many cases, it does
+/// not or cannot. The "emplace" methods let us make the desired sequencing
+/// explicit and subsequently allows the compiler to optimize the code such that
+/// it constructs `x` directly inside the allocated space in many more cases.
 ///
 /// ```
 /// use bumpalo::Bump;
 ///
 /// let bump = Bump::new();
 ///
-/// match bump.try_alloc(MyStruct {
-///     // ...
-/// }) {
-///     Ok(my_struct) => {
-///         // Allocation succeeded.
-///     }
-///     Err(e) => {
-///         // Out of memory.
-///     }
-/// }
+/// let x = bump
+///     // Pre-allocate space for the value.
+///     .emplace()
+///     // Write the value into the pre-allocated space.
+///     .write(42);
 ///
-/// struct MyStruct {
-///     // ...
-/// }
+/// assert_eq!(*x, 42);
 /// ```
 ///
-/// ### Initializer Functions: The `_with` Method Suffix
+/// Furthermore, the emplace methods play nicer with fallible initialization and
+/// `?`-propagation. For example, if you are constructing a slice in a `Bump`
+/// but each item's construction is also fallible:
 ///
-/// Calling one of the generic `…alloc(x)` methods is essentially equivalent to
-/// the matching [`…alloc_with(|| x)`](?search=alloc_with). However if you use
-/// `…alloc_with`, then the closure will not be invoked until after allocating
-/// space for storing `x` on the heap.
+/// ```
+/// # fn foo() -> Result<(), ()> {
+/// use bumpalo::Bump;
 ///
-/// This can be useful in certain edge-cases related to compiler optimizations.
-/// When evaluating for example `bump.alloc(x)`, semantically `x` is first put
-/// on the stack and then moved onto the heap. In some cases, the compiler is
-/// able to optimize this into constructing `x` directly on the heap, however
-/// in many cases it does not.
+/// let bump = Bump::new();
 ///
-/// The `…alloc_with` functions try to help the compiler be smarter. In most
-/// cases doing for example `bump.try_alloc_with(|| x)` on release mode will be
-/// enough to help the compiler realize that this optimization is valid and
-/// to construct `x` directly onto the heap.
+/// // Pre-allocate space for a slice in `bump`.
+/// let mut place = bump.emplace_slice_with_capacity(10);
+/// # let my_fallible_collection = || Vec::<Result<u32, ()>>::new();
 ///
-/// #### Warning
+/// // Iterate over `Result`s, propagating errors with `?`, and pushing the
+/// // items into place.
+/// for result in my_fallible_collection() {
+///     let item = result?;
+///     place.push(item);
+/// }
 ///
-/// These functions critically depend on compiler optimizations to achieve their
-/// desired effect. This means that it is not an effective tool when compiling
-/// without optimizations on.
-///
-/// Even when optimizations are on, these functions do not **guarantee** that
-/// the value is constructed on the heap. To the best of our knowledge no such
-/// guarantee can be made in stable Rust as of 1.54.
-///
-/// ### Fallible Initialization: The `_try_with` Method Suffix
-///
-/// The generic [`…alloc_try_with(|| x)`](?search=_try_with) methods behave
-/// like the purely `_with` suffixed methods explained above. However, they
-/// allow for fallible initialization by accepting a closure that returns a
-/// [`Result`] and will attempt to undo the initial allocation if this closure
-/// returns [`Err`].
-///
-/// #### Warning
-///
-/// If the inner closure returns [`Ok`], space for the entire [`Result`] remains
-/// allocated inside `self`. This can be a problem especially if the [`Err`]
-/// variant is larger, but even otherwise there may be overhead for the
-/// [`Result`]'s discriminant.
-///
-/// <p><details><summary>Undoing the allocation in the <code>Err</code> case
-/// always fails if <code>f</code> successfully made any additional allocations
-/// in <code>self</code>.</summary>
-///
-/// For example, the following will always leak also space for the [`Result`]
-/// into this `Bump`, even though the inner reference isn't kept and the [`Err`]
-/// payload is returned semantically by value:
-///
-/// ```rust
-/// let bump = bumpalo::Bump::new();
-///
-/// let r: Result<&mut [u8; 1000], ()> = bump.alloc_try_with(|| {
-///     let _ = bump.alloc(0_u8);
-///     Err(())
-/// });
-///
-/// assert!(r.is_err());
+/// // After all the items have been pushed, we can get the initialized slice.
+/// let slice = place.into_slice();
+/// # Ok(())
+/// # }
+/// # foo().unwrap();
 /// ```
 ///
-///</details></p>
+/// See also each emplace method:
 ///
-/// Since [`Err`] payloads are first placed on the heap and then moved to the
-/// stack, `bump.…alloc_try_with(|| x)?` is likely to execute more slowly than
-/// the matching `bump.…alloc(x?)` in case of initialization failure. If this
-/// happens frequently, using the plain un-suffixed method may perform better.
+/// * [`Bump::emplace`]
+/// * [`Bump::emplace_slice`]
+/// * [`Bump::emplace_slice_with_capacity`]
+/// * [`Bump::emplace_str`]
+/// * [`Bump::emplace_str_with_capacity`]
+/// * [`Bump::try_emplace`]
+/// * [`Bump::try_emplace_slice`]
+/// * [`Bump::try_emplace_slice_with_capacity`]
+/// * [`Bump::try_emplace_str`]
+/// * [`Bump::try_emplace_str_with_capacity`]
 ///
-/// [`Result`]: https://doc.rust-lang.org/std/result/enum.Result.html
-/// [`Ok`]: https://doc.rust-lang.org/std/result/enum.Result.html#variant.Ok
-/// [`Err`]: https://doc.rust-lang.org/std/result/enum.Result.html#variant.Err
+/// See also the `Emplace*` types, returned from those methods:
 ///
-/// ### `Bump` Allocation Limits
+/// * [`Emplace`]
+/// * [`EmplaceSlice`]
+/// * [`EmplaceStr`]
+///
+/// ## Allocation Helper Methods
+///
+/// There are various allocation methods on `Bump`, for a variety of
+/// combinations of (in)fallible allocation and initialization. These methods
+/// are all built on top of the emplace APIs, and often using the emplace APIs
+/// is cleaner, but sometimes it is nice to have a single method that does
+/// everything at once.
+///
+/// The allocation helper methods, and their equivalent emplace calls, are
+/// summarized in the following table:
+///
+/// <table>
+///   <thead>
+///     <tr>
+///       <th></th>
+///       <th colspan="2">Infallible Allocation</th>
+///       <th colspan="2">Fallible Allocation</th>
+///     </tr>
+///     <tr>
+///       <th></th>
+///       <th><code>Emplace</code> API</th>
+///       <th><code>*alloc*</code> Method</th>
+///       <th><code>Emplace</code> API</th>
+///       <th><code>*alloc*</code> Method</th>
+///     </tr>
+///   </thead>
+///   <tbody>
+///     <tr>
+///       <th>By Value</th>
+///       <td><code>bump.emplace().write(value)</code></td>
+///       <td><a href="#method.alloc"><code>alloc</code></a></td>
+///       <td><code>bump.try_emplace()?.write(value)</code></td>
+///       <td><a href="#method.try_alloc"><code>try_alloc</code></a></td>
+///     </tr>
+///     <tr>
+///       <th>Infallible Initializer Function</th>
+///       <td><code>bump.emplace().write(f())</code></td>
+///       <td><a href="#method.alloc_with"><code>alloc_with</code></a></td>
+///       <td><code>bump.try_emplace()?.write(f())</code></td>
+///       <td><a href="#method.try_alloc_with"><code>try_alloc_with</code></a></td>
+///     </tr>
+///     <tr>
+///       <th>Fallible Initializer Function</th>
+///       <td><code>bump.emplace().write(f()?)</code></td>
+///       <td><a href="#method.alloc_try_with"><code>alloc_try_with</code></a></td>
+///       <td><code>bump.try_emplace()?.write(f()?)</code></td>
+///       <td><a href="#method.try_alloc_try_with"><code>try_alloc_try_with</code></a></td>
+///     </tr>
+///   <tbody>
+///   </tbody>
+/// </table>
+///
+/// ## `Bump` Allocation Limits
 ///
 /// `bumpalo` supports setting a limit on the maximum bytes of memory that can
-/// be allocated for use in a particular `Bump` arena. This limit can be set and removed with
-/// [`set_allocation_limit`][Bump::set_allocation_limit].
+/// be allocated for use in a particular `Bump` arena. This limit can be set and
+/// removed with [`set_allocation_limit`][Bump::set_allocation_limit].
+///
 /// The allocation limit is only enforced when allocating new backing chunks for
 /// a `Bump`. Updating the allocation limit will not affect existing allocations
 /// or any future allocations within the `Bump`'s current chunk.
-///
-/// #### Example
 ///
 /// ```
 /// let bump = bumpalo::Bump::new();
@@ -376,19 +370,11 @@ impl<const MIN_ALIGN: usize> Drop for RewindGuard<'_, MIN_ALIGN> {
 /// assert!(bump.try_alloc(5).is_err());
 ///
 /// bump.set_allocation_limit(Some(6));
-///
 /// assert_eq!(bump.allocation_limit(), Some(6));
 ///
 /// bump.set_allocation_limit(None);
-///
 /// assert_eq!(bump.allocation_limit(), None);
 /// ```
-///
-/// #### Warning
-///
-/// Because of backwards compatibility, allocations that fail
-/// due to allocation limits will not present differently than
-/// errors due to resource exhaustion.
 #[derive(Debug)]
 pub struct Bump<const MIN_ALIGN: usize = 1> {
     // The current chunk we are bump allocating within.
@@ -1112,8 +1098,11 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
         }
     }
 
-    /// Allocate an object in this `Bump` and return an exclusive reference to
-    /// it.
+    /// Allocate space for a `T` and return an [`Emplace`] builder.
+    ///
+    /// The returned builder lets you initialize the value in place. If
+    /// the builder is dropped without being finalized, the allocation is
+    /// automatically reclaimed.
     ///
     /// ## Panics
     ///
@@ -1123,735 +1112,185 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     ///
     /// ```
     /// let bump = bumpalo::Bump::new();
-    /// let x = bump.alloc("hello");
-    /// assert_eq!(*x, "hello");
+    /// let x = bump.emplace().write(42u64);
+    /// assert_eq!(*x, 42);
     /// ```
     #[inline(always)]
-    pub fn alloc<T>(&self, val: T) -> &mut T {
-        self.alloc_with(|| val)
+    pub fn emplace<T>(&self) -> Emplace<'_, T, MIN_ALIGN> {
+        self.try_emplace().unwrap_or_else(|_| oom())
     }
 
-    /// Try to allocate an object in this `Bump` and return an exclusive
-    /// reference to it.
+    /// Try to allocate space for a `T` and return an [`Emplace`] builder.
     ///
     /// ## Errors
     ///
-    /// Errors if reserving space for `T` fails.
+    /// Returns an error if reserving space for `T` fails.
     ///
     /// ## Example
     ///
     /// ```
+    /// # fn foo() -> Result<(), bumpalo::AllocErr> {
     /// let bump = bumpalo::Bump::new();
-    /// let x = bump.try_alloc("hello");
-    /// assert_eq!(x, Ok(&mut "hello"));
+    /// let x = bump.try_emplace::<u64>()?.write(42);
+    /// assert_eq!(*x, 42);
+    /// # Ok(())
+    /// # }
+    /// # foo().unwrap();
     /// ```
     #[inline(always)]
-    pub fn try_alloc<T>(&self, val: T) -> Result<&mut T, AllocErr> {
-        self.try_alloc_with(|| val)
-    }
-
-    /// Pre-allocate space for an object in this `Bump`, initializes it using
-    /// the closure, then returns an exclusive reference to it.
-    ///
-    /// See [The `_with` Method Suffix](#initializer-functions-the-_with-method-suffix) for a
-    /// discussion on the differences between the `_with` suffixed methods and
-    /// those methods without it, their performance characteristics, and when
-    /// you might or might not choose a `_with` suffixed method.
-    ///
-    /// ## Panics
-    ///
-    /// Panics if reserving space for `T` fails.
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// let bump = bumpalo::Bump::new();
-    /// let x = bump.alloc_with(|| "hello");
-    /// assert_eq!(*x, "hello");
-    /// ```
-    #[inline(always)]
-    pub fn alloc_with<F, T>(&self, f: F) -> &mut T
-    where
-        F: FnOnce() -> T,
-    {
-        #[inline(always)]
-        unsafe fn inner_writer<T, F>(ptr: *mut T, f: F)
-        where
-            F: FnOnce() -> T,
-        {
-            // This function is translated as:
-            // - allocate space for a T on the stack
-            // - call f() with the return value being put onto this stack space
-            // - memcpy from the stack to the heap
-            //
-            // Ideally we want LLVM to always realize that doing a stack
-            // allocation is unnecessary and optimize the code so it writes
-            // directly into the heap instead. It seems we get it to realize
-            // this most consistently if we put this critical line into it's
-            // own function instead of inlining it into the surrounding code.
-            ptr::write(ptr, f());
-        }
-
+    pub fn try_emplace<T>(&self) -> Result<Emplace<'_, T, MIN_ALIGN>, AllocErr> {
         let layout = Layout::new::<T>();
-
-        unsafe {
-            let p = self.alloc_layout(layout);
-            let p = p.as_ptr() as *mut T;
-            inner_writer(p, f);
-            &mut *p
-        }
-    }
-
-    /// Tries to pre-allocate space for an object in this `Bump`, initializes
-    /// it using the closure, then returns an exclusive reference to it.
-    ///
-    /// See [The `_with` Method Suffix](#initializer-functions-the-_with-method-suffix) for a
-    /// discussion on the differences between the `_with` suffixed methods and
-    /// those methods without it, their performance characteristics, and when
-    /// you might or might not choose a `_with` suffixed method.
-    ///
-    /// ## Errors
-    ///
-    /// Errors if reserving space for `T` fails.
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// let bump = bumpalo::Bump::new();
-    /// let x = bump.try_alloc_with(|| "hello");
-    /// assert_eq!(x, Ok(&mut "hello"));
-    /// ```
-    #[inline(always)]
-    pub fn try_alloc_with<F, T>(&self, f: F) -> Result<&mut T, AllocErr>
-    where
-        F: FnOnce() -> T,
-    {
-        #[inline(always)]
-        unsafe fn inner_writer<T, F>(ptr: *mut T, f: F)
-        where
-            F: FnOnce() -> T,
-        {
-            // This function is translated as:
-            // - allocate space for a T on the stack
-            // - call f() with the return value being put onto this stack space
-            // - memcpy from the stack to the heap
-            //
-            // Ideally we want LLVM to always realize that doing a stack
-            // allocation is unnecessary and optimize the code so it writes
-            // directly into the heap instead. It seems we get it to realize
-            // this most consistently if we put this critical line into it's
-            // own function instead of inlining it into the surrounding code.
-            ptr::write(ptr, f());
-        }
-
-        //SAFETY: Self-contained:
-        // `p` is allocated for `T` and then a `T` is written.
-        let layout = Layout::new::<T>();
-        let p = self.try_alloc_layout(layout)?;
-        let p = p.as_ptr() as *mut T;
-
-        unsafe {
-            inner_writer(p, f);
-            Ok(&mut *p)
-        }
-    }
-
-    /// Pre-allocates space for a [`Result`] in this `Bump`, initializes it using
-    /// the closure, then returns an exclusive reference to its `T` if [`Ok`].
-    ///
-    /// Iff the allocation fails, the closure is not run.
-    ///
-    /// Iff [`Err`], an allocator rewind is *attempted* and the `E` instance is
-    /// moved out of the allocator to be consumed or dropped as normal.
-    ///
-    /// See [The `_with` Method Suffix](#initializer-functions-the-_with-method-suffix) for a
-    /// discussion on the differences between the `_with` suffixed methods and
-    /// those methods without it, their performance characteristics, and when
-    /// you might or might not choose a `_with` suffixed method.
-    ///
-    /// For caveats specific to fallible initialization, see
-    /// [The `_try_with` Method Suffix](#fallible-initialization-the-_try_with-method-suffix).
-    ///
-    /// [`Result`]: https://doc.rust-lang.org/std/result/enum.Result.html
-    /// [`Ok`]: https://doc.rust-lang.org/std/result/enum.Result.html#variant.Ok
-    /// [`Err`]: https://doc.rust-lang.org/std/result/enum.Result.html#variant.Err
-    ///
-    /// ## Errors
-    ///
-    /// Iff the allocation succeeds but `f` fails, that error is forwarded by value.
-    ///
-    /// ## Panics
-    ///
-    /// Panics if reserving space for `Result<T, E>` fails.
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// let bump = bumpalo::Bump::new();
-    /// let x = bump.alloc_try_with(|| Ok("hello"))?;
-    /// assert_eq!(*x, "hello");
-    /// # Result::<_, ()>::Ok(())
-    /// ```
-    #[inline(always)]
-    pub fn alloc_try_with<F, T, E>(&self, f: F) -> Result<&mut T, E>
-    where
-        F: FnOnce() -> Result<T, E>,
-    {
-        match self.try_alloc_try_with(f) {
-            Ok(x) => Ok(x),
-            Err(AllocOrInitError::Init(e)) => Err(e),
-            Err(AllocOrInitError::Alloc(_)) => oom(),
-        }
-    }
-
-    /// Tries to pre-allocates space for a [`Result`] in this `Bump`,
-    /// initializes it using the closure, then returns an exclusive reference
-    /// to its `T` if all [`Ok`].
-    ///
-    /// Iff the allocation fails, the closure is not run.
-    ///
-    /// Iff the closure returns [`Err`], an allocator rewind is *attempted* and
-    /// the `E` instance is moved out of the allocator to be consumed or dropped
-    /// as normal.
-    ///
-    /// See [The `_with` Method Suffix](#initializer-functions-the-_with-method-suffix) for a
-    /// discussion on the differences between the `_with` suffixed methods and
-    /// those methods without it, their performance characteristics, and when
-    /// you might or might not choose a `_with` suffixed method.
-    ///
-    /// For caveats specific to fallible initialization, see
-    /// [The `_try_with` Method Suffix](#fallible-initialization-the-_try_with-method-suffix).
-    ///
-    /// [`Result`]: https://doc.rust-lang.org/std/result/enum.Result.html
-    /// [`Ok`]: https://doc.rust-lang.org/std/result/enum.Result.html#variant.Ok
-    /// [`Err`]: https://doc.rust-lang.org/std/result/enum.Result.html#variant.Err
-    ///
-    /// ## Errors
-    ///
-    /// Errors with the [`Alloc`](`AllocOrInitError::Alloc`) variant iff
-    /// reserving space for `Result<T, E>` fails.
-    ///
-    /// Iff the allocation succeeds but `f` fails, that error is forwarded by
-    /// value inside the [`Init`](`AllocOrInitError::Init`) variant.
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// let bump = bumpalo::Bump::new();
-    /// let x = bump.try_alloc_try_with(|| Ok("hello"))?;
-    /// assert_eq!(*x, "hello");
-    /// # Result::<_, bumpalo::AllocOrInitError<()>>::Ok(())
-    /// ```
-    #[inline(always)]
-    pub fn try_alloc_try_with<F, T, E>(&self, f: F) -> Result<&mut T, AllocOrInitError<E>>
-    where
-        F: FnOnce() -> Result<T, E>,
-    {
-        let rewind_footer = self.current_chunk_footer.get();
-        let rewind_footer_ptr = unsafe { rewind_footer.as_ref() }.ptr.get();
-        let ptr = self.try_alloc_with(f)?;
-        let ptr = NonNull::from(ptr).cast::<u8>();
-        let guard = unsafe { RewindGuard::new(self, ptr, rewind_footer, rewind_footer_ptr) };
-        match unsafe { guard.ptr.cast::<Result<T, E>>().as_mut() } {
-            Ok(t) => {
-                guard.finish();
-                Ok(unsafe { NonNull::from(t).as_mut() })
-            }
-            Err(e) => unsafe {
-                // Read the error out and then let the guard rewind.
-                Err(AllocOrInitError::Init(NonNull::from(e).as_ptr().read()))
-            },
-        }
-    }
-
-    /// `Copy` a slice into this `Bump` and return an exclusive reference to
-    /// the copy.
-    ///
-    /// ## Panics
-    ///
-    /// Panics if reserving space for the slice fails.
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// let bump = bumpalo::Bump::new();
-    /// let x = bump.alloc_slice_copy(&[1, 2, 3]);
-    /// assert_eq!(x, &[1, 2, 3]);
-    /// ```
-    #[inline(always)]
-    pub fn alloc_slice_copy<T>(&self, src: &[T]) -> &mut [T]
-    where
-        T: Copy,
-    {
-        let layout = Layout::for_value(src);
-        let dst = self.alloc_layout(layout).cast::<T>();
-
-        unsafe {
-            ptr::copy_nonoverlapping(src.as_ptr(), dst.as_ptr(), src.len());
-            slice::from_raw_parts_mut(dst.as_ptr(), src.len())
-        }
-    }
-
-    /// Like `alloc_slice_copy`, but does not panic in case of allocation failure.
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// let bump = bumpalo::Bump::new();
-    /// let x = bump.try_alloc_slice_copy(&[1, 2, 3]);
-    /// assert_eq!(x, Ok(&mut[1, 2, 3] as &mut [_]));
-    ///
-    ///
-    /// let bump = bumpalo::Bump::new();
-    /// bump.set_allocation_limit(Some(4));
-    /// let x = bump.try_alloc_slice_copy(&[1, 2, 3, 4, 5, 6]);
-    /// assert_eq!(x, Err(bumpalo::AllocErr)); // too big
-    /// ```
-    #[inline(always)]
-    pub fn try_alloc_slice_copy<T>(&self, src: &[T]) -> Result<&mut [T], AllocErr>
-    where
-        T: Copy,
-    {
-        let layout = Layout::for_value(src);
-        let dst = self.try_alloc_layout(layout)?.cast::<T>();
-        let result = unsafe {
-            core::ptr::copy_nonoverlapping(src.as_ptr(), dst.as_ptr(), src.len());
-            slice::from_raw_parts_mut(dst.as_ptr(), src.len())
-        };
-        Ok(result)
-    }
-
-    /// `Clone` a slice into this `Bump` and return an exclusive reference to
-    /// the clone. Prefer [`alloc_slice_copy`](#method.alloc_slice_copy) if `T` is `Copy`.
-    ///
-    /// ## Panics
-    ///
-    /// Panics if reserving space for the slice fails.
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// #[derive(Clone, Debug, Eq, PartialEq)]
-    /// struct Sheep {
-    ///     name: String,
-    /// }
-    ///
-    /// let originals = [
-    ///     Sheep { name: "Alice".into() },
-    ///     Sheep { name: "Bob".into() },
-    ///     Sheep { name: "Cathy".into() },
-    /// ];
-    ///
-    /// let bump = bumpalo::Bump::new();
-    /// let clones = bump.alloc_slice_clone(&originals);
-    /// assert_eq!(originals, clones);
-    /// ```
-    #[inline(always)]
-    pub fn alloc_slice_clone<T>(&self, src: &[T]) -> &mut [T]
-    where
-        T: Clone,
-    {
-        let layout = Layout::for_value(src);
-        let dst = self.alloc_layout(layout).cast::<T>();
-
-        unsafe {
-            for (i, val) in src.iter().cloned().enumerate() {
-                ptr::write(dst.as_ptr().add(i), val);
-            }
-
-            slice::from_raw_parts_mut(dst.as_ptr(), src.len())
-        }
-    }
-
-    /// Like `alloc_slice_clone` but does not panic on failure.
-    #[inline(always)]
-    pub fn try_alloc_slice_clone<T>(&self, src: &[T]) -> Result<&mut [T], AllocErr>
-    where
-        T: Clone,
-    {
-        let layout = Layout::for_value(src);
-        let dst = self.try_alloc_layout(layout)?.cast::<T>();
-
-        unsafe {
-            for (i, val) in src.iter().cloned().enumerate() {
-                ptr::write(dst.as_ptr().add(i), val);
-            }
-
-            Ok(slice::from_raw_parts_mut(dst.as_ptr(), src.len()))
-        }
-    }
-
-    /// `Copy` a string slice into this `Bump` and return an exclusive reference to it.
-    ///
-    /// ## Panics
-    ///
-    /// Panics if reserving space for the string fails.
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// let bump = bumpalo::Bump::new();
-    /// let hello = bump.alloc_str("hello world");
-    /// assert_eq!("hello world", hello);
-    /// ```
-    #[inline(always)]
-    pub fn alloc_str(&self, src: &str) -> &mut str {
-        let buffer = self.alloc_slice_copy(src.as_bytes());
-        unsafe {
-            // This is OK, because it already came in as str, so it is guaranteed to be utf8
-            str::from_utf8_unchecked_mut(buffer)
-        }
-    }
-
-    /// Same as `alloc_str` but does not panic on failure.
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// let bump = bumpalo::Bump::new();
-    /// let hello = bump.try_alloc_str("hello world").unwrap();
-    /// assert_eq!("hello world", hello);
-    ///
-    ///
-    /// let bump = bumpalo::Bump::new();
-    /// bump.set_allocation_limit(Some(5));
-    /// let hello = bump.try_alloc_str("hello world");
-    /// assert_eq!(Err(bumpalo::AllocErr), hello);
-    /// ```
-    #[inline(always)]
-    pub fn try_alloc_str(&self, src: &str) -> Result<&mut str, AllocErr> {
-        let buffer = self.try_alloc_slice_copy(src.as_bytes())?;
-        unsafe {
-            // This is OK, because it already came in as str, so it is guaranteed to be utf8
-            Ok(str::from_utf8_unchecked_mut(buffer))
-        }
-    }
-
-    /// Allocates a new slice of size `len` into this `Bump` and returns an
-    /// exclusive reference to the copy.
-    ///
-    /// The elements of the slice are initialized using the supplied closure.
-    /// The closure argument is the position in the slice.
-    ///
-    /// ## Panics
-    ///
-    /// Panics if reserving space for the slice fails.
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// let bump = bumpalo::Bump::new();
-    /// let x = bump.alloc_slice_fill_with(5, |i| 5 * (i + 1));
-    /// assert_eq!(x, &[5, 10, 15, 20, 25]);
-    /// ```
-    #[inline(always)]
-    pub fn alloc_slice_fill_with<T, F>(&self, len: usize, mut f: F) -> &mut [T]
-    where
-        F: FnMut(usize) -> T,
-    {
-        let layout = Layout::array::<T>(len).unwrap_or_else(|_| oom());
-        let guard = self.alloc_layout_with_rewind(layout);
-
-        unsafe {
-            let mut dst = guard.ptr.cast::<T>();
-            for i in 0..len {
-                ptr::write(dst.as_ptr(), f(i));
-                dst = NonNull::new_unchecked(dst.as_ptr().add(1));
-            }
-
-            let ptr = guard.finish();
-            let result = slice::from_raw_parts_mut(ptr.cast::<T>().as_ptr(), len);
-            debug_assert_eq!(Layout::for_value(result), layout);
-            result
-        }
-    }
-
-    /// Allocates a new slice of size `len` into this `Bump` and returns an
-    /// exclusive reference to the copy, failing if the closure return an Err.
-    ///
-    /// The elements of the slice are initialized using the supplied closure.
-    /// The closure argument is the position in the slice.
-    ///
-    /// ## Panics
-    ///
-    /// Panics if reserving space for the slice fails.
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// let bump = bumpalo::Bump::new();
-    /// let x: Result<&mut [usize], ()> = bump.alloc_slice_try_fill_with(5, |i| Ok(5 * i));
-    /// assert_eq!(x, Ok(bump.alloc_slice_copy(&[0, 5, 10, 15, 20])));
-    /// ```
-    ///
-    /// ```
-    /// let bump = bumpalo::Bump::new();
-    /// let x: Result<&mut [usize], ()> = bump.alloc_slice_try_fill_with(
-    ///    5,
-    ///    |n| if n == 2 { Err(()) } else { Ok(n) }
-    /// );
-    /// assert_eq!(x, Err(()));
-    /// ```
-    #[inline(always)]
-    pub fn alloc_slice_try_fill_with<T, F, E>(&self, len: usize, mut f: F) -> Result<&mut [T], E>
-    where
-        F: FnMut(usize) -> Result<T, E>,
-    {
-        let layout = Layout::array::<T>(len).unwrap_or_else(|_| oom());
-        let guard = self.alloc_layout_with_rewind(layout);
-
-        unsafe {
-            let mut dst = guard.ptr.cast::<T>();
-            for i in 0..len {
-                match f(i) {
-                    Ok(el) => {
-                        ptr::write(dst.as_ptr(), el);
-                        dst = NonNull::new_unchecked(dst.as_ptr().add(1));
-                    }
-                    Err(e) => return Err(e),
-                }
-            }
-
-            let ptr = guard.finish();
-            let result = slice::from_raw_parts_mut(ptr.cast::<T>().as_ptr(), len);
-            debug_assert_eq!(Layout::for_value(result), layout);
-            Ok(result)
-        }
-    }
-
-    /// Allocates a new slice of size `len` into this `Bump` and returns an
-    /// exclusive reference to the copy.
-    ///
-    /// The elements of the slice are initialized using the supplied closure.
-    /// The closure argument is the position in the slice.
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// let bump = bumpalo::Bump::new();
-    /// let x = bump.try_alloc_slice_fill_with(5, |i| 5 * (i + 1));
-    /// assert_eq!(x, Ok(&mut[5usize, 10, 15, 20, 25] as &mut [_]));
-    ///
-    ///
-    /// let bump = bumpalo::Bump::new();
-    /// bump.set_allocation_limit(Some(4));
-    /// let x = bump.try_alloc_slice_fill_with(10, |i| 5 * (i + 1));
-    /// assert_eq!(x, Err(bumpalo::AllocErr));
-    /// ```
-    #[inline(always)]
-    pub fn try_alloc_slice_fill_with<T, F>(
-        &self,
-        len: usize,
-        mut f: F,
-    ) -> Result<&mut [T], AllocErr>
-    where
-        F: FnMut(usize) -> T,
-    {
-        let layout = Layout::array::<T>(len).map_err(|_| AllocErr)?;
         let guard = self.try_alloc_layout_with_rewind(layout)?;
+        Ok(unsafe { Emplace::new(guard) })
+    }
 
-        unsafe {
-            let mut dst = guard.ptr.cast::<T>();
-            for i in 0..len {
-                ptr::write(dst.as_ptr(), f(i));
-                dst = NonNull::new_unchecked(dst.as_ptr().add(1));
-            }
+    /// Allocate space for a `[T]` slice and return an [`EmplaceSlice`]
+    /// builder.
+    ///
+    /// Starts with a small default capacity. Use
+    /// [`emplace_slice_with_capacity`](Bump::emplace_slice_with_capacity) to
+    /// pre-size the allocation when the final length is known.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if the initial allocation fails.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let mut place = bump.emplace_slice::<u8>();
+    /// place.push(1);
+    /// place.push(2);
+    /// let s = place.into_mut_slice();
+    /// assert_eq!(s, &[1, 2]);
+    /// ```
+    #[inline(always)]
+    pub fn emplace_slice<T>(&self) -> EmplaceSlice<'_, T, MIN_ALIGN> {
+        self.try_emplace_slice().unwrap_or_else(|_| oom())
+    }
 
-            let ptr = guard.finish();
-            let result = slice::from_raw_parts_mut(ptr.cast::<T>().as_ptr(), len);
-            debug_assert_eq!(Layout::for_value(result), layout);
-            Ok(result)
+    /// Try to allocate space for a `[T]` slice and return an
+    /// [`EmplaceSlice`] builder.
+    ///
+    /// ## Errors
+    ///
+    /// Returns an error if the initial allocation fails.
+    #[inline(always)]
+    pub fn try_emplace_slice<T>(&self) -> Result<EmplaceSlice<'_, T, MIN_ALIGN>, AllocErr> {
+        self.try_emplace_slice_with_capacity(1)
+    }
+
+    /// Allocate space for a `[T]` slice with the given `capacity` and return
+    /// an [`EmplaceSlice`] builder.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if the allocation fails.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let data = [1u8, 2, 3];
+    /// let s = bump.emplace_slice_with_capacity(data.len()).copy_slice(&data);
+    /// assert_eq!(s, &[1, 2, 3]);
+    /// ```
+    #[inline(always)]
+    pub fn emplace_slice_with_capacity<T>(
+        &self,
+        capacity: usize,
+    ) -> EmplaceSlice<'_, T, MIN_ALIGN> {
+        self.try_emplace_slice_with_capacity(capacity)
+            .unwrap_or_else(|_| oom())
+    }
+
+    /// Try to allocate space for a `[T]` slice with the given `capacity` and
+    /// return an [`EmplaceSlice`] builder.
+    ///
+    /// ## Errors
+    ///
+    /// Returns an error if the allocation fails.
+    #[inline(always)]
+    pub fn try_emplace_slice_with_capacity<T>(
+        &self,
+        capacity: usize,
+    ) -> Result<EmplaceSlice<'_, T, MIN_ALIGN>, AllocErr> {
+        if mem::size_of::<T>() == 0 {
+            let layout = Layout::new::<T>();
+            let guard = self.try_alloc_layout_with_rewind(layout)?;
+            return Ok(unsafe { EmplaceSlice::new(guard, usize::MAX) });
         }
+        let layout = Layout::array::<T>(capacity).map_err(|_| AllocErr)?;
+        let guard = self.try_alloc_layout_with_rewind(layout)?;
+        Ok(unsafe { EmplaceSlice::new(guard, capacity) })
     }
 
-    /// Allocates a new slice of size `len` into this `Bump` and returns an
-    /// exclusive reference to the copy.
-    ///
-    /// All elements of the slice are initialized to `value`.
+    /// Allocate space for a string and return an [`EmplaceStr`] builder.
     ///
     /// ## Panics
     ///
-    /// Panics if reserving space for the slice fails.
+    /// Panics if the initial allocation fails.
     ///
     /// ## Example
     ///
     /// ```
     /// let bump = bumpalo::Bump::new();
-    /// let x = bump.alloc_slice_fill_copy(5, 42);
-    /// assert_eq!(x, &[42, 42, 42, 42, 42]);
+    /// let mut place = bump.emplace_str();
+    /// place.push_str("hello");
+    /// let s = place.into_str();
+    /// assert_eq!(s, "hello");
     /// ```
     #[inline(always)]
-    pub fn alloc_slice_fill_copy<T: Copy>(&self, len: usize, value: T) -> &mut [T] {
-        self.alloc_slice_fill_with(len, |_| value)
+    pub fn emplace_str(&self) -> EmplaceStr<'_, MIN_ALIGN> {
+        self.try_emplace_str().unwrap_or_else(|_| oom())
     }
 
-    /// Same as `alloc_slice_fill_copy` but does not panic on failure.
+    /// Try to allocate space for a string and return an [`EmplaceStr`]
+    /// builder.
+    ///
+    /// ## Errors
+    ///
+    /// Returns an error if the initial allocation fails.
     #[inline(always)]
-    pub fn try_alloc_slice_fill_copy<T: Copy>(
+    pub fn try_emplace_str(&self) -> Result<EmplaceStr<'_, MIN_ALIGN>, AllocErr> {
+        let slice = self.try_emplace_slice::<u8>()?;
+        Ok(unsafe { EmplaceStr::new(slice) })
+    }
+
+    /// Allocate space for a string with the given byte `capacity` and return
+    /// an [`EmplaceStr`] builder.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if the allocation fails.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let s = bump.emplace_str_with_capacity(5).write_str("hello");
+    /// assert_eq!(s, "hello");
+    /// ```
+    #[inline(always)]
+    pub fn emplace_str_with_capacity(&self, capacity: usize) -> EmplaceStr<'_, MIN_ALIGN> {
+        self.try_emplace_str_with_capacity(capacity)
+            .unwrap_or_else(|_| oom())
+    }
+
+    /// Try to allocate space for a string with the given byte `capacity` and
+    /// return an [`EmplaceStr`] builder.
+    ///
+    /// ## Errors
+    ///
+    /// Returns an error if the allocation fails.
+    #[inline(always)]
+    pub fn try_emplace_str_with_capacity(
         &self,
-        len: usize,
-        value: T,
-    ) -> Result<&mut [T], AllocErr> {
-        self.try_alloc_slice_fill_with(len, |_| value)
-    }
-
-    /// Allocates a new slice of size `len` slice into this `Bump` and return an
-    /// exclusive reference to the copy.
-    ///
-    /// All elements of the slice are initialized to `value.clone()`.
-    ///
-    /// ## Panics
-    ///
-    /// Panics if reserving space for the slice fails.
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// let bump = bumpalo::Bump::new();
-    /// let s: String = "Hello Bump!".to_string();
-    /// let x: &[String] = bump.alloc_slice_fill_clone(2, &s);
-    /// assert_eq!(x.len(), 2);
-    /// assert_eq!(&x[0], &s);
-    /// assert_eq!(&x[1], &s);
-    /// ```
-    #[inline(always)]
-    pub fn alloc_slice_fill_clone<T: Clone>(&self, len: usize, value: &T) -> &mut [T] {
-        self.alloc_slice_fill_with(len, |_| value.clone())
-    }
-
-    /// Like `alloc_slice_fill_clone` but does not panic on failure.
-    #[inline(always)]
-    pub fn try_alloc_slice_fill_clone<T: Clone>(
-        &self,
-        len: usize,
-        value: &T,
-    ) -> Result<&mut [T], AllocErr> {
-        self.try_alloc_slice_fill_with(len, |_| value.clone())
-    }
-
-    /// Allocates a new slice of size `len` slice into this `Bump` and return an
-    /// exclusive reference to the copy.
-    ///
-    /// The elements are initialized using the supplied iterator.
-    ///
-    /// ## Panics
-    ///
-    /// Panics if reserving space for the slice fails, or if the supplied
-    /// iterator returns fewer elements than it promised.
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// let bump = bumpalo::Bump::new();
-    /// let x: &[i32] = bump.alloc_slice_fill_iter([2, 3, 5].iter().cloned().map(|i| i * i));
-    /// assert_eq!(x, [4, 9, 25]);
-    /// ```
-    #[inline(always)]
-    pub fn alloc_slice_fill_iter<T, I>(&self, iter: I) -> &mut [T]
-    where
-        I: IntoIterator<Item = T>,
-        I::IntoIter: ExactSizeIterator,
-    {
-        let mut iter = iter.into_iter();
-        self.alloc_slice_fill_with(iter.len(), |_| {
-            iter.next().expect("Iterator supplied too few elements")
-        })
-    }
-
-    /// Allocates a new slice of size `len` slice into this `Bump` and return an
-    /// exclusive reference to the copy, failing if the iterator returns an Err.
-    ///
-    /// The elements are initialized using the supplied iterator.
-    ///
-    /// ## Panics
-    ///
-    /// Panics if reserving space for the slice fails, or if the supplied
-    /// iterator returns fewer elements than it promised.
-    ///
-    /// ## Examples
-    ///
-    /// ```
-    /// let bump = bumpalo::Bump::new();
-    /// let x: Result<&mut [i32], ()> = bump.alloc_slice_try_fill_iter(
-    ///    [2, 3, 5].iter().cloned().map(|i| Ok(i * i))
-    /// );
-    /// assert_eq!(x, Ok(bump.alloc_slice_copy(&[4, 9, 25])));
-    /// ```
-    ///
-    /// ```
-    /// let bump = bumpalo::Bump::new();
-    /// let x: Result<&mut [i32], ()> = bump.alloc_slice_try_fill_iter(
-    ///    [Ok(2), Err(()), Ok(5)].iter().cloned()
-    /// );
-    /// assert_eq!(x, Err(()));
-    /// ```
-    #[inline(always)]
-    pub fn alloc_slice_try_fill_iter<T, I, E>(&self, iter: I) -> Result<&mut [T], E>
-    where
-        I: IntoIterator<Item = Result<T, E>>,
-        I::IntoIter: ExactSizeIterator,
-    {
-        let mut iter = iter.into_iter();
-        self.alloc_slice_try_fill_with(iter.len(), |_| {
-            iter.next().expect("Iterator supplied too few elements")
-        })
-    }
-
-    /// Allocates a new slice of size `iter.len()` slice into this `Bump` and return an
-    /// exclusive reference to the copy. Does not panic on failure.
-    ///
-    /// The elements are initialized using the supplied iterator.
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// let bump = bumpalo::Bump::new();
-    /// let x: &[i32] = bump.try_alloc_slice_fill_iter([2, 3, 5]
-    ///     .iter().cloned().map(|i| i * i)).unwrap();
-    /// assert_eq!(x, [4, 9, 25]);
-    /// ```
-    #[inline(always)]
-    pub fn try_alloc_slice_fill_iter<T, I>(&self, iter: I) -> Result<&mut [T], AllocErr>
-    where
-        I: IntoIterator<Item = T>,
-        I::IntoIter: ExactSizeIterator,
-    {
-        let mut iter = iter.into_iter();
-        self.try_alloc_slice_fill_with(iter.len(), |_| {
-            iter.next().expect("Iterator supplied too few elements")
-        })
-    }
-
-    /// Allocates a new slice of size `len` slice into this `Bump` and return an
-    /// exclusive reference to the copy.
-    ///
-    /// All elements of the slice are initialized to [`T::default()`].
-    ///
-    /// [`T::default()`]: https://doc.rust-lang.org/std/default/trait.Default.html#tymethod.default
-    ///
-    /// ## Panics
-    ///
-    /// Panics if reserving space for the slice fails.
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// let bump = bumpalo::Bump::new();
-    /// let x = bump.alloc_slice_fill_default::<u32>(5);
-    /// assert_eq!(x, &[0, 0, 0, 0, 0]);
-    /// ```
-    #[inline(always)]
-    pub fn alloc_slice_fill_default<T: Default>(&self, len: usize) -> &mut [T] {
-        self.alloc_slice_fill_with(len, |_| T::default())
-    }
-
-    /// Like `alloc_slice_fill_default` but does not panic on failure.
-    #[inline(always)]
-    pub fn try_alloc_slice_fill_default<T: Default>(
-        &self,
-        len: usize,
-    ) -> Result<&mut [T], AllocErr> {
-        self.try_alloc_slice_fill_with(len, |_| T::default())
+        capacity: usize,
+    ) -> Result<EmplaceStr<'_, MIN_ALIGN>, AllocErr> {
+        let slice = self.try_emplace_slice_with_capacity::<u8>(capacity)?;
+        Ok(unsafe { EmplaceStr::new(slice) })
     }
 
     /// Allocate space for an object with the given `Layout`.
@@ -2074,12 +1513,6 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
         let rewind_footer_ptr = unsafe { rewind_footer.as_ref().ptr.get() };
         let ptr = self.try_alloc_layout(layout)?;
         Ok(unsafe { RewindGuard::new(self, ptr, rewind_footer, rewind_footer_ptr) })
-    }
-
-    #[inline]
-    fn alloc_layout_with_rewind(&self, layout: Layout) -> RewindGuard<'_, MIN_ALIGN> {
-        self.try_alloc_layout_with_rewind(layout)
-            .unwrap_or_else(|_| oom())
     }
 
     /// Returns an iterator over each chunk of allocated memory that
@@ -2445,6 +1878,8 @@ pub struct ChunkRawIter<'a, const MIN_ALIGN: usize = 1> {
 
 impl<const MIN_ALIGN: usize> Iterator for ChunkRawIter<'_, MIN_ALIGN> {
     type Item = (*mut u8, usize);
+
+    #[inline]
     fn next(&mut self) -> Option<(*mut u8, usize)> {
         unsafe {
             let foot = self.footer.as_ref();
@@ -2578,6 +2013,608 @@ unsafe impl<'a, const MIN_ALIGN: usize> Allocator for &'a Bump<MIN_ALIGN> {
         }
 
         Ok(new_ptr)
+    }
+}
+
+// Allocation convenience methods implemented in terms of the emplacement API.
+impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
+    /// Allocate an object in this `Bump` and return an exclusive reference to
+    /// it.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for `T` fails.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.alloc("hello");
+    /// assert_eq!(*x, "hello");
+    /// ```
+    #[inline(always)]
+    pub fn alloc<T>(&self, val: T) -> &mut T {
+        self.emplace().write(val)
+    }
+
+    /// Try to allocate an object in this `Bump` and return an exclusive
+    /// reference to it.
+    ///
+    /// ## Errors
+    ///
+    /// Errors if reserving space for `T` fails.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.try_alloc("hello");
+    /// assert_eq!(x, Ok(&mut "hello"));
+    /// ```
+    #[inline(always)]
+    pub fn try_alloc<T>(&self, val: T) -> Result<&mut T, AllocErr> {
+        Ok(self.try_emplace()?.write(val))
+    }
+
+    /// Pre-allocate space for an object in this `Bump`, initializes it using
+    /// the closure, then returns an exclusive reference to it.
+    ///
+    /// This is equivalent to `bump.emplace().write(f())`. See [Allocation
+    /// Helper Methods](#allocation-helper-methods) for more details.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for `T` fails.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.alloc_with(|| "hello");
+    /// assert_eq!(*x, "hello");
+    /// ```
+    #[inline(always)]
+    pub fn alloc_with<F, T>(&self, f: F) -> &mut T
+    where
+        F: FnOnce() -> T,
+    {
+        self.emplace().write(f())
+    }
+
+    /// Tries to pre-allocate space for an object in this `Bump`, initializes
+    /// it using the closure, then returns an exclusive reference to it.
+    ///
+    /// This is equivalent to `bump.try_emplace()?.write(f())`. See [Allocation
+    /// Helper Methods](#allocation-helper-methods) for more details.
+    ///
+    /// ## Errors
+    ///
+    /// Errors if reserving space for `T` fails.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.try_alloc_with(|| "hello");
+    /// assert_eq!(x, Ok(&mut "hello"));
+    /// ```
+    #[inline(always)]
+    pub fn try_alloc_with<F, T>(&self, f: F) -> Result<&mut T, AllocErr>
+    where
+        F: FnOnce() -> T,
+    {
+        Ok(self.try_emplace()?.write(f()))
+    }
+
+    /// Pre-allocates space for a [`Result`] in this `Bump`, initializes it using
+    /// the closure, then returns an exclusive reference to its `T` if [`Ok`].
+    ///
+    /// This is roughly equivalent to `bump.emplace().write(f()?)`. See
+    /// [Allocation Helper Methods](#allocation-helper-methods) for more
+    /// details.
+    ///
+    /// [`Result`]: https://doc.rust-lang.org/std/result/enum.Result.html
+    /// [`Ok`]: https://doc.rust-lang.org/std/result/enum.Result.html#variant.Ok
+    ///
+    /// ## Errors
+    ///
+    /// If the allocation succeeds but `f` fails, that error is forwarded by value.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for `Result<T, E>` fails.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.alloc_try_with(|| Ok("hello"))?;
+    /// assert_eq!(*x, "hello");
+    /// # Result::<_, ()>::Ok(())
+    /// ```
+    #[inline(always)]
+    pub fn alloc_try_with<F, T, E>(&self, f: F) -> Result<&mut T, E>
+    where
+        F: FnOnce() -> Result<T, E>,
+    {
+        match self.try_alloc_try_with(f) {
+            Ok(x) => Ok(x),
+            Err(AllocOrInitError::Init(e)) => Err(e),
+            Err(AllocOrInitError::Alloc(_)) => oom(),
+        }
+    }
+
+    /// Tries to pre-allocates space for a [`Result`] in this `Bump`,
+    /// initializes it using the closure, then returns an exclusive reference
+    /// to its `T` if all [`Ok`].
+    ///
+    /// This is roughly equivalent to `bump.try_emplace()?.write(f()?)`. See
+    /// [Allocation Helper Methods](#allocation-helper-methods) for more
+    /// details.
+    ///
+    /// [`Result`]: https://doc.rust-lang.org/std/result/enum.Result.html
+    /// [`Ok`]: https://doc.rust-lang.org/std/result/enum.Result.html#variant.Ok
+    ///
+    /// ## Errors
+    ///
+    /// Errors with the [`AllocOrInitError::Alloc`](`AllocOrInitError::Alloc`)
+    /// error variant when reserving space for `Result<T, E>` fails.
+    ///
+    /// If the allocation succeeds but `f` fails, that error is forwarded by
+    /// value inside the [`AllocOrInitError::Init`](`AllocOrInitError::Init`)
+    /// error variant.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.try_alloc_try_with(|| Ok("hello"))?;
+    /// assert_eq!(*x, "hello");
+    /// # Result::<_, bumpalo::AllocOrInitError<()>>::Ok(())
+    /// ```
+    #[inline(always)]
+    pub fn try_alloc_try_with<F, T, E>(&self, f: F) -> Result<&mut T, AllocOrInitError<E>>
+    where
+        F: FnOnce() -> Result<T, E>,
+    {
+        let rewind_footer = self.current_chunk_footer.get();
+        let rewind_footer_ptr = unsafe { rewind_footer.as_ref() }.ptr.get();
+        let ptr = self.try_alloc_with(f)?;
+        let ptr = NonNull::from(ptr).cast::<u8>();
+        let guard = unsafe { RewindGuard::new(self, ptr, rewind_footer, rewind_footer_ptr) };
+        match unsafe { guard.ptr.cast::<Result<T, E>>().as_mut() } {
+            Ok(t) => {
+                guard.finish();
+                Ok(unsafe { NonNull::from(t).as_mut() })
+            }
+            Err(e) => unsafe {
+                // Read the error out and then let the guard rewind.
+                Err(AllocOrInitError::Init(NonNull::from(e).as_ptr().read()))
+            },
+        }
+    }
+
+    /// `Copy` a slice into this `Bump` and return an exclusive reference to
+    /// the copy.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for the slice fails.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.alloc_slice_copy(&[1, 2, 3]);
+    /// assert_eq!(x, &[1, 2, 3]);
+    /// ```
+    #[inline(always)]
+    pub fn alloc_slice_copy<T>(&self, src: &[T]) -> &mut [T]
+    where
+        T: Copy,
+    {
+        self.emplace_slice_with_capacity(src.len()).copy_slice(src)
+    }
+
+    /// Like `alloc_slice_copy`, but does not panic in case of allocation failure.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.try_alloc_slice_copy(&[1, 2, 3]);
+    /// assert_eq!(x, Ok(&mut[1, 2, 3] as &mut [_]));
+    ///
+    ///
+    /// let bump = bumpalo::Bump::new();
+    /// bump.set_allocation_limit(Some(4));
+    /// let x = bump.try_alloc_slice_copy(&[1, 2, 3, 4, 5, 6]);
+    /// assert_eq!(x, Err(bumpalo::AllocErr)); // too big
+    /// ```
+    #[inline(always)]
+    pub fn try_alloc_slice_copy<T>(&self, src: &[T]) -> Result<&mut [T], AllocErr>
+    where
+        T: Copy,
+    {
+        self.try_emplace_slice_with_capacity(src.len())?
+            .try_copy_slice(src)
+    }
+
+    /// `Clone` a slice into this `Bump` and return an exclusive reference to
+    /// the clone. Prefer [`alloc_slice_copy`](#method.alloc_slice_copy) if `T` is `Copy`.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for the slice fails.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// #[derive(Clone, Debug, Eq, PartialEq)]
+    /// struct Sheep {
+    ///     name: String,
+    /// }
+    ///
+    /// let originals = [
+    ///     Sheep { name: "Alice".into() },
+    ///     Sheep { name: "Bob".into() },
+    ///     Sheep { name: "Cathy".into() },
+    /// ];
+    ///
+    /// let bump = bumpalo::Bump::new();
+    /// let clones = bump.alloc_slice_clone(&originals);
+    /// assert_eq!(originals, clones);
+    /// ```
+    #[inline(always)]
+    pub fn alloc_slice_clone<T>(&self, src: &[T]) -> &mut [T]
+    where
+        T: Clone,
+    {
+        self.emplace_slice_with_capacity(src.len()).clone_slice(src)
+    }
+
+    /// Like `alloc_slice_clone` but does not panic on failure.
+    #[inline(always)]
+    pub fn try_alloc_slice_clone<T>(&self, src: &[T]) -> Result<&mut [T], AllocErr>
+    where
+        T: Clone,
+    {
+        self.try_emplace_slice_with_capacity(src.len())?
+            .try_clone_slice(src)
+    }
+
+    /// `Copy` a string slice into this `Bump` and return an exclusive reference to it.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for the string fails.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let hello = bump.alloc_str("hello world");
+    /// assert_eq!("hello world", hello);
+    /// ```
+    #[inline(always)]
+    pub fn alloc_str(&self, src: &str) -> &mut str {
+        self.emplace_str_with_capacity(src.len()).write_str(src)
+    }
+
+    /// Same as `alloc_str` but does not panic on failure.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let hello = bump.try_alloc_str("hello world").unwrap();
+    /// assert_eq!("hello world", hello);
+    ///
+    ///
+    /// let bump = bumpalo::Bump::new();
+    /// bump.set_allocation_limit(Some(5));
+    /// let hello = bump.try_alloc_str("hello world");
+    /// assert_eq!(Err(bumpalo::AllocErr), hello);
+    /// ```
+    #[inline(always)]
+    pub fn try_alloc_str(&self, src: &str) -> Result<&mut str, AllocErr> {
+        self.try_emplace_str_with_capacity(src.len())?
+            .try_write_str(src)
+    }
+
+    /// Allocates a new slice of size `len` into this `Bump` and returns an
+    /// exclusive reference to the copy.
+    ///
+    /// The elements of the slice are initialized using the supplied closure.
+    /// The closure argument is the position in the slice.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for the slice fails.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.alloc_slice_fill_with(5, |i| 5 * (i + 1));
+    /// assert_eq!(x, &[5, 10, 15, 20, 25]);
+    /// ```
+    #[inline(always)]
+    pub fn alloc_slice_fill_with<T, F>(&self, len: usize, mut f: F) -> &mut [T]
+    where
+        F: FnMut(usize) -> T,
+    {
+        let mut place = self.emplace_slice_with_capacity(len);
+        for i in 0..len {
+            place.push(f(i));
+        }
+        place.into_mut_slice()
+    }
+
+    /// Allocates a new slice of size `len` into this `Bump` and returns an
+    /// exclusive reference to the copy, failing if the closure return an Err.
+    ///
+    /// The elements of the slice are initialized using the supplied closure.
+    /// The closure argument is the position in the slice.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for the slice fails.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x: Result<&mut [usize], ()> = bump.alloc_slice_try_fill_with(5, |i| Ok(5 * i));
+    /// assert_eq!(x, Ok(bump.alloc_slice_copy(&[0, 5, 10, 15, 20])));
+    /// ```
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x: Result<&mut [usize], ()> = bump.alloc_slice_try_fill_with(
+    ///    5,
+    ///    |n| if n == 2 { Err(()) } else { Ok(n) }
+    /// );
+    /// assert_eq!(x, Err(()));
+    /// ```
+    #[inline(always)]
+    pub fn alloc_slice_try_fill_with<T, F, E>(&self, len: usize, mut f: F) -> Result<&mut [T], E>
+    where
+        F: FnMut(usize) -> Result<T, E>,
+    {
+        let mut place = self.emplace_slice_with_capacity(len);
+        for i in 0..len {
+            match f(i) {
+                Ok(val) => place.push(val),
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(place.into_mut_slice())
+    }
+
+    /// Allocates a new slice of size `len` into this `Bump` and returns an
+    /// exclusive reference to the copy.
+    ///
+    /// The elements of the slice are initialized using the supplied closure.
+    /// The closure argument is the position in the slice.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.try_alloc_slice_fill_with(5, |i| 5 * (i + 1));
+    /// assert_eq!(x, Ok(&mut[5usize, 10, 15, 20, 25] as &mut [_]));
+    ///
+    ///
+    /// let bump = bumpalo::Bump::new();
+    /// bump.set_allocation_limit(Some(4));
+    /// let x = bump.try_alloc_slice_fill_with(10, |i| 5 * (i + 1));
+    /// assert_eq!(x, Err(bumpalo::AllocErr));
+    /// ```
+    #[inline(always)]
+    pub fn try_alloc_slice_fill_with<T, F>(
+        &self,
+        len: usize,
+        mut f: F,
+    ) -> Result<&mut [T], AllocErr>
+    where
+        F: FnMut(usize) -> T,
+    {
+        let mut place = self.try_emplace_slice_with_capacity(len)?;
+        for i in 0..len {
+            place.push(f(i));
+        }
+        Ok(place.into_mut_slice())
+    }
+
+    /// Allocates a new slice of size `len` into this `Bump` and returns an
+    /// exclusive reference to the copy.
+    ///
+    /// All elements of the slice are initialized to `value`.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for the slice fails.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.alloc_slice_fill_copy(5, 42);
+    /// assert_eq!(x, &[42, 42, 42, 42, 42]);
+    /// ```
+    #[inline(always)]
+    pub fn alloc_slice_fill_copy<T: Copy>(&self, len: usize, value: T) -> &mut [T] {
+        self.alloc_slice_fill_with(len, |_| value)
+    }
+
+    /// Same as `alloc_slice_fill_copy` but does not panic on failure.
+    #[inline(always)]
+    pub fn try_alloc_slice_fill_copy<T: Copy>(
+        &self,
+        len: usize,
+        value: T,
+    ) -> Result<&mut [T], AllocErr> {
+        self.try_alloc_slice_fill_with(len, |_| value)
+    }
+
+    /// Allocates a new slice of size `len` slice into this `Bump` and return an
+    /// exclusive reference to the copy.
+    ///
+    /// All elements of the slice are initialized to `value.clone()`.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for the slice fails.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let s: String = "Hello Bump!".to_string();
+    /// let x: &[String] = bump.alloc_slice_fill_clone(2, &s);
+    /// assert_eq!(x.len(), 2);
+    /// assert_eq!(&x[0], &s);
+    /// assert_eq!(&x[1], &s);
+    /// ```
+    #[inline(always)]
+    pub fn alloc_slice_fill_clone<T: Clone>(&self, len: usize, value: &T) -> &mut [T] {
+        self.alloc_slice_fill_with(len, |_| value.clone())
+    }
+
+    /// Like `alloc_slice_fill_clone` but does not panic on failure.
+    #[inline(always)]
+    pub fn try_alloc_slice_fill_clone<T: Clone>(
+        &self,
+        len: usize,
+        value: &T,
+    ) -> Result<&mut [T], AllocErr> {
+        self.try_alloc_slice_fill_with(len, |_| value.clone())
+    }
+
+    /// Allocates a new slice of size `len` slice into this `Bump` and return an
+    /// exclusive reference to the copy.
+    ///
+    /// The elements are initialized using the supplied iterator.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for the slice fails, or if the supplied
+    /// iterator returns fewer elements than it promised.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x: &[i32] = bump.alloc_slice_fill_iter([2, 3, 5].iter().cloned().map(|i| i * i));
+    /// assert_eq!(x, [4, 9, 25]);
+    /// ```
+    #[inline(always)]
+    pub fn alloc_slice_fill_iter<T, I>(&self, iter: I) -> &mut [T]
+    where
+        I: IntoIterator<Item = T>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        let mut iter = iter.into_iter();
+        self.alloc_slice_fill_with(iter.len(), |_| {
+            iter.next().expect("Iterator supplied too few elements")
+        })
+    }
+
+    /// Allocates a new slice of size `len` slice into this `Bump` and return an
+    /// exclusive reference to the copy, failing if the iterator returns an Err.
+    ///
+    /// The elements are initialized using the supplied iterator.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for the slice fails, or if the supplied
+    /// iterator returns fewer elements than it promised.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x: Result<&mut [i32], ()> = bump.alloc_slice_try_fill_iter(
+    ///    [2, 3, 5].iter().cloned().map(|i| Ok(i * i))
+    /// );
+    /// assert_eq!(x, Ok(bump.alloc_slice_copy(&[4, 9, 25])));
+    /// ```
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x: Result<&mut [i32], ()> = bump.alloc_slice_try_fill_iter(
+    ///    [Ok(2), Err(()), Ok(5)].iter().cloned()
+    /// );
+    /// assert_eq!(x, Err(()));
+    /// ```
+    #[inline(always)]
+    pub fn alloc_slice_try_fill_iter<T, I, E>(&self, iter: I) -> Result<&mut [T], E>
+    where
+        I: IntoIterator<Item = Result<T, E>>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        let mut iter = iter.into_iter();
+        self.alloc_slice_try_fill_with(iter.len(), |_| {
+            iter.next().expect("Iterator supplied too few elements")
+        })
+    }
+
+    /// Allocates a new slice of size `iter.len()` slice into this `Bump` and return an
+    /// exclusive reference to the copy. Does not panic on failure.
+    ///
+    /// The elements are initialized using the supplied iterator.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x: &[i32] = bump.try_alloc_slice_fill_iter([2, 3, 5]
+    ///     .iter().cloned().map(|i| i * i)).unwrap();
+    /// assert_eq!(x, [4, 9, 25]);
+    /// ```
+    #[inline(always)]
+    pub fn try_alloc_slice_fill_iter<T, I>(&self, iter: I) -> Result<&mut [T], AllocErr>
+    where
+        I: IntoIterator<Item = T>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        let mut iter = iter.into_iter();
+        self.try_alloc_slice_fill_with(iter.len(), |_| {
+            iter.next().expect("Iterator supplied too few elements")
+        })
+    }
+
+    /// Allocates a new slice of size `len` slice into this `Bump` and return an
+    /// exclusive reference to the copy.
+    ///
+    /// All elements of the slice are initialized to [`T::default()`].
+    ///
+    /// [`T::default()`]: https://doc.rust-lang.org/std/default/trait.Default.html#tymethod.default
+    ///
+    /// ## Panics
+    ///
+    /// Panics if reserving space for the slice fails.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    /// let x = bump.alloc_slice_fill_default::<u32>(5);
+    /// assert_eq!(x, &[0, 0, 0, 0, 0]);
+    /// ```
+    #[inline(always)]
+    pub fn alloc_slice_fill_default<T: Default>(&self, len: usize) -> &mut [T] {
+        self.alloc_slice_fill_with(len, |_| T::default())
+    }
+
+    /// Like `alloc_slice_fill_default` but does not panic on failure.
+    #[inline(always)]
+    pub fn try_alloc_slice_fill_default<T: Default>(
+        &self,
+        len: usize,
+    ) -> Result<&mut [T], AllocErr> {
+        self.try_alloc_slice_fill_with(len, |_| T::default())
     }
 }
 
