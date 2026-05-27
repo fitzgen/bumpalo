@@ -194,14 +194,6 @@ std only trait implementations for some collections:
 
 * `std::io::Write` for `Vec<'bump, u8>`
 
-### Thread support
-
-The `Bump` is `!Sync`, which makes it hard to use in certain situations around
-threads ‒ for example in `rayon`.
-
-The [`bumpalo-herd`](https://crates.io/crates/bumpalo-herd) crate provides a
-pool of `Bump` allocators for use in such situations.
-
 ### Nightly Rust `allocator_api` Support
 
 The unstable, nightly-only Rust `allocator_api` feature defines an [`Allocator`]
