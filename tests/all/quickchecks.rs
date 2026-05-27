@@ -1,8 +1,12 @@
 use crate::quickcheck;
 use ::quickcheck::{Arbitrary, Gen};
 use bumpalo::Bump;
+#[cfg(feature = "allocator_api")]
+use std::alloc::Allocator;
 use std::alloc::Layout;
 use std::mem;
+#[cfg(feature = "allocator_api")]
+use std::ptr::NonNull;
 
 const MAX_ALLOCATOR_OPS: usize = 64;
 const MAX_ALLOCATOR_SLICE_LEN: usize = 96;
@@ -267,6 +271,41 @@ fn assert_layout_allocations_match(bump: &mut Bump, live_allocs: &[(usize, usize
         for other in &live_allocs[i + 1..] {
             assert!(!overlap(*alloc, *other));
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+#[cfg(feature = "allocator_api")]
+enum RawCheckpointOp {
+    TakeCheckpoint,
+    ResetToCheckpoint,
+    DropCheckpoint,
+    Alloc(u8, usize),
+    Realloc(u8, usize),
+    Dealloc,
+}
+
+#[cfg(feature = "allocator_api")]
+impl RawCheckpointOp {
+    const MAX_SIZE: usize = 100;
+}
+
+#[cfg(feature = "allocator_api")]
+impl Arbitrary for RawCheckpointOp {
+    fn arbitrary(g: &mut Gen) -> Self {
+        match u8::arbitrary(g) % 6 {
+            0 => RawCheckpointOp::TakeCheckpoint,
+            1 => RawCheckpointOp::ResetToCheckpoint,
+            2 => RawCheckpointOp::DropCheckpoint,
+            3 => RawCheckpointOp::Alloc(u8::arbitrary(g), usize::arbitrary(g) % Self::MAX_SIZE),
+            4 => RawCheckpointOp::Realloc(u8::arbitrary(g), usize::arbitrary(g) % Self::MAX_SIZE),
+            5 => RawCheckpointOp::Dealloc,
+            _ => unreachable!(),
+        }
+    }
+
+    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
+        Box::new(std::iter::empty())
     }
 }
 
@@ -609,5 +648,106 @@ quickcheck! {
 
         // Confirm that the two approaches to extending a Vec resulted in the same data
         assert_eq!(vec1, vec2);
+    }
+
+    #[cfg(feature = "allocator_api")]
+    fn stress_raw_checkpoints(ops: Vec<RawCheckpointOp>) -> () {
+        eprintln!("======================================================================================");
+        use bumpalo::RawCheckpoint;
+
+        const MAX_OPS: usize = 100;
+
+        let bump = Bump::new();
+        let alloc = &bump;
+
+        // The set of live allocations, as well as their expected fill byte and
+        // layout. Can be set to `None` to mark an allocation as no-longer live.
+        let mut live_allocs: Vec<Option<(u8, NonNull<u8>, Layout)>> = Vec::new();
+
+        // The raw checkpoints we've made as well as the index that
+        // `live_allocs` needs to be truncated to upon checkpoint reset to
+        // remove allocations that aren't live anymore after the reset.
+        let mut checkpoints: Vec<(usize, RawCheckpoint)> = Vec::new();
+
+        for op in ops.into_iter().take(MAX_OPS) {
+            eprintln!("evaluating op: {op:?}");
+
+            match op {
+                RawCheckpointOp::TakeCheckpoint => {
+                    checkpoints.push((live_allocs.len(), bump.raw_checkpoint()));
+                }
+                RawCheckpointOp::ResetToCheckpoint => {
+                    if let Some((n, checkpoint)) = checkpoints.pop() {
+                        unsafe {
+                            bump.reset_to_raw_checkpoint(checkpoint);
+                        }
+                        live_allocs.truncate(n);
+                    }
+                }
+                RawCheckpointOp::DropCheckpoint => {
+                    checkpoints.pop();
+                }
+                RawCheckpointOp::Alloc(byte, size) => {
+                    let layout = Layout::from_size_align(size, 1).unwrap();
+                    if let Ok(ptr) = alloc.allocate(layout) {
+                        let ptr = ptr.cast::<u8>();
+                        unsafe {
+                            std::ptr::write_bytes(ptr.as_ptr(), byte, size);
+                        }
+                        live_allocs.push(Some((byte, ptr, layout)));
+                    }
+                }
+                RawCheckpointOp::Realloc(byte, new_size) => {
+                    if let Some(&Some((_, ptr, old_layout))) = live_allocs.last() {
+                        if new_size == 0 {
+                            continue;
+                        }
+                        let new_layout =
+                            Layout::from_size_align(new_size, old_layout.align()).unwrap();
+                        let result = if new_size <= old_layout.size() {
+                            unsafe { alloc.shrink(ptr, old_layout, new_layout) }
+                        } else {
+                            unsafe { alloc.grow(ptr, old_layout, new_layout) }
+                        };
+                        if let Ok(new_ptr) = result {
+                            let new_ptr = new_ptr.cast::<u8>();
+                            unsafe {
+                                std::ptr::write_bytes(new_ptr.as_ptr(), byte, new_size);
+                            }
+                            // Model reallocations as freeing the old pointer
+                            // and allocating a new one, as that is what they do
+                            // in the limit.
+                            *live_allocs.last_mut().unwrap() = None;
+                            live_allocs.push(Some((byte, new_ptr, new_layout)));
+                        }
+                    }
+                }
+                RawCheckpointOp::Dealloc => {
+                    if let Some(&Some((_, ptr, layout))) = live_allocs.last() {
+                        *live_allocs.last_mut().unwrap() = None;
+                        unsafe {
+                            alloc.deallocate(ptr, layout);
+                        }
+                    }
+                }
+            }
+
+            // Verify that all of the live allocations have their expected
+            // values (and weren't overwritten by any bogus allocation or heap
+            // corruption).
+            for &entry in &live_allocs {
+                if let Some((byte, ptr, layout)) = entry {
+                    let slice =
+                        unsafe { std::slice::from_raw_parts(ptr.as_ptr(), layout.size()) };
+                    for (i, &b) in slice.iter().enumerate() {
+                        assert_eq!(
+                            b, byte,
+                            "byte mismatch at offset {i} in allocation of size {}",
+                            layout.size()
+                        );
+                    }
+                }
+            }
+        }
     }
 }
