@@ -20,4 +20,7 @@ mod vec;
 #[cfg(feature = "serde")]
 mod serde;
 
+#[cfg(feature = "zerocopy")]
+mod zerocopy_integration;
+
 fn main() {}
