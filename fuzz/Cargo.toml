@@ -1,0 +1,24 @@
+[package]
+name = "bumpalo-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = { version = "0.4" }
+arbitrary = { version = "1", features = ["derive"] }
+paste = "1"
+rand = "0.10"
+
+[dependencies.bumpalo]
+path = ".."
+
+[[bin]]
+name = "fuzz_bump"
+path = "fuzz_targets/fuzz_bump.rs"
+test = false
+doc = false
+bench = false
