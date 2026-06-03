@@ -16,7 +16,7 @@ mod alloc;
 mod emplace;
 
 use core::cell::Cell;
-use core::cmp::{Ordering, max};
+use core::cmp::{max, Ordering};
 use core::fmt::Display;
 use core::iter;
 use core::marker::PhantomData;
@@ -24,7 +24,7 @@ use core::mem;
 use core::ptr::{self, NonNull};
 use core::slice;
 use core::str;
-use core_alloc::alloc::{Layout, alloc, dealloc};
+use core_alloc::alloc::{alloc, dealloc, Layout};
 
 #[cfg(feature = "allocator_api")]
 use core_alloc::alloc::{AllocError, Allocator};
