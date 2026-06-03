@@ -2,6 +2,7 @@ use bumpalo::Bump;
 use std::alloc::Layout;
 use std::fmt::Debug;
 use std::mem;
+use std::ptr::NonNull;
 use std::usize;
 
 #[test]
@@ -251,4 +252,139 @@ fn test_debug_assert_data_le_bump_ptr_pr_313() {
 fn test_debug_assert_ptr_align_pr_313() {
     let bump = Bump::<16>::with_min_align();
     bump.alloc(0u8);
+}
+
+#[test]
+#[cfg(feature = "allocator_api")]
+fn checkpoint_after_shrink_realloc() {
+    use std::alloc::Allocator;
+
+    let bump = Bump::new();
+    let alloc: &Bump = &bump;
+
+    // Make a large allocation.
+    let layout_big = Layout::from_size_align(256, 1).unwrap();
+    let ptr = alloc.allocate(layout_big).unwrap();
+    unsafe {
+        std::ptr::write_bytes(ptr.as_ptr().cast::<u8>(), 0xAA, 256);
+    }
+
+    // Take a checkpoint *after* the large allocation.
+    let cp = bump.raw_checkpoint();
+
+    // Shrink the allocation. This backs up the bump pointer past the
+    // checkpoint's saved position.
+    let layout_small = Layout::from_size_align(16, 1).unwrap();
+    let shrunk = unsafe { alloc.shrink(ptr.cast(), layout_big, layout_small) }.unwrap();
+
+    // Fill the shrunk region with a different byte pattern.
+    unsafe {
+        std::ptr::write_bytes(shrunk.as_ptr().cast::<u8>(), 0xBB, 16);
+    }
+
+    // Reset to the checkpoint. The bump pointer should not move backward
+    // past its current position (which is already "above" the checkpoint).
+    unsafe {
+        bump.reset_to_raw_checkpoint(cp);
+    }
+
+    // Allocate again after the reset. This must not overlap with the
+    // still-live shrunk allocation, nor trigger UB.
+    let after = bump.alloc(42u8);
+    assert_eq!(*after, 42);
+}
+
+#[test]
+fn emplace_drop_after_intervening_alloc() {
+    let bump = Bump::new();
+
+    // Create an emplace that reserves space but don't finalize it.
+    let place = bump.emplace::<u64>();
+
+    // Make an intervening allocation.
+    let x = bump.alloc(0x12345678u64);
+
+    // Drop the emplace without finalizing. The inner `RewindGuard` fires but
+    // its pointer is not the most recent allocation, so it cannot rewind
+    // `bump`.
+    drop(place);
+
+    // The intervening allocation must still be valid.
+    assert_eq!(*x, 0x12345678);
+}
+
+#[test]
+#[cfg(feature = "allocator_api")]
+fn emplace_drop_after_intervening_realloc() {
+    use std::alloc::Allocator;
+
+    let bump = Bump::new();
+    let alloc: &Bump = &bump;
+
+    // Make an initial allocation that we'll grow later.
+    let layout_small = Layout::from_size_align(8, 8).unwrap();
+    let ptr = alloc.allocate(layout_small).unwrap();
+    unsafe {
+        std::ptr::write_bytes(ptr.as_ptr().cast::<u8>(), 0xAA, 8);
+    }
+
+    // Create an emplace that reserves space but don't finalize it.
+    let place = bump.emplace::<u64>();
+
+    // Grow the earlier allocation. This makes a new allocation in the bump, so
+    // the `RewindGuard`'s pointer is not the last allocation anymore.
+    let layout_big = Layout::from_size_align(64, 8).unwrap();
+    let grown = unsafe { alloc.grow(ptr.cast(), layout_small, layout_big) }.unwrap();
+    unsafe {
+        std::ptr::write_bytes(grown.as_ptr().cast::<u8>().offset(8), 0xBB, 64 - 8);
+    }
+
+    // Drop the emplace without finalizing. The inner `RewindGuard` fires but
+    // its pointer is not the most recent allocation, so it cannot rewind
+    // `bump`.
+    drop(place);
+
+    // The grown allocation must still be valid: first 8 bytes are 0xAA, rest
+    // are 0xBB.
+    let slice = unsafe { std::slice::from_raw_parts(grown.as_ptr().cast::<u8>(), 8) };
+    assert!(slice.iter().all(|&b| b == 0xAA));
+    let slice =
+        unsafe { std::slice::from_raw_parts(grown.as_ptr().cast::<u8>().offset(8), 64 - 8) };
+    assert!(slice.iter().all(|&b| b == 0xBB));
+}
+
+#[test]
+fn emplace_drop_after_intervening_chunk_alloc() {
+    let mut bump = Bump::with_capacity(64);
+
+    let initial_chunks = bump.iter_allocated_chunks().count();
+
+    let place = bump.emplace::<u64>();
+
+    // Allocate `usize`s until the bump spills into a new chunk. Store raw
+    // pointers so we don't hold a `&bump` borrow across the `drop(place)` and
+    // `iter_allocated_chunks` calls below.
+    let count = 256usize;
+    let mut ptrs = vec![];
+    for i in 0..count {
+        let r: &mut usize = bump.alloc(i);
+        let p: NonNull<usize> = NonNull::from(r);
+        ptrs.push(p);
+    }
+
+    // Drop the emplace without finalizing. The inner `RewindGuard` fires but
+    // its pointer is not the most recent allocation, so it cannot rewind
+    // `bump`.
+    drop(place);
+
+    assert!(
+        bump.iter_allocated_chunks().count() > initial_chunks,
+        "should have allocated at least one new chunk"
+    );
+
+    // Our allocated values across multiple chunks should still be correct, and
+    // not invalidated.
+    for (i, &p) in ptrs.iter().enumerate() {
+        assert_eq!(unsafe { *p.as_ref() }, i);
+    }
 }

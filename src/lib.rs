@@ -16,7 +16,7 @@ mod alloc;
 mod emplace;
 
 use core::cell::Cell;
-use core::cmp::Ordering;
+use core::cmp::{max, Ordering};
 use core::fmt::Display;
 use core::iter;
 use core::marker::PhantomData;
@@ -70,11 +70,8 @@ struct RewindGuard<'a, const MIN_ALIGN: usize> {
     /// The pointer we are guarding.
     ptr: NonNull<u8>,
 
-    /// The `ChunkFooter` we are rewinding to.
-    rewind_footer: NonNull<ChunkFooter>,
-
-    /// The bump pointer within that `ChunkFooter` we are rewinding to.
-    rewind_footer_ptr: NonNull<u8>,
+    /// The checkpoint to rewind to on drop.
+    checkpoint: RawCheckpoint,
 
     /// Whether the guard is active, and should rewind on drop.
     active: bool,
@@ -85,27 +82,16 @@ impl<'a, const MIN_ALIGN: usize> RewindGuard<'a, MIN_ALIGN> {
     ///
     /// * `ptr` must be the most-recent allocation in `bump`
     ///
-    /// * `ptr` must have been allocated with the given `layout`.
-    ///
-    /// * `rewind_footer` must be the `bump`'s chunk footer pointer just before
-    ///   `ptr`'s allocation.
-    ///
-    /// * `rewind_footer_ptr` must be the `bump`'s chunk footer's bump pointer
-    ///   just before `ptr`'s allocation.
+    /// * `checkpoint` must have been taken from `bump` just before `ptr`'s
+    ///   allocation.
     ///
     /// Ownership of `ptr` is moved into this guard, and it must not be used
     /// again except through this guard.
-    unsafe fn new(
-        bump: &'a Bump<MIN_ALIGN>,
-        ptr: NonNull<u8>,
-        rewind_footer: NonNull<ChunkFooter>,
-        rewind_footer_ptr: NonNull<u8>,
-    ) -> Self {
+    unsafe fn new(bump: &'a Bump<MIN_ALIGN>, ptr: NonNull<u8>, checkpoint: RawCheckpoint) -> Self {
         Self {
             bump,
             ptr,
-            rewind_footer,
-            rewind_footer_ptr,
+            checkpoint,
             active: true,
         }
     }
@@ -123,41 +109,8 @@ impl<const MIN_ALIGN: usize> Drop for RewindGuard<'_, MIN_ALIGN> {
             return;
         }
 
-        // When our pointer was the last allocation in the bump, we can reclaim
-        // its space. In fact, sometimes we can do even better than simply
-        // calling `dealloc`: we can reclaim any alignment padding we might have
-        // added (which `dealloc` cannot do) if we didn't allocate a new chunk
-        // for this result.
         unsafe {
-            let current_footer = self.bump.current_chunk_footer.get();
-            if current_footer == self.rewind_footer {
-                // It's still the same chunk, so rewind the bump pointer to its
-                // original value (reclaiming any alignment padding we may have
-                // added).
-                current_footer.as_ref().ptr.set(self.rewind_footer_ptr);
-            } else {
-                // We allocated a new chunk for this pointer.
-                //
-                // We know our pointer is the only allocation in this chunk:
-                // `self.ptr` was the most-recent allocation in `self.bump`
-                // (guaranteed by `RewindGuard::new` callers) and if control reaches
-                // here then it is also the last allocation in `self.bump`, and
-                // therefore it is the only allocation in this chunk.
-                //
-                // Because this is the only allocation in this chunk, we can reset
-                // the chunk's bump pointer to the start of the chunk.
-                let bump_ptr =
-                    round_mut_ptr_down_to(current_footer.cast::<u8>().as_ptr(), MIN_ALIGN);
-                debug_assert_eq!(bump_ptr as usize % MIN_ALIGN, 0);
-                let data = current_footer.as_ref().data;
-                let bump_ptr = NonNull::new_unchecked(bump_ptr);
-                debug_assert!(
-                    data <= bump_ptr,
-                    "bump pointer {bump_ptr:#p} should still be greater than or equal to the \
-                 start of the bump chunk {data:#p}"
-                );
-                current_footer.as_ref().ptr.set(bump_ptr);
-            }
+            self.bump.reset_to_raw_checkpoint(self.checkpoint);
         }
     }
 }
@@ -465,6 +418,15 @@ impl ChunkFooter {
     }
 }
 
+/// A raw checkpoint created by `Bump::raw_checkpoint`.
+///
+/// This can be used to perform a partial reset of a `Bump`
+#[derive(Debug, Clone, Copy)]
+pub struct RawCheckpoint {
+    chunk: NonNull<ChunkFooter>,
+    ptr: NonNull<u8>,
+}
+
 impl<const MIN_ALIGN: usize> Default for Bump<MIN_ALIGN> {
     fn default() -> Self {
         Self::with_min_align()
@@ -479,11 +441,26 @@ impl<const MIN_ALIGN: usize> Drop for Bump<MIN_ALIGN> {
     }
 }
 
+/// Deallocate the full chunk list.
 #[inline]
-unsafe fn dealloc_chunk_list(mut footer: NonNull<ChunkFooter>) {
-    while !footer.as_ref().is_empty() {
-        let f = footer;
-        footer = f.as_ref().prev.get();
+unsafe fn dealloc_chunk_list(chunk: NonNull<ChunkFooter>) {
+    dealloc_chunks_until_stop(chunk, EMPTY_CHUNK.get());
+}
+
+/// Keep deallocating chunks until we get to `stop_chunk`, which is retained.
+#[inline]
+unsafe fn dealloc_chunks_until_stop(
+    mut current_chunk: NonNull<ChunkFooter>,
+    stop_chunk: NonNull<ChunkFooter>,
+) {
+    while current_chunk != stop_chunk {
+        assert!(
+            !current_chunk.as_ref().is_empty(),
+            "Hit the empty chunk while deallocating chunks! This indicates an invalid \
+             `Bump::reset_to_raw_checkpoint` invocation."
+        );
+        let f = current_chunk;
+        current_chunk = f.as_ref().prev.get();
         dealloc(f.as_ref().data.as_ptr(), f.as_ref().layout);
     }
 }
@@ -1098,6 +1075,157 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
         }
     }
 
+    /// Get a raw checkpoint that snapshots the current state of this `Bump`.
+    ///
+    /// See [`Bump::reset_to_raw_checkpoint`] for details.
+    pub fn raw_checkpoint(&self) -> RawCheckpoint {
+        let chunk = self.current_chunk_footer.get();
+        let chunk_ref = unsafe { chunk.as_ref() };
+
+        RawCheckpoint {
+            chunk,
+            ptr: chunk_ref.ptr.get(),
+        }
+    }
+
+    /// Reset this allocator to the state captured in a `RawCheckpoint`.
+    ///
+    /// This will deallocate any new chunks that have been allocated since the
+    /// checkpoint was taken, and reset the bump pointer to its position at the
+    /// time the checkpoint was taken.
+    ///
+    /// # Safety
+    ///
+    /// The checkpoint must be associated with this `Bump`.
+    ///
+    /// Resetting to this checkpoint invalidates all other checkpoints taken
+    /// after this one. Calling the `Bump::reset` method invalidates all
+    /// checkpoints that have been created. This checkpoint must not have been
+    /// invalidated.
+    ///
+    /// All allocations made after this checkpoint's creation are invalidated
+    /// and logically deallocated. Accessing them again is a use-after-free
+    /// bug. NB: This includes allocations originally made before this
+    /// checkpoint's creation, but then reallocated, grown, or shrunken after
+    /// this checkpoint's creation.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let bump = bumpalo::Bump::new();
+    ///
+    /// let before_a = bump.raw_checkpoint();
+    /// let a = bump.alloc('a');
+    ///
+    /// assert_eq!(*a, 'a'); // okay
+    ///
+    /// {
+    ///     let before_b = bump.raw_checkpoint();
+    ///     let b = bump.alloc('b');
+    ///
+    ///     assert_eq!(*a, 'a'); // okay
+    ///     assert_eq!(*b, 'b'); // okay
+    ///
+    ///     {
+    ///         let before_c = bump.raw_checkpoint();
+    ///         let c = bump.alloc('c');
+    ///
+    ///         assert_eq!(*a, 'a'); // okay
+    ///         assert_eq!(*b, 'b'); // okay
+    ///         assert_eq!(*c, 'c'); // okay
+    ///
+    ///         unsafe {
+    ///             bump.reset_to_raw_checkpoint(before_c);
+    ///         }
+    ///
+    ///         assert_eq!(*a, 'a'); // still okay
+    ///         assert_eq!(*b, 'b'); // still okay
+    ///
+    ///         // Not okay! This would be a use-after-free bug!
+    ///         //
+    ///         //     assert_eq!(*c, 'c');
+    ///     }
+    ///
+    ///     unsafe {
+    ///         bump.reset_to_raw_checkpoint(before_b);
+    ///     }
+    ///
+    ///     assert_eq!(*a, 'a'); // still okay
+    ///
+    ///     // Not okay! This would be a use-after-free bug!
+    ///     //
+    ///     //     assert_eq!(*b, 'b');
+    /// }
+    ///
+    /// unsafe {
+    ///     bump.reset_to_raw_checkpoint(before_a);
+    /// }
+    ///
+    /// // Not okay! This would be a use-after-free bug!
+    /// //
+    /// //     assert_eq!(*a, 'a');
+    /// ```
+    pub unsafe fn reset_to_raw_checkpoint(&self, checkpoint: RawCheckpoint) {
+        let mut cur_chunk = self.current_chunk_footer.get();
+
+        if checkpoint.chunk == cur_chunk {
+            debug_assert!(
+                is_pointer_aligned_to(checkpoint.ptr.as_ptr(), MIN_ALIGN),
+                "checkpoint ptr is not aligned to bump's alignment"
+            );
+
+            // Checkpoint pointer must be aligned and within the current chunk
+            // bounds.
+            debug_assert!(
+                checkpoint.ptr.as_ptr() >= cur_chunk.as_ref().data.as_ptr(),
+                "checkpoint pointer {:#p} should be greater than or equal to chunk pointer {:#p}",
+                checkpoint.ptr.as_ptr(),
+                cur_chunk.as_ref().data.as_ptr()
+            );
+            debug_assert!(
+                checkpoint.ptr.as_ptr() <= cur_chunk.cast::<u8>().as_ptr(),
+                "checkpoint pointer {:#p} should be less than or equal to footer pointer {:#p}",
+                checkpoint.ptr.as_ptr(),
+                self.current_chunk_footer.get().cast::<u8>().as_ptr()
+            );
+            debug_assert!(
+                is_pointer_aligned_to(checkpoint.ptr.as_ptr(), MIN_ALIGN),
+                "checkpoint pointer {:#p} should be aligned to the minimum alignment of {MIN_ALIGN:#x}",
+                checkpoint.ptr.as_ptr()
+            );
+
+            // Re-alloc edge case means that the current pointer may be greater
+            // than that of the checkpoint, so reset to whichever one is
+            // greater.
+            cur_chunk
+                .as_ref()
+                .ptr
+                .set(max(checkpoint.ptr, cur_chunk.as_ref().ptr.get()));
+        } else {
+            // Replace the previous chunk pointer with the one in the
+            // checkpoint.
+            let prev_chunk = cur_chunk.as_ref().prev.replace(checkpoint.chunk);
+
+            // Drop any chunks that were in between the checkpoint and current
+            // chunk.
+            dealloc_chunks_until_stop(prev_chunk, checkpoint.chunk);
+
+            // Reset the current chunk to the start.
+            cur_chunk.as_ref().ptr.set(cur_chunk.cast());
+
+            // Recalculate allocated bytes for the current chunk in case there
+            // were chunks freed.
+            cur_chunk.as_mut().allocated_bytes = cur_chunk.as_ref().layout.size() - FOOTER_SIZE
+                + cur_chunk.as_mut().prev.get().as_ref().allocated_bytes;
+
+            debug_assert_eq!(
+                self.current_chunk_footer.get().as_ref().ptr.get(),
+                self.current_chunk_footer.get().cast(),
+                "current chunk should be reset to the start of it's allocation"
+            );
+        }
+    }
+
     /// Allocate space for a `T` and return an [`Emplace`] builder.
     ///
     /// The returned builder lets you initialize the value in place. If
@@ -1509,10 +1637,9 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
         &self,
         layout: Layout,
     ) -> Result<RewindGuard<'_, MIN_ALIGN>, AllocErr> {
-        let rewind_footer = self.current_chunk_footer.get();
-        let rewind_footer_ptr = unsafe { rewind_footer.as_ref().ptr.get() };
+        let checkpoint = self.raw_checkpoint();
         let ptr = self.try_alloc_layout(layout)?;
-        Ok(unsafe { RewindGuard::new(self, ptr, rewind_footer, rewind_footer_ptr) })
+        Ok(unsafe { RewindGuard::new(self, ptr, checkpoint) })
     }
 
     /// Returns an iterator over each chunk of allocated memory that
@@ -2177,11 +2304,10 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     where
         F: FnOnce() -> Result<T, E>,
     {
-        let rewind_footer = self.current_chunk_footer.get();
-        let rewind_footer_ptr = unsafe { rewind_footer.as_ref() }.ptr.get();
+        let checkpoint = self.raw_checkpoint();
         let ptr = self.try_alloc_with(f)?;
         let ptr = NonNull::from(ptr).cast::<u8>();
-        let guard = unsafe { RewindGuard::new(self, ptr, rewind_footer, rewind_footer_ptr) };
+        let guard = unsafe { RewindGuard::new(self, ptr, checkpoint) };
         match unsafe { guard.ptr.cast::<Result<T, E>>().as_mut() } {
             Ok(t) => {
                 guard.finish();
