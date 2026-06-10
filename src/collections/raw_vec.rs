@@ -17,10 +17,15 @@ use core::cmp;
 use core::mem;
 use core::ptr::{self, NonNull};
 
-use crate::alloc::{handle_alloc_error, Alloc, Layout, UnstableLayoutMethods};
+use crate::alloc::{handle_alloc_error, Alloc, Layout};
 use crate::collections::CollectionAllocErr;
 use crate::collections::CollectionAllocErr::*;
-// use boxed::Box;
+
+#[allow(
+    unused_imports,
+    reason = "fill out missing methods on some Rust versions"
+)]
+use crate::alloc::UnstableLayoutMethods;
 
 /// A low-level utility for more ergonomically allocating, reallocating, and deallocating
 /// a buffer of memory on the heap without having to worry about all the corner cases
