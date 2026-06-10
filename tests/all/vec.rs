@@ -1,8 +1,9 @@
 #![cfg(feature = "collections")]
 
-use crate::quickcheck;
-use ::quickcheck::{Arbitrary, Gen};
+use crate::check::check;
 use bumpalo::{collections::Vec, vec, Bump};
+use mutatis::check::CheckResult;
+use mutatis::Mutate;
 use std::cell::{Cell, RefCell};
 use std::ops::Deref;
 
@@ -10,7 +11,7 @@ const MAX_VEC_OPS: usize = 64;
 const MAX_VEC_SLICE_LEN: usize = 16;
 const MAX_VEC_LEN: usize = 48;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Mutate)]
 enum VecOp {
     Push(u8),
     Pop,
@@ -20,47 +21,8 @@ enum VecOp {
     ShrinkToFit,
 }
 
-impl Arbitrary for VecOp {
-    fn arbitrary(g: &mut Gen) -> Self {
-        match u8::arbitrary(g) % 6 {
-            0 => VecOp::Push(u8::arbitrary(g)),
-            1 => VecOp::Pop,
-            2 => {
-                let mut values = std::vec::Vec::<u8>::arbitrary(g);
-                values.truncate(MAX_VEC_SLICE_LEN);
-                VecOp::Extend(values)
-            }
-            3 => VecOp::Resize {
-                len: u8::arbitrary(g),
-                fill: u8::arbitrary(g),
-            },
-            4 => VecOp::Truncate(u8::arbitrary(g)),
-            _ => VecOp::ShrinkToFit,
-        }
-    }
-
-    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
-        Box::new(std::iter::empty())
-    }
-}
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default, Mutate)]
 struct VecProgram(std::vec::Vec<VecOp>);
-
-impl Arbitrary for VecProgram {
-    fn arbitrary(g: &mut Gen) -> Self {
-        let mut ops = std::vec::Vec::<VecOp>::arbitrary(g);
-        ops.truncate(MAX_VEC_OPS);
-        VecProgram(ops)
-    }
-
-    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
-        Box::new(self.0.shrink().map(|mut ops| {
-            ops.truncate(MAX_VEC_OPS);
-            VecProgram(ops)
-        }))
-    }
-}
 
 fn apply_vec_op(actual: &mut Vec<'_, u8>, expected: &mut std::vec::Vec<u8>, op: &VecOp) {
     match op {
@@ -72,6 +34,7 @@ fn apply_vec_op(actual: &mut Vec<'_, u8>, expected: &mut std::vec::Vec<u8>, op: 
             assert_eq!(actual.pop(), expected.pop());
         }
         VecOp::Extend(values) => {
+            let values = &values[..values.len().min(MAX_VEC_SLICE_LEN)];
             actual.extend_from_slice_copy(values);
             expected.extend_from_slice(values);
         }
@@ -151,16 +114,24 @@ fn test_into_bump_slice_mut() {
     assert_eq!(slice, [3, 2, 1]);
 }
 
-quickcheck! {
-    fn vec_resizes_causing_reallocs(sizes: std::vec::Vec<usize>) -> () {
+#[test]
+fn vec_resizes_causing_reallocs() -> CheckResult<std::vec::Vec<usize>> {
+    check().run(|sizes: &std::vec::Vec<usize>| -> Result<(), String> {
         // Exercise `realloc` by doing a bunch of `resize`s followed by
         // `shrink_to_fit`s.
 
         let b = Bump::new();
         let mut v = bumpalo::vec![in &b];
 
-        for len in sizes {
+        for len in sizes.iter().copied() {
             // We don't want to get too big and OOM.
+            //
+            // Under MIRI we cap this much lower because its so much slower, but
+            // this smaller cap still comfortably exceeds the chunk size and
+            // exercises cross-chunk reallocation.
+            #[cfg(miri)]
+            const MAX_SIZE: usize = 1 << 11;
+            #[cfg(not(miri))]
             const MAX_SIZE: usize = 1 << 15;
 
             // But we want allocations to get fairly close to the minimum chunk
@@ -174,19 +145,24 @@ quickcheck! {
             v.resize(len, 0);
             v.shrink_to_fit();
         }
-    }
+        Ok(())
+    })
+}
 
-    fn vec_operation_sequences_match_std(program: VecProgram) -> () {
+#[test]
+fn vec_operation_sequences_match_std() -> CheckResult<VecProgram> {
+    check().run(|program: &VecProgram| -> Result<(), String> {
         let bump = Bump::new();
         let mut actual = Vec::new_in(&bump);
         let mut expected = std::vec::Vec::new();
 
-        for op in &program.0 {
+        for op in program.0.iter().take(MAX_VEC_OPS) {
             apply_vec_op(&mut actual, &mut expected, op);
         }
 
         assert_eq!(actual.into_bump_slice(), expected.as_slice());
-    }
+        Ok(())
+    })
 }
 
 #[test]

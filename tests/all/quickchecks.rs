@@ -1,6 +1,7 @@
-use crate::quickcheck;
-use ::quickcheck::{Arbitrary, Gen};
+use crate::check::check;
 use bumpalo::Bump;
+use mutatis::check::CheckResult;
+use mutatis::Mutate;
 #[cfg(feature = "allocator_api")]
 use std::alloc::Allocator;
 use std::alloc::Layout;
@@ -13,29 +14,12 @@ const MAX_ALLOCATOR_SLICE_LEN: usize = 96;
 const MAX_ALLOCATOR_LIMIT: usize = 4096;
 const MAX_LAYOUT_ALLOC_SIZE: usize = 256;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Mutate)]
 struct BigValue {
     data: [u64; 32],
 }
 
-impl BigValue {
-    fn new(x: u64) -> BigValue {
-        BigValue {
-            data: [
-                x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x, x,
-                x, x, x, x,
-            ],
-        }
-    }
-}
-
-impl Arbitrary for BigValue {
-    fn arbitrary(g: &mut Gen) -> BigValue {
-        BigValue::new(u64::arbitrary(g))
-    }
-}
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug, Mutate)]
 enum Elems<T, U> {
     OneT(T),
     TwoT(T, T),
@@ -43,70 +27,6 @@ enum Elems<T, U> {
     OneU(U),
     TwoU(U, U),
     FourU(U, U, U, U),
-}
-
-impl<T, U> Arbitrary for Elems<T, U>
-where
-    T: Arbitrary + Clone,
-    U: Arbitrary + Clone,
-{
-    fn arbitrary(g: &mut Gen) -> Elems<T, U> {
-        let x: u8 = u8::arbitrary(g);
-        match x % 6 {
-            0 => Elems::OneT(T::arbitrary(g)),
-            1 => Elems::TwoT(T::arbitrary(g), T::arbitrary(g)),
-            2 => Elems::FourT(
-                T::arbitrary(g),
-                T::arbitrary(g),
-                T::arbitrary(g),
-                T::arbitrary(g),
-            ),
-            3 => Elems::OneU(U::arbitrary(g)),
-            4 => Elems::TwoU(U::arbitrary(g), U::arbitrary(g)),
-            5 => Elems::FourU(
-                U::arbitrary(g),
-                U::arbitrary(g),
-                U::arbitrary(g),
-                U::arbitrary(g),
-            ),
-            _ => unreachable!(),
-        }
-    }
-
-    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
-        match self {
-            Elems::OneT(_) => Box::new(vec![].into_iter()),
-            Elems::TwoT(a, b) => {
-                Box::new(vec![Elems::OneT(a.clone()), Elems::OneT(b.clone())].into_iter())
-            }
-            Elems::FourT(a, b, c, d) => Box::new(
-                vec![
-                    Elems::TwoT(a.clone(), b.clone()),
-                    Elems::TwoT(a.clone(), c.clone()),
-                    Elems::TwoT(a.clone(), d.clone()),
-                    Elems::TwoT(b.clone(), c.clone()),
-                    Elems::TwoT(b.clone(), d.clone()),
-                    Elems::TwoT(c.clone(), d.clone()),
-                ]
-                .into_iter(),
-            ),
-            Elems::OneU(_) => Box::new(vec![].into_iter()),
-            Elems::TwoU(a, b) => {
-                Box::new(vec![Elems::OneU(a.clone()), Elems::OneU(b.clone())].into_iter())
-            }
-            Elems::FourU(a, b, c, d) => Box::new(
-                vec![
-                    Elems::TwoU(a.clone(), b.clone()),
-                    Elems::TwoU(a.clone(), c.clone()),
-                    Elems::TwoU(a.clone(), d.clone()),
-                    Elems::TwoU(b.clone(), c.clone()),
-                    Elems::TwoU(b.clone(), d.clone()),
-                    Elems::TwoU(c.clone(), d.clone()),
-                ]
-                .into_iter(),
-            ),
-        }
-    }
 }
 
 fn overlap((a1, a2): (usize, usize), (b1, b2): (usize, usize)) -> bool {
@@ -128,89 +48,25 @@ fn range<T>(t: &T) -> (usize, usize) {
     (start, end)
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Mutate)]
 enum AllocatorOp {
     Alloc { value: u8, len: u8 },
     Reset,
     SetLimit(Option<u16>),
 }
 
-impl Arbitrary for AllocatorOp {
-    fn arbitrary(g: &mut Gen) -> Self {
-        match u8::arbitrary(g) % 3 {
-            0 => AllocatorOp::Alloc {
-                value: u8::arbitrary(g),
-                len: u8::arbitrary(g),
-            },
-            1 => AllocatorOp::Reset,
-            _ => AllocatorOp::SetLimit(Option::<u16>::arbitrary(g)),
-        }
-    }
-
-    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
-        Box::new(std::iter::empty())
-    }
-}
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default, Mutate)]
 struct AllocatorProgram(Vec<AllocatorOp>);
 
-impl Arbitrary for AllocatorProgram {
-    fn arbitrary(g: &mut Gen) -> Self {
-        let mut ops = Vec::<AllocatorOp>::arbitrary(g);
-        ops.truncate(MAX_ALLOCATOR_OPS);
-        AllocatorProgram(ops)
-    }
-
-    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
-        Box::new(self.0.shrink().map(|mut ops| {
-            ops.truncate(MAX_ALLOCATOR_OPS);
-            AllocatorProgram(ops)
-        }))
-    }
-}
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Mutate)]
 enum LayoutAllocatorOp {
     Alloc { size: u16, align_log2: u8 },
     Reset,
     SetLimit(Option<u16>),
 }
 
-impl Arbitrary for LayoutAllocatorOp {
-    fn arbitrary(g: &mut Gen) -> Self {
-        match u8::arbitrary(g) % 3 {
-            0 => LayoutAllocatorOp::Alloc {
-                size: u16::arbitrary(g),
-                align_log2: u8::arbitrary(g),
-            },
-            1 => LayoutAllocatorOp::Reset,
-            _ => LayoutAllocatorOp::SetLimit(Option::<u16>::arbitrary(g)),
-        }
-    }
-
-    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
-        Box::new(std::iter::empty())
-    }
-}
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default, Mutate)]
 struct LayoutAllocatorProgram(Vec<LayoutAllocatorOp>);
-
-impl Arbitrary for LayoutAllocatorProgram {
-    fn arbitrary(g: &mut Gen) -> Self {
-        let mut ops = Vec::<LayoutAllocatorOp>::arbitrary(g);
-        ops.truncate(MAX_ALLOCATOR_OPS);
-        LayoutAllocatorProgram(ops)
-    }
-
-    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
-        Box::new(self.0.shrink().map(|mut ops| {
-            ops.truncate(MAX_ALLOCATOR_OPS);
-            LayoutAllocatorProgram(ops)
-        }))
-    }
-}
 
 fn arbitrary_small_layout(size: u16, align_log2: u8) -> Layout {
     let align = 1usize << (usize::from(align_log2) % 7);
@@ -274,7 +130,7 @@ fn assert_layout_allocations_match(bump: &mut Bump, live_allocs: &[(usize, usize
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug, Mutate)]
 #[cfg(feature = "allocator_api")]
 enum RawCheckpointOp {
     TakeCheckpoint,
@@ -290,44 +146,30 @@ impl RawCheckpointOp {
     const MAX_SIZE: usize = 100;
 }
 
-#[cfg(feature = "allocator_api")]
-impl Arbitrary for RawCheckpointOp {
-    fn arbitrary(g: &mut Gen) -> Self {
-        match u8::arbitrary(g) % 6 {
-            0 => RawCheckpointOp::TakeCheckpoint,
-            1 => RawCheckpointOp::ResetToCheckpoint,
-            2 => RawCheckpointOp::DropCheckpoint,
-            3 => RawCheckpointOp::Alloc(u8::arbitrary(g), usize::arbitrary(g) % Self::MAX_SIZE),
-            4 => RawCheckpointOp::Realloc(u8::arbitrary(g), usize::arbitrary(g) % Self::MAX_SIZE),
-            5 => RawCheckpointOp::Dealloc,
-            _ => unreachable!(),
-        }
-    }
-
-    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
-        Box::new(std::iter::empty())
-    }
-}
-
-quickcheck! {
-    fn can_allocate_big_values(values: Vec<BigValue>) -> () {
+#[test]
+fn can_allocate_big_values() -> CheckResult<Vec<BigValue>> {
+    check().run(|values: &Vec<BigValue>| -> Result<(), String> {
         let bump = Bump::new();
         let mut alloced = vec![];
 
-        for vals in values.iter().cloned() {
+        for vals in values.iter().copied() {
             alloced.push(bump.alloc(vals));
         }
 
-        for (vals, alloc) in values.iter().zip(alloced.into_iter()) {
-            assert_eq!(vals, alloc);
+        for (val, alloc) in values.iter().zip(alloced.into_iter()) {
+            assert_eq!(val, alloc);
         }
-    }
+        Ok(())
+    })
+}
 
-    fn big_allocations_never_overlap(values: Vec<BigValue>) -> () {
+#[test]
+fn big_allocations_never_overlap() -> CheckResult<Vec<BigValue>> {
+    check().run(|values: &Vec<BigValue>| -> Result<(), String> {
         let bump = Bump::new();
         let mut alloced = vec![];
 
-        for v in values {
+        for v in values.iter().copied() {
             let a = bump.alloc(v);
             let start = a as *const _ as usize;
             let end = unsafe { (a as *const BigValue).offset(1) as usize };
@@ -339,32 +181,24 @@ quickcheck! {
 
             alloced.push(range);
         }
-    }
+        Ok(())
+    })
+}
 
-    fn can_allocate_heterogeneous_things_and_they_dont_overlap(things: Vec<Elems<u8, u64>>) -> () {
+#[test]
+fn can_allocate_heterogeneous_things_and_they_dont_overlap() -> CheckResult<Vec<Elems<u8, u64>>> {
+    check().run(|things: &Vec<Elems<u8, u64>>| -> Result<(), String> {
         let bump = Bump::new();
         let mut ranges = vec![];
 
-        for t in things {
+        for t in things.iter().copied() {
             let r = match t {
-                Elems::OneT(a) => {
-                    range(bump.alloc(a))
-                },
-                Elems::TwoT(a, b) => {
-                    range(bump.alloc([a, b]))
-                },
-                Elems::FourT(a, b, c, d) => {
-                    range(bump.alloc([a, b, c, d]))
-                },
-                Elems::OneU(a) => {
-                    range(bump.alloc(a))
-                },
-                Elems::TwoU(a, b) => {
-                    range(bump.alloc([a, b]))
-                },
-                Elems::FourU(a, b, c, d) => {
-                    range(bump.alloc([a, b, c, d]))
-                },
+                Elems::OneT(a) => range(bump.alloc(a)),
+                Elems::TwoT(a, b) => range(bump.alloc([a, b])),
+                Elems::FourT(a, b, c, d) => range(bump.alloc([a, b, c, d])),
+                Elems::OneU(a) => range(bump.alloc(a)),
+                Elems::TwoU(a, b) => range(bump.alloc([a, b])),
+                Elems::FourU(a, b, c, d) => range(bump.alloc([a, b, c, d])),
             };
 
             for s in &ranges {
@@ -373,14 +207,20 @@ quickcheck! {
 
             ranges.push(r);
         }
-    }
+        Ok(())
+    })
+}
 
-
-    fn test_alignment_chunks(sizes: Vec<usize>) -> () {
+#[test]
+fn test_alignment_chunks() -> CheckResult<Vec<usize>> {
+    check().run(|sizes: &Vec<usize>| -> Result<(), String> {
         const SUPPORTED_ALIGNMENTS: &[usize] = &[1, 2, 4, 8, 16];
         for &alignment in SUPPORTED_ALIGNMENTS {
             let mut b = Bump::<1>::with_min_align_and_capacity(513);
-            let mut sizes = sizes.iter().map(|&size| (size % 10) * alignment).collect::<Vec<_>>();
+            let mut sizes = sizes
+                .iter()
+                .map(|&size| (size % 10) * alignment)
+                .collect::<Vec<_>>();
 
             for &size in &sizes {
                 let layout = std::alloc::Layout::from_size_align(size, alignment).unwrap();
@@ -398,38 +238,55 @@ quickcheck! {
             }
             assert_eq!(sizes.into_iter().sum::<usize>(), 0);
         }
-    }
+        Ok(())
+    })
+}
 
-    fn alloc_slices(allocs: Vec<(u8, usize)>) -> () {
+#[test]
+fn alloc_slices() -> CheckResult<Vec<(u8, usize)>> {
+    check().run(|allocs: &Vec<(u8, usize)>| -> Result<(), String> {
         let b = Bump::new();
         let mut allocated: Vec<(usize, usize)> = vec![];
-        for (val, len) in allocs {
+        for (val, len) in allocs.iter().copied() {
             let len = len % 100;
             let s = b.alloc_slice_fill_copy(len, val);
 
             assert_eq!(s.len(), len);
             assert!(s.iter().all(|v| v == &val));
 
-            let range = (s.as_ptr() as usize, unsafe { s.as_ptr().add(s.len()) } as usize);
+            let range = (s.as_ptr() as usize, unsafe { s.as_ptr().add(s.len()) }
+                as usize);
             for r in &allocated {
                 let no_overlap = range.1 <= r.0 || r.1 <= range.0;
                 assert!(no_overlap);
             }
             allocated.push(range);
         }
-    }
+        Ok(())
+    })
+}
 
-    fn alloc_strs(allocs: Vec<String>) -> () {
+#[test]
+fn alloc_strs() -> CheckResult<Vec<String>> {
+    check().run(|strings: &Vec<String>| -> Result<(), String> {
         let b = Bump::new();
-        let allocated: Vec<&str> = allocs.iter().map(|s| b.alloc_str(s) as &_).collect();
-        for (val, alloc) in allocs.into_iter().zip(allocated) {
-            assert_eq!(val, alloc);
+        let allocated: Vec<&str> = strings.iter().map(|s| b.alloc_str(s) as &_).collect();
+        for (expected, actual) in strings.iter().zip(allocated) {
+            assert_eq!(expected, actual);
         }
-    }
+        Ok(())
+    })
+}
 
-    fn all_allocations_in_a_chunk(values: Vec<BigValue>) -> () {
+#[test]
+fn all_allocations_in_a_chunk() -> CheckResult<Vec<BigValue>> {
+    check().run(|values: &Vec<BigValue>| -> Result<(), String> {
         let b = Bump::new();
-        let allocated: Vec<&BigValue> = values.into_iter().map(|val| b.alloc(val) as &_).collect();
+        let allocated: Vec<&BigValue> = values
+            .iter()
+            .copied()
+            .map(|val| b.alloc(val) as &_)
+            .collect();
         let chunks: Vec<(*mut u8, usize)> = unsafe { b.iter_allocated_chunks_raw() }.collect();
         for alloc in allocated.into_iter() {
             assert!(chunks.iter().any(|&(ptr, size)| {
@@ -438,11 +295,15 @@ quickcheck! {
                 contains(chunk, range(alloc))
             }));
         }
-    }
+        Ok(())
+    })
+}
 
-    fn chunks_and_raw_chunks_are_same(values: Vec<BigValue>) -> () {
+#[test]
+fn chunks_and_raw_chunks_are_same() -> CheckResult<Vec<BigValue>> {
+    check().run(|values: &Vec<BigValue>| -> Result<(), String> {
         let mut b = Bump::new();
-        for val in values {
+        for val in values.iter().copied() {
             b.alloc(val);
         }
         let raw_chunks: Vec<(_, _)> = unsafe { b.iter_allocated_chunks_raw() }.collect();
@@ -452,35 +313,46 @@ quickcheck! {
             assert_eq!(ptr as *const _, chunk.as_ptr() as *const _);
             assert_eq!(size, chunk.len());
         }
-    }
+        Ok(())
+    })
+}
 
-    // MIRI exits with failure when we try to allocate more memory than its
-    // sandbox has, rather than returning null from the allocation
-    // function. This test runs afoul of that bug.
-    #[cfg(not(miri))]
-    fn limit_is_never_exceeded(limit: usize) -> bool {
+#[test]
+fn limit_is_never_exceeded() -> CheckResult<usize> {
+    check().run(|limit: &usize| -> Result<(), String> {
+        // Keep the limit modestly sized so that the test stays fast.
+        let limit = *limit % (16 * 1024);
+
         let bump = Bump::new();
 
         bump.set_allocation_limit(Some(limit));
 
-        // The exact numbers here on how much to allocate are a bit murky but we
-        // have two main goals.
+        // The exact numbers here on how much to allocate are a bit murky
+        // but we have two main goals.
         //
-        // - Attempt to allocate over the allocation limit imposed
-        // - Allocate in increments small enough that at least a few allocations succeed
+        // 1. Attempt to allocate over the allocation limit imposed
+        // 2. Allocate in increments small enough that at least a few
+        //    allocations succeed
         let layout = std::alloc::Layout::array::<u8>(limit / 16).unwrap();
         for _ in 0..32 {
             let _ = bump.try_alloc_layout(layout);
         }
 
-        bump.allocated_bytes() <= limit
-    }
+        if bump.allocated_bytes() <= limit {
+            Ok(())
+        } else {
+            Err("property returned `false`".to_string())
+        }
+    })
+}
 
-    fn allocated_bytes_including_metadata(allocs: Vec<usize>) -> () {
+#[test]
+fn allocated_bytes_including_metadata() -> CheckResult<Vec<usize>> {
+    check().run(|allocs: &Vec<usize>| -> Result<(), String> {
         let b = Bump::new();
         let mut slice_bytes = 0;
         let allocs_len = allocs.len();
-        for len in allocs {
+        for len in allocs.iter().copied() {
             const MAX_LEN: usize = 512;
             let len = len % MAX_LEN;
             b.alloc_slice_fill_copy(len, 0);
@@ -496,14 +368,18 @@ quickcheck! {
                 assert!(allocated_bytes_including_metadata < allocated_bytes + allocs_len * 100);
             }
         }
-    }
+        Ok(())
+    })
+}
 
-    fn allocator_operation_sequences_preserve_chunk_views(program: AllocatorProgram) -> () {
+#[test]
+fn allocator_operation_sequences_preserve_chunk_views() -> CheckResult<AllocatorProgram> {
+    check().run(|program: &AllocatorProgram| -> Result<(), String> {
         let mut bump = Bump::new();
         let mut live_allocs = Vec::new();
         let mut current_limit = None;
 
-        for op in &program.0 {
+        for op in program.0.iter().take(MAX_ALLOCATOR_OPS) {
             match op {
                 AllocatorOp::Alloc { value, len } => {
                     let len = usize::from(*len) % MAX_ALLOCATOR_SLICE_LEN;
@@ -527,14 +403,19 @@ quickcheck! {
 
             assert_chunk_views_match(&mut bump, &live_allocs);
         }
-    }
+        Ok(())
+    })
+}
 
-    fn layout_allocation_sequences_preserve_alignment_and_containment(program: LayoutAllocatorProgram) -> () {
+#[test]
+fn layout_allocation_sequences_preserve_alignment_and_containment(
+) -> CheckResult<LayoutAllocatorProgram> {
+    check().run(|program: &LayoutAllocatorProgram| -> Result<(), String> {
         let mut bump = Bump::new();
         let mut live_allocs = Vec::new();
         let mut current_limit = None;
 
-        for op in &program.0 {
+        for op in program.0.iter().take(MAX_ALLOCATOR_OPS) {
             match *op {
                 LayoutAllocatorOp::Alloc { size, align_log2 } => {
                     let layout = arbitrary_small_layout(size, align_log2);
@@ -562,29 +443,38 @@ quickcheck! {
 
             assert_layout_allocations_match(&mut bump, &live_allocs);
         }
-    }
+        Ok(())
+    })
+}
 
-    #[cfg(feature = "collections")]
-    fn extending_from_slice(data1: Vec<usize>, data2: Vec<usize>) -> () {
+#[test]
+#[cfg(feature = "collections")]
+fn extending_from_slice() -> CheckResult<(Vec<usize>, Vec<usize>)> {
+    check().run(|input: &(Vec<usize>, Vec<usize>)| -> Result<(), String> {
+        let (data1, data2) = input;
         let bump = Bump::new();
 
         // Create a bumpalo Vec with the contents of `data1`
         let mut vec = bumpalo::collections::Vec::new_in(&bump);
-        vec.extend_from_slice_copy(&data1);
+        vec.extend_from_slice_copy(data1);
         assert_eq!(vec.as_slice(), data1);
 
         // Extend the Vec using the contents of `data2`
-        vec.extend_from_slice_copy(&data2);
+        vec.extend_from_slice_copy(data2);
         // Confirm that the Vec now has the expected number of items
         assert_eq!(vec.len(), data1.len() + data2.len());
         // Confirm that the beginning of the Vec matches `data1`'s elements
         assert_eq!(&vec[0..data1.len()], data1);
         // Confirm that the end of the Vec matches `data2`'s elements
         assert_eq!(&vec[data1.len()..], data2);
-    }
+        Ok(())
+    })
+}
 
-    #[cfg(feature = "collections")]
-    fn extending_from_slices(data: Vec<Vec<usize>>) -> () {
+#[test]
+#[cfg(feature = "collections")]
+fn extending_from_slices() -> CheckResult<Vec<Vec<usize>>> {
+    check().run(|data: &Vec<Vec<usize>>| -> Result<(), String> {
         let bump = Bump::new();
 
         // Convert the Vec<Vec<usize>> into a &[&[usize]]
@@ -595,7 +485,7 @@ quickcheck! {
         // fall back to empty slices for both.
         let (first_slice, remaining_slices) = match slices {
             [head, tail @ ..] => (*head, tail),
-            [] => (&[][..], &[][..])
+            [] => (&[][..], &[][..]),
         };
 
         // Create a bumpalo `Vec` and populate it with the contents of the first slice.
@@ -611,10 +501,14 @@ quickcheck! {
 
         let total_data: Vec<usize> = slices.iter().flat_map(|s| s.iter().copied()).collect();
         assert_eq!(vec.as_slice(), total_data.as_slice());
-    }
+        Ok(())
+    })
+}
 
-    #[cfg(feature = "collections")]
-    fn compare_extending_from_slice_and_from_slices(data: Vec<Vec<usize>>) -> () {
+#[test]
+#[cfg(feature = "collections")]
+fn compare_extending_from_slice_and_from_slices() -> CheckResult<Vec<Vec<usize>>> {
+    check().run(|data: &Vec<Vec<usize>>| -> Result<(), String> {
         let bump = Bump::new();
 
         // Convert the Vec<Vec<usize>> into a &[&[usize]]
@@ -625,7 +519,7 @@ quickcheck! {
         // fall back to empty slices for both.
         let (first_slice, remaining_slices) = match slices {
             [head, tail @ ..] => (*head, tail),
-            [] => (&[][..], &[][..])
+            [] => (&[][..], &[][..]),
         };
 
         // Create a bumpalo `Vec` and populate it with the contents of the first slice.
@@ -648,11 +542,14 @@ quickcheck! {
 
         // Confirm that the two approaches to extending a Vec resulted in the same data
         assert_eq!(vec1, vec2);
-    }
+        Ok(())
+    })
+}
 
-    #[cfg(feature = "allocator_api")]
-    fn stress_raw_checkpoints(ops: Vec<RawCheckpointOp>) -> () {
-        eprintln!("======================================================================================");
+#[test]
+#[cfg(feature = "allocator_api")]
+fn stress_raw_checkpoints() -> CheckResult<Vec<RawCheckpointOp>> {
+    check().run(|ops: &Vec<RawCheckpointOp>| -> Result<(), String> {
         use bumpalo::RawCheckpoint;
 
         const MAX_OPS: usize = 100;
@@ -669,9 +566,7 @@ quickcheck! {
         // remove allocations that aren't live anymore after the reset.
         let mut checkpoints: Vec<(usize, RawCheckpoint)> = Vec::new();
 
-        for op in ops.into_iter().take(MAX_OPS) {
-            eprintln!("evaluating op: {op:?}");
-
+        for op in ops.iter().copied().take(MAX_OPS) {
             match op {
                 RawCheckpointOp::TakeCheckpoint => {
                     checkpoints.push((live_allocs.len(), bump.raw_checkpoint()));
@@ -688,6 +583,7 @@ quickcheck! {
                     checkpoints.pop();
                 }
                 RawCheckpointOp::Alloc(byte, size) => {
+                    let size = size % RawCheckpointOp::MAX_SIZE;
                     let layout = Layout::from_size_align(size, 1).unwrap();
                     if let Ok(ptr) = alloc.allocate(layout) {
                         let ptr = ptr.cast::<u8>();
@@ -698,6 +594,7 @@ quickcheck! {
                     }
                 }
                 RawCheckpointOp::Realloc(byte, new_size) => {
+                    let new_size = new_size % RawCheckpointOp::MAX_SIZE;
                     if let Some(&Some((_, ptr, old_layout))) = live_allocs.last() {
                         if new_size == 0 {
                             continue;
@@ -737,11 +634,11 @@ quickcheck! {
             // corruption).
             for &entry in &live_allocs {
                 if let Some((byte, ptr, layout)) = entry {
-                    let slice =
-                        unsafe { std::slice::from_raw_parts(ptr.as_ptr(), layout.size()) };
+                    let slice = unsafe { std::slice::from_raw_parts(ptr.as_ptr(), layout.size()) };
                     for (i, &b) in slice.iter().enumerate() {
                         assert_eq!(
-                            b, byte,
+                            b,
+                            byte,
                             "byte mismatch at offset {i} in allocation of size {}",
                             layout.size()
                         );
@@ -749,5 +646,6 @@ quickcheck! {
                 }
             }
         }
-    }
+        Ok(())
+    })
 }

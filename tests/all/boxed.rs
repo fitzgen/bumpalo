@@ -1,12 +1,14 @@
 #![cfg(feature = "boxed")]
 #[cfg(feature = "collections")]
-use crate::quickcheck;
-#[cfg(feature = "collections")]
-use ::quickcheck::{Arbitrary, Gen};
+use crate::check::check;
 use bumpalo::boxed::Box;
 #[cfg(feature = "collections")]
 use bumpalo::collections::Vec as BumpVec;
 use bumpalo::Bump;
+#[cfg(feature = "collections")]
+use mutatis::check::CheckResult;
+#[cfg(feature = "collections")]
+use mutatis::Mutate;
 #[cfg(feature = "collections")]
 use std::cell::RefCell;
 #[cfg(feature = "collections")]
@@ -18,7 +20,7 @@ const MAX_BOX_OPS: usize = 64;
 const MAX_BOX_LEN: usize = 48;
 
 #[cfg(feature = "collections")]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Mutate)]
 enum BoxOp {
     Push(u8),
     Pop,
@@ -28,41 +30,8 @@ enum BoxOp {
 }
 
 #[cfg(feature = "collections")]
-impl Arbitrary for BoxOp {
-    fn arbitrary(g: &mut Gen) -> Self {
-        match u8::arbitrary(g) % 5 {
-            0 => BoxOp::Push(u8::arbitrary(g)),
-            1 => BoxOp::Pop,
-            2 => BoxOp::Remove(u8::arbitrary(g)),
-            3 => BoxOp::Truncate(u8::arbitrary(g)),
-            _ => BoxOp::Clear,
-        }
-    }
-
-    fn shrink(&self) -> ::std::boxed::Box<dyn Iterator<Item = Self>> {
-        ::std::boxed::Box::new(std::iter::empty())
-    }
-}
-
-#[cfg(feature = "collections")]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default, Mutate)]
 struct BoxProgram(std::vec::Vec<BoxOp>);
-
-#[cfg(feature = "collections")]
-impl Arbitrary for BoxProgram {
-    fn arbitrary(g: &mut Gen) -> Self {
-        let mut ops = std::vec::Vec::<BoxOp>::arbitrary(g);
-        ops.truncate(MAX_BOX_OPS);
-        BoxProgram(ops)
-    }
-
-    fn shrink(&self) -> ::std::boxed::Box<dyn Iterator<Item = Self>> {
-        ::std::boxed::Box::new(self.0.shrink().map(|mut ops| {
-            ops.truncate(MAX_BOX_OPS);
-            BoxProgram(ops)
-        }))
-    }
-}
 
 #[cfg(feature = "collections")]
 #[derive(Debug)]
@@ -136,15 +105,16 @@ fn box_is_send_sync() {
 }
 
 #[cfg(feature = "collections")]
-quickcheck! {
-    fn boxed_vec_operation_sequences_drop_exactly_once(program: BoxProgram) -> () {
+#[test]
+fn boxed_vec_operation_sequences_drop_exactly_once() -> CheckResult<BoxProgram> {
+    check().run(|program: &BoxProgram| -> Result<(), String> {
         let bump = Bump::new();
         let drops = Rc::new(RefCell::new(std::vec::Vec::new()));
         let mut actual = BumpVec::new_in(&bump);
         let mut expected = std::vec::Vec::<(usize, u8)>::new();
         let mut next_serial = 0usize;
 
-        for op in &program.0 {
+        for op in program.0.iter().take(MAX_BOX_OPS) {
             let checkpoint = drops.borrow().len();
             let mut expected_drops = std::vec::Vec::new();
 
@@ -217,7 +187,10 @@ quickcheck! {
             assert_eq!(actual_drops, expected_drops);
             assert_eq!(
                 live_payloads(&actual),
-                expected.iter().map(|(_, payload)| *payload).collect::<std::vec::Vec<_>>(),
+                expected
+                    .iter()
+                    .map(|(_, payload)| *payload)
+                    .collect::<std::vec::Vec<_>>(),
             );
         }
 
@@ -235,5 +208,6 @@ quickcheck! {
 
         assert!(expected.is_empty());
         assert_eq!(drops.borrow().len(), next_serial);
-    }
+        Ok(())
+    })
 }
