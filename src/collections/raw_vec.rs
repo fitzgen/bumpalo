@@ -17,7 +17,7 @@ use core::cmp;
 use core::mem;
 use core::ptr::{self, NonNull};
 
-use crate::alloc::{Alloc, Layout, handle_alloc_error};
+use crate::alloc::{handle_alloc_error, Alloc, Layout};
 use crate::collections::CollectionAllocErr;
 use crate::collections::CollectionAllocErr::*;
 
