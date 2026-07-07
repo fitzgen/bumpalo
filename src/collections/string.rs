@@ -80,7 +80,7 @@ use core_alloc::borrow::Cow;
 /// let b = Bump::new();
 ///
 /// let who = "World";
-/// let s = bumpalo::format!(in &b, "Hello, {}!", who);
+/// let s = bumpalo::format!(in &b, "Hello, {who}!");
 /// assert_eq!(s, "Hello, World!")
 /// ```
 #[macro_export]
@@ -95,6 +95,10 @@ macro_rules! format {
 
     ( in $bump:expr, $fmt:expr, $($args:expr,)* ) => {
         $crate::format!(in $bump, $fmt, $($args),*)
+    };
+
+    ( in $bump:expr, $fmt:expr ) => {
+        $crate::format!(in $bump, $fmt, )
     };
 }
 
