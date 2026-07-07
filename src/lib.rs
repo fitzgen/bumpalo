@@ -494,13 +494,10 @@ pub(crate) const fn round_up_to(n: usize, divisor: usize) -> Option<usize> {
 /// returning `None`.
 #[inline]
 pub(crate) unsafe fn round_up_to_unchecked(n: usize, divisor: usize) -> usize {
-    match round_up_to(n, divisor) {
-        Some(x) => x,
-        None => {
-            debug_assert!(false, "round_up_to_unchecked failed");
-            core::hint::unreachable_unchecked()
-        }
-    }
+    round_up_to(n, divisor).unwrap_or_else(|| {
+        debug_assert!(false, "round_up_to_unchecked failed");
+        core::hint::unreachable_unchecked()
+    })
 }
 
 #[inline]
