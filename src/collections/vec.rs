@@ -886,6 +886,48 @@ impl<'bump, T: 'bump> Vec<'bump, T> {
         unsafe { slice::from_raw_parts_mut(ptr, len) }
     }
 
+    /// Resizes the `Vec` in-place so that `len` is equal to `new_len`.
+    ///
+    /// If `new_len` is greater than `len`, the `Vec` is extended by the
+    /// difference, with each additional slot filled with the result of
+    /// calling the closure `f`. The return values from `f` will end up
+    /// in the `Vec` in the order they have been generated.
+    ///
+    /// If `new_len` is less than `len`, the `Vec` is simply truncated.
+    ///
+    /// This method uses a closure to create new values on every push. If
+    /// you'd rather [`Clone`] a given value, use [`Vec::resize`]. If you
+    /// want to use the [`Default`] trait to generate values, you can
+    /// pass [`Default::default`] as the second argument.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity exceeds `isize::MAX` _bytes_.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut vec = vec![1, 2, 3];
+    /// vec.resize_with(5, Default::default);
+    /// assert_eq!(vec, [1, 2, 3, 0, 0]);
+    ///
+    /// let mut vec = vec![];
+    /// let mut p = 1;
+    /// vec.resize_with(4, || { p *= 2; p });
+    /// assert_eq!(vec, [2, 4, 8, 16]);
+    /// ```
+    pub fn resize_with<F>(&mut self, new_len: usize, f: F)
+    where
+        F: FnMut() -> T,
+    {
+        let len = self.len();
+        if new_len > len {
+            self.extend_with(new_len - len, ExtendFn(f));
+        } else {
+            self.truncate(new_len);
+        }
+    }
+
     /// Shortens the vector, keeping the first `len` elements and dropping
     /// the rest.
     ///
@@ -2127,6 +2169,17 @@ impl<T: Clone> ExtendWith<T> for ExtendElement<T> {
     }
     fn last(self) -> T {
         self.0
+    }
+}
+
+struct ExtendFn<T, F: FnMut() -> T>(F);
+impl<T, F: FnMut() -> T> ExtendWith<T> for ExtendFn<T, F> {
+    fn next(&mut self) -> T {
+        self.0()
+    }
+
+    fn last(mut self) -> T {
+        self.0()
     }
 }
 
