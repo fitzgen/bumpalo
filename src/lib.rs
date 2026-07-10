@@ -1937,11 +1937,10 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
             // Try to allocate the delta size within this same block so we can
             // reuse the currently allocated space.
             let delta = new_size - old_size;
-            if let Some(p) =
+            if let Some(_) =
                 self.try_alloc_layout_fast(layout_from_size_align(delta, old_layout.align())?)
             {
-                ptr::copy(ptr.as_ptr(), p.as_ptr(), old_size);
-                return Ok(p);
+                return Ok(ptr);
             }
         }
 
