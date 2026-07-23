@@ -104,10 +104,15 @@ fn emplace_slice_operation_sequences() -> CheckResult<EmplaceSliceProgram> {
 #[test]
 fn emplace_slice_copy() -> CheckResult<Vec<u8>> {
     check().run(|data: &Vec<u8>| -> Result<(), String> {
-        let bump = Bump::new();
-        let place = bump.emplace_slice_with_capacity(data.len());
-        let result = place.copy_slice(&data);
-        assert_eq!(result, data.as_slice());
+        // Sweep the initial capacity across values below, equal to, and above
+        // the data length. This exercises all cases of our capacity-growing
+        // behavior.
+        for capacity in 0..=(data.len() + 2).min(10) {
+            let bump = Bump::new();
+            let place = bump.emplace_slice_with_capacity(capacity);
+            let result = place.copy_slice(data.as_slice());
+            assert_eq!(result, data.as_slice());
+        }
         Ok(())
     })
 }
@@ -115,10 +120,13 @@ fn emplace_slice_copy() -> CheckResult<Vec<u8>> {
 #[test]
 fn emplace_slice_clone() -> CheckResult<Vec<u8>> {
     check().run(|data: &Vec<u8>| -> Result<(), String> {
-        let bump = Bump::new();
-        let place = bump.emplace_slice_with_capacity(data.len());
-        let result = place.clone_slice(&data);
-        assert_eq!(result, data.as_slice());
+        // See comment in `emplace_slice_copy`.
+        for capacity in 0..=(data.len() + 2).min(10) {
+            let bump = Bump::new();
+            let place = bump.emplace_slice_with_capacity(capacity);
+            let result = place.clone_slice(data.as_slice());
+            assert_eq!(result, data.as_slice());
+        }
         Ok(())
     })
 }
@@ -431,4 +439,38 @@ fn extend_from_slice_clone() -> CheckResult<(Vec<u8>, Vec<u8>)> {
         let _ = place.into_mut_slice();
         Ok(())
     })
+}
+
+#[test]
+fn issue_330_emplace_slice_copy_grows() {
+    for &(capacity, len) in &[(1, 2), (1, 10), (4, 6), (4, 8), (4, 100), (16, 17)] {
+        let bump = Bump::new();
+        let data: Vec<u8> = (0..len).map(|i| i as u8).collect();
+        let place = bump.emplace_slice_with_capacity::<u8>(capacity);
+        let result = place.copy_slice(&data);
+        assert_eq!(result, data.as_slice());
+    }
+
+    // The default capacity (from `emplace_slice`) is smaller than the data.
+    let bump = Bump::new();
+    let data: Vec<u8> = (0..64).collect();
+    let result = bump.emplace_slice::<u8>().copy_slice(&data);
+    assert_eq!(result, data.as_slice());
+}
+
+#[test]
+fn issue_330_emplace_slice_clone_grows() {
+    for &(capacity, len) in &[(1, 2), (1, 10), (4, 6), (4, 8), (4, 100), (16, 17)] {
+        let bump = Bump::new();
+        let data: Vec<String> = (0..len).map(|i| i.to_string()).collect();
+        let place = bump.emplace_slice_with_capacity::<String>(capacity);
+        let result = place.clone_slice(&data);
+        assert_eq!(result, data.as_slice());
+    }
+
+    // The default capacity (from `emplace_slice`) is smaller than the data.
+    let bump = Bump::new();
+    let data: Vec<String> = (0..64).map(|i| i.to_string()).collect();
+    let result = bump.emplace_slice::<String>().clone_slice(&data);
+    assert_eq!(result, data.as_slice());
 }

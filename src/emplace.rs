@@ -536,7 +536,7 @@ where
         let new_layout = Layout::array::<T>(new_capacity).map_err(|_| AllocErr)?;
 
         let ptr = self.inner.guard.ptr;
-        let new_ptr = unsafe { Bump::grow_internal(self.bump(), ptr, old_layout, new_layout)? };
+        let new_ptr = unsafe { self.bump().grow_internal(ptr, old_layout, new_layout)? };
 
         self.inner.guard.ptr = new_ptr;
         self.inner.ptr = new_ptr.cast();
@@ -950,7 +950,7 @@ where
     where
         T: Copy,
     {
-        self.try_reserve_exact(from.len().saturating_sub(self.capacity))?;
+        self.try_grow(from.len())?;
         unsafe {
             ptr::copy_nonoverlapping(from.as_ptr(), self.base_ptr(), from.len());
         }
@@ -1004,7 +1004,7 @@ where
     where
         T: Clone,
     {
-        self.try_reserve_exact(from.len().saturating_sub(self.capacity))?;
+        self.try_grow(from.len())?;
         for (i, val) in from.iter().cloned().enumerate() {
             unsafe {
                 ptr::write(self.base_ptr().add(i), val);
