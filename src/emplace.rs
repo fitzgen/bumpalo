@@ -536,7 +536,7 @@ where
         let new_layout = Layout::array::<T>(new_capacity).map_err(|_| AllocErr)?;
 
         let ptr = self.inner.guard.ptr;
-        let new_ptr = unsafe { Bump::grow(self.bump(), ptr, old_layout, new_layout)? };
+        let new_ptr = unsafe { Bump::grow_internal(self.bump(), ptr, old_layout, new_layout)? };
 
         self.inner.guard.ptr = new_ptr;
         self.inner.ptr = new_ptr.cast();

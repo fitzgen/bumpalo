@@ -1920,7 +1920,7 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     }
 
     #[inline]
-    unsafe fn grow(
+    unsafe fn grow_internal(
         &self,
         ptr: NonNull<u8>,
         old_layout: Layout,
@@ -2056,7 +2056,7 @@ unsafe impl<'a, const MIN_ALIGN: usize> alloc::Alloc for &'a Bump<MIN_ALIGN> {
         if new_size <= old_size {
             Bump::shrink(self, ptr, old_layout, new_layout)
         } else {
-            Bump::grow(self, ptr, old_layout, new_layout)
+            Bump::grow_internal(self, ptr, old_layout, new_layout)
         }
     }
 }
@@ -2073,7 +2073,7 @@ unsafe impl<'a, const MIN_ALIGN: usize> alloc::Alloc for &'a Bump<MIN_ALIGN> {
 fn _doctest_only() {}
 
 #[cfg(any(feature = "allocator_api", feature = "allocator-api2"))]
-unsafe impl<'a, const MIN_ALIGN: usize> Allocator for &'a Bump<MIN_ALIGN> {
+unsafe impl<const MIN_ALIGN: usize> Allocator for Bump<MIN_ALIGN> {
     #[inline]
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         self.try_alloc_layout(layout)
@@ -2109,7 +2109,7 @@ unsafe impl<'a, const MIN_ALIGN: usize> Allocator for &'a Bump<MIN_ALIGN> {
         old_layout: Layout,
         new_layout: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
-        Bump::<MIN_ALIGN>::grow(self, ptr, old_layout, new_layout)
+        Bump::<MIN_ALIGN>::grow_internal(self, ptr, old_layout, new_layout)
             .map(|p| unsafe {
                 NonNull::new_unchecked(ptr::slice_from_raw_parts_mut(p.as_ptr(), new_layout.size()))
             })
