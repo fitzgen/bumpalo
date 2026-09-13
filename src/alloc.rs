@@ -114,6 +114,8 @@ impl fmt::Display for AllocErr {
     }
 }
 
+impl core::error::Error for AllocErr {}
+
 /// The `CannotReallocInPlace` error is used when `grow_in_place` or
 /// `shrink_in_place` were unable to reuse the given memory block for
 /// a requested layout.
