@@ -738,7 +738,7 @@ mod serialize {
 
     impl<'a, T> Serialize for Box<'a, T>
     where
-        T: Serialize,
+        T: ?Sized + Serialize,
     {
         fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
             T::serialize(self, serializer)
