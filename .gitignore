@@ -1,4 +1,5 @@
 target
+coverage
 Cargo.lock
 benches/results.json
 *perf.data*
