@@ -2753,6 +2753,8 @@ mod tests {
 
     // Uses private type `ChunkFooter`.
     #[test]
+    // Assertion relies on 64-bit layout assumptions
+    #[cfg(target_pointer_width = "64")]
     fn chunk_footer_is_five_words() {
         assert_eq!(mem::size_of::<ChunkFooter>(), mem::size_of::<usize>() * 6);
     }
