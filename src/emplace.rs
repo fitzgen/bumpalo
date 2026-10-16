@@ -186,7 +186,7 @@ where
 {
     /// # Safety
     ///
-    /// `guard` must wrap a pointer that is valid for `MaybeUninit<T>`.
+    /// `guard` must wrap a pointer that is valid for `Layout::array::<T>(capacity)`.
     pub(crate) unsafe fn new(guard: RewindGuard<'a, MIN_ALIGN>, capacity: usize) -> Self {
         Self {
             inner: Emplace::new(guard),
