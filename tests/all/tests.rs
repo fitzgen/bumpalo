@@ -388,3 +388,40 @@ fn emplace_drop_after_intervening_chunk_alloc() {
         assert_eq!(unsafe { *p.as_ref() }, i);
     }
 }
+
+#[test]
+fn zst_alloc_from_fresh_bump_does_not_race() {
+    let t = std::thread::spawn(|| {
+        let bump = Bump::new();
+        let x = bump.alloc(7u64);
+        assert_eq!(*x, 7);
+    });
+
+    let bump = Bump::new();
+
+    // Fresh `Bump`s share a static empty chunk, so ZST allocations must not
+    // write to it. Miri detects the data race if they do.
+    bump.alloc(());
+
+    t.join().unwrap();
+}
+
+#[test]
+fn reset_to_raw_checkpoint_on_fresh_bump_does_not_race() {
+    let t = std::thread::spawn(|| {
+        let bump = Bump::new();
+        let x = bump.alloc(7u64);
+        assert_eq!(*x, 7);
+    });
+
+    let bump = Bump::new();
+    let checkpoint = bump.raw_checkpoint();
+
+    // Fresh `Bump`s share a static empty chunk, so resetting to a checkpoint
+    // must not write to it. Miri detects the data race if it does.
+    unsafe {
+        bump.reset_to_raw_checkpoint(checkpoint);
+    }
+
+    t.join().unwrap();
+}
