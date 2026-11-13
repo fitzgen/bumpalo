@@ -28,6 +28,18 @@ Released YYYY-MM-DD.
 
 --------------------------------------------------------------------------------
 
+## 3.20.4
+
+Released 2026-11-13.
+
+### Security
+
+* Fixed allocating zero-sized types on multiple threads triggering undefined
+  behavior.
+  [GHSA-j7wg-xg3h-2pr6](https://github.com/fitzgen/bumpalo/security/advisories/GHSA-j7wg-xg3h-2pr6)
+
+--------------------------------------------------------------------------------
+
 ## 3.20.3
 
 Released 2026-05-22.
