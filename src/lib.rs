@@ -527,6 +527,14 @@ pub(crate) unsafe fn round_mut_ptr_up_to_unchecked(ptr: *mut u8, divisor: usize)
     ptr.add(delta)
 }
 
+/// A non-null, well-aligned pointer for zero-sized allocations.
+#[inline]
+fn dangling_for_align(align: usize) -> NonNull<u8> {
+    debug_assert!(align.is_power_of_two());
+    // Safety: `align` is a power of two, therefore non-zero.
+    unsafe { NonNull::new_unchecked(ptr::without_provenance_mut(align)) }
+}
+
 // The typical page size these days.
 //
 // Note that we don't need to exactly match page size for correctness, and it is
@@ -1168,6 +1176,13 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
     pub unsafe fn reset_to_raw_checkpoint(&self, checkpoint: RawCheckpoint) {
         let mut cur_chunk = self.current_chunk_footer.get();
 
+        // We have never allocated a chunk, so there is nothing to reset, and
+        // we must not write to the shared `EMPTY_CHUNK`.
+        if cur_chunk.as_ref().is_empty() {
+            debug_assert_eq!(checkpoint.chunk, cur_chunk);
+            return;
+        }
+
         if checkpoint.chunk == cur_chunk {
             debug_assert!(
                 is_pointer_aligned_to(checkpoint.ptr.as_ptr(), MIN_ALIGN),
@@ -1456,10 +1471,12 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
 
     #[inline(always)]
     fn try_alloc_layout_fast(&self, layout: Layout) -> Option<NonNull<u8>> {
-        // We don't need to check for ZSTs here since they will automatically
-        // be handled properly: the pointer will be bumped by zero bytes,
-        // modulo alignment. This keeps the fast path optimized for non-ZSTs,
-        // which are much more common.
+        // ZSTs must not touch the footer: the current chunk may be the shared
+        // `EMPTY_CHUNK`, and writing to it would race with other threads.
+        if layout.size() == 0 {
+            return Some(dangling_for_align(layout.align().max(MIN_ALIGN)));
+        }
+
         unsafe {
             let footer_ptr = self.current_chunk_footer.get();
             let footer = footer_ptr.as_ref();
@@ -1933,10 +1950,16 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
 
         let align_is_compatible = old_layout.align() >= new_layout.align();
 
+        // Try to allocate the delta size within this same block so we can reuse
+        // the currently allocated space.
         if align_is_compatible && self.is_last_allocation(ptr) {
-            // Try to allocate the delta size within this same block so we can
-            // reuse the currently allocated space.
             let delta = new_size - old_size;
+
+            // If the delta is zero then `ptr` is already satisfactory.
+            if delta == 0 {
+                return Ok(ptr);
+            }
+
             if let Some(p) =
                 self.try_alloc_layout_fast(layout_from_size_align(delta, old_layout.align())?)
             {
