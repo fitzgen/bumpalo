@@ -547,6 +547,14 @@ pub(crate) fn round_down_to(n: usize, divisor: usize) -> usize {
     n & !(divisor - 1)
 }
 
+/// A non-null, well-aligned pointer for zero-sized allocations.
+#[inline]
+fn dangling_for_align(align: usize) -> NonNull<u8> {
+    debug_assert!(align.is_power_of_two());
+    // SAFETY: `align` is a power of two, therefore non-zero.
+    unsafe { NonNull::new_unchecked(ptr::null_mut::<u8>().wrapping_add(align)) }
+}
+
 /// Same as `round_down_to` but preserves pointer provenance.
 #[inline]
 pub(crate) fn round_mut_ptr_down_to(ptr: *mut u8, divisor: usize) -> *mut u8 {
@@ -1889,10 +1897,12 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
 
     #[inline(always)]
     fn try_alloc_layout_fast(&self, layout: Layout) -> Option<NonNull<u8>> {
-        // We don't need to check for ZSTs here since they will automatically
-        // be handled properly: the pointer will be bumped by zero bytes,
-        // modulo alignment. This keeps the fast path optimized for non-ZSTs,
-        // which are much more common.
+        // ZSTs must not touch the footer: the current chunk may be the shared
+        // `EMPTY_CHUNK`, and writing to it would race with other threads.
+        if layout.size() == 0 {
+            return Some(dangling_for_align(layout.align().max(MIN_ALIGN)));
+        }
+
         unsafe {
             let footer_ptr = self.current_chunk_footer.get();
             let footer = footer_ptr.as_ref();
@@ -2377,6 +2387,9 @@ impl<const MIN_ALIGN: usize> Bump<MIN_ALIGN> {
             // Try to allocate the delta size within this same block so we can
             // reuse the currently allocated space.
             let delta = new_size - old_size;
+            if delta == 0 {
+                return Ok(ptr);
+            }
             if let Some(p) =
                 self.try_alloc_layout_fast(layout_from_size_align(delta, old_layout.align())?)
             {

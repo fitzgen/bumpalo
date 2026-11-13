@@ -252,3 +252,19 @@ fn test_debug_assert_ptr_align_pr_313() {
     let bump = Bump::<16>::with_min_align();
     bump.alloc(0u8);
 }
+
+/// Fresh `Bump`s share a static empty chunk, so ZST allocations must not write
+/// to it. Miri detects the data race if they do.
+#[test]
+fn zst_alloc_from_fresh_bump_does_not_race() {
+    let t = std::thread::spawn(|| {
+        let bump = Bump::new();
+        let x = bump.alloc(7u64);
+        assert_eq!(*x, 7);
+    });
+
+    let bump = Bump::new();
+    bump.alloc(());
+
+    t.join().unwrap();
+}
