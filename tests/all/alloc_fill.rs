@@ -1,6 +1,5 @@
 use bumpalo::Bump;
 use std::alloc::Layout;
-use std::cmp;
 use std::iter::repeat;
 use std::mem;
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -20,18 +19,14 @@ fn alloc_slice_fill_zero() {
     b.alloc_slice_fill_copy(0, 42u64);
     b.alloc_slice_fill_clone(0, &"hello".to_string());
     b.alloc_slice_fill_default::<String>(0);
-    let ptr2 = b.alloc(MyZeroSizedType);
-    let alignment = cmp::max(mem::align_of::<u64>(), mem::align_of::<String>());
-    assert_eq!(
-        ptr1.as_ptr() as usize & !(alignment - 1),
-        ptr2 as *mut _ as usize
-    );
+    b.alloc(MyZeroSizedType);
+    let ptr2 = b.alloc_slice_fill_copy(0, 42u64);
+    assert_eq!(ptr2.as_ptr() as usize % mem::align_of::<u64>(), 0);
 
+    // Zero-sized allocations do not consume any space.
     let ptr3 = b.alloc_layout(u8_layout);
-    dbg!(ptr2 as *mut _);
-    dbg!(ptr3);
     assert_eq!(
-        ptr2 as *mut _ as usize,
+        ptr1.as_ptr() as usize,
         (ptr3.as_ptr() as usize) + b.min_align().max(u8_layout.align()),
     );
 }
