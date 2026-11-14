@@ -22,6 +22,22 @@ fn test_box_serializes() {
 }
 
 #[test]
+fn test_box_serializes_unsized() {
+    let bump = Bump::new();
+
+    // Box<'a, [T]>, built from a sized array box since bumpalo's Box does not
+    // rely on unsize coercion.
+    let boxed_slice: Box<[i32]> = Box::from(Box::new_in([1, 2, 3], &bump));
+    let std_boxed_slice: std::boxed::Box<[i32]> = std::boxed::Box::new([1, 2, 3]);
+    assert_eq_json!(boxed_slice, std_boxed_slice);
+
+    // Box<'a, str>.
+    let boxed_str: Box<str> = unsafe { Box::from_raw(bump.alloc_str("hello")) };
+    let std_boxed_str: std::boxed::Box<str> = std::boxed::Box::from("hello");
+    assert_eq_json!(boxed_str, std_boxed_str);
+}
+
+#[test]
 fn test_box_serializes_complex() {
     let bump = Bump::new();
     let (vec, std_vec) = compare_std_box![

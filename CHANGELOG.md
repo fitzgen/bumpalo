@@ -4,7 +4,8 @@ Released YYYY-MM-DD.
 
 ### Added
 
-* TODO (or remove section if none)
+* Implemented `serde::Serialize` for `Box<'a, T>` when `T: ?Sized`, such as
+  `Box<'a, [T]>` and `Box<'a, str>`.
 
 ### Changed
 
